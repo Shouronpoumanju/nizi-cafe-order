@@ -211,14 +211,14 @@ export default function App() {
 
     const loadAll = async () => {
       try {
-        const [cust, menu_, ord, dd, vip, staff, mgpw] = await Promise.all([
+        const [cust, menu_, ord, dd, vip, staff, mga] = await Promise.all([
           dbGet("cafe_v4_customers"),
           dbGet("cafe_v4_menu"),
           dbGet("cafe_v4_orders"),
           dbGet("cafe_v4_designated_drink"),
           dbGet("cafe_v4_vip_gift_drink"),
           dbGet("cafe_v4_staff_accounts"),
-          dbGet("cafe_v4_manager_pw"),
+          dbGet("cafe_v4_manager_accounts"),
         ]);
         if (!mounted) return;
         const raw = cust || SAMPLE;
@@ -234,7 +234,7 @@ export default function App() {
         if (dd)     setDesignatedDrink(dd);
         if (vip)    setVipGiftDrink(vip);
         if (staff)  setStaffAccounts(staff);
-        if (mgpw)   setManagerPassword(mgpw);
+        if (mga)    setManagerAccounts(mga);
       } catch { if (mounted) setCustomers(SAMPLE); }
       if (mounted) setLoaded(true);
     };
