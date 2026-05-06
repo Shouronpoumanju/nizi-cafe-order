@@ -1,24 +1,21 @@
 import { useState, useEffect, useRef } from "react";
-// ══════════════════════════════════════════
-//  🔥 Firebase 設定（ここを書き換えてください）
-// ══════════════════════════════════════════
-const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyC58_CHa0RS0PtjnrotgrTt8Jc67tlDpWM",
-  authDomain:        "nizicafe-card.firebaseapp.com",
-  databaseURL:       "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:         "nizicafe-card",
-  storageBucket:     "nizicafe-card.firebasestorage.app",
-  messagingSenderId: "1067987470463",
-  appId:             "1:1067987470463:web:5bdece2b78159ef9b1974a",
-};
 
-const firebaseApp = initializeApp(FIREBASE_CONFIG);
-const db          = getDatabase(firebaseApp);
-const dbRef = (key) => ref(db, key);
-const dbSet = (key, val) => set(dbRef(key), JSON.stringify(val)).catch(()=>{});
-const dbGet = (key) => new Promise(res => {
-  const unsub = onValue(dbRef(key), snap => { unsub(); res(snap.val()); }, { onlyOnce: true });
-});
+// ══════════════════════════════════════════
+//  🔥 Firebase REST API 設定
+// ══════════════════════════════════════════
+const DB_BASE = "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app";
+
+const dbSet = (key, val) =>
+  fetch(`${DB_BASE}/${key}.json`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(val),
+  }).catch(() => {});
+
+const dbGet = (key) =>
+  fetch(`${DB_BASE}/${key}.json`)
+    .then(r => r.json())
+    .catch(() => null);
 
 // ══════════════════════════════════════════
 //  設定
@@ -198,42 +195,57 @@ export default function App() {
   const [staffName,      setStaffName]      = useState("");
   const [loaded,         setLoaded]         = useState(false);
 
-  // Firebase リアルタイムリスナー
+  // Firebase REST API + ポーリング（3秒ごとに同期）
   useEffect(() => {
-    const unsubs = [];
-    // 会員データ（リアルタイム同期）
-    unsubs.push(onValue(dbRef("cafe_v4_customers"), snap => {
+    let mounted = true;
+
+    const loadAll = async () => {
       try {
-        const raw = snap.val() ? JSON.parse(snap.val()) : SAMPLE;
+        const [cust, menu_, ord, dd, vip, staff, mgpw] = await Promise.all([
+          dbGet("cafe_v4_customers"),
+          dbGet("cafe_v4_menu"),
+          dbGet("cafe_v4_orders"),
+          dbGet("cafe_v4_designated_drink"),
+          dbGet("cafe_v4_vip_gift_drink"),
+          dbGet("cafe_v4_staff_accounts"),
+          dbGet("cafe_v4_manager_pw"),
+        ]);
+        if (!mounted) return;
+        const raw = cust || SAMPLE;
         const migrated = raw.map(checkYearRollover);
         setCustomers(migrated);
-        const changed = migrated.some((c,i) => raw[i] && c.dataYear !== raw[i].dataYear);
-        if (!snap.val() || changed) dbSet("cafe_v4_customers", migrated);
-      } catch { setCustomers(SAMPLE); }
-      setLoaded(true);
-    }));
-    // メニュー
-    unsubs.push(onValue(dbRef("cafe_v4_menu"), snap => {
-      if (snap.val()) try { setMenu(JSON.parse(snap.val())); } catch {}
-    }));
-    // 注文（リアルタイム同期）
-    unsubs.push(onValue(dbRef("cafe_v4_orders"), snap => {
-      if (snap.val()) try { setOrders(JSON.parse(snap.val())); } catch {}
-    }));
-    // その他設定
-    unsubs.push(onValue(dbRef("cafe_v4_designated_drink"), snap => {
-      if (snap.val()) try { setDesignatedDrink(JSON.parse(snap.val())); } catch {}
-    }));
-    unsubs.push(onValue(dbRef("cafe_v4_vip_gift_drink"), snap => {
-      if (snap.val()) try { setVipGiftDrink(JSON.parse(snap.val())); } catch {}
-    }));
-    unsubs.push(onValue(dbRef("cafe_v4_staff_accounts"), snap => {
-      if (snap.val()) try { setStaffAccounts(JSON.parse(snap.val())); } catch {}
-    }));
-    unsubs.push(onValue(dbRef("cafe_v4_manager_pw"), snap => {
-      if (snap.val()) try { setManagerPassword(JSON.parse(snap.val())); } catch {}
-    }));
-    return () => unsubs.forEach(u => u());
+        if (!cust) dbSet("cafe_v4_customers", migrated);
+        else {
+          const changed = migrated.some((c,i)=>raw[i]&&c.dataYear!==raw[i].dataYear);
+          if (changed) dbSet("cafe_v4_customers", migrated);
+        }
+        if (menu_)  setMenu(menu_);
+        if (ord)    setOrders(ord);
+        if (dd)     setDesignatedDrink(dd);
+        if (vip)    setVipGiftDrink(vip);
+        if (staff)  setStaffAccounts(staff);
+        if (mgpw)   setManagerPassword(mgpw);
+      } catch { if (mounted) setCustomers(SAMPLE); }
+      if (mounted) setLoaded(true);
+    };
+
+    loadAll();
+
+    // リアルタイム同期（3秒ポーリング）
+    const timer = setInterval(async () => {
+      if (!mounted) return;
+      try {
+        const [cust, ord] = await Promise.all([
+          dbGet("cafe_v4_customers"),
+          dbGet("cafe_v4_orders"),
+        ]);
+        if (!mounted) return;
+        if (cust) setCustomers(cust.map(checkYearRollover));
+        if (ord)  setOrders(ord);
+      } catch {}
+    }, 3000);
+
+    return () => { mounted = false; clearInterval(timer); };
   }, []);
 
   const saveC           = (list) => { setCustomers(list);        dbSet("cafe_v4_customers",        list); };
@@ -1546,8 +1558,7 @@ function BackupPanel({ customers }) {
       }
       if (!window.confirm(`${data.customers.length}件の会員データを復元しますか？\n現在のデータは上書きされます。`)) return;
       dbSet("cafe_v4_customers", data.customers);
-        Promise.resolve()
-        .then(()=>setRestoreMsg(`✅ ${data.customers.length}件を復元しました。ページを再読み込みしてください。`))
+        Promise.resolve().then(()=>setRestoreMsg(`✅ ${data.customers.length}件を復元しました。ページを再読み込みしてください。`))
         .catch(()=>setRestoreMsg("❌ 復元に失敗しました"));
     } catch { setRestoreMsg("❌ JSON の解析に失敗しました"); }
   };
