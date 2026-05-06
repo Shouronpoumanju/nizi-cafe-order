@@ -1741,7 +1741,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerPassword, sav
           <div style={{color:"#555",fontSize:"0.82rem",marginBottom:10}}>未設定 — 下から選択してください</div>
         )}
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {menu.filter(m=>m.category==="コーヒー"||m.category==="ドリンク").map(item=>(
+          {menu.map(item=>(
             <button key={item.id}
               style={{background:vipGiftDrink?.id===item.id?"#2a2000":"#141414",
                 border:`1px solid ${vipGiftDrink?.id===item.id?"#ffd700":"#2a2a2a"}`,
@@ -2140,7 +2140,7 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
           <div style={{color:"#555",fontSize:"0.82rem"}}>未設定 — 下のドリンクから選んで設定してください</div>
         )}
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-          {menu.filter(m=>m.category==="コーヒー"||m.category==="ドリンク").map(item=>(
+          {menu.map(item=>(
             <button key={item.id}
               style={{background:designatedDrink?.id===item.id?"#1e2a30":"#141414",
                 border:`1px solid ${designatedDrink?.id===item.id?"#9da8b0":"#2a2a2a"}`,
