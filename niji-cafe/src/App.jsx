@@ -63,6 +63,14 @@ function getRank(p) {
   for (const x of RANKS) if (p >= x.min) r = x;
   return r;
 }
+// 昨年・今年の高い方のランクを返す
+function getEffectiveRank(customer) {
+  const r1 = getRank(customer.rankBasis ?? 0);
+  const r2 = getRank(customer.currentYearPurchases ?? 0);
+  const i1 = RANKS.findIndex(r => r.name === r1.name);
+  const i2 = RANKS.findIndex(r => r.name === r2.name);
+  return i2 > i1 ? r2 : r1;
+}
 function nextRank(p)   { for(const x of RANKS) if(p<x.min) return x; return null; }
 function currentMonth(){ return new Date().toISOString().slice(0,7); } // "2026-05"
 function currentWeek() {
@@ -348,7 +356,7 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
     else setErr("暗証番号が一致しませんでした");
   };
 
-  const rank         = found ? getRank(found.rankBasis ?? 0) : null;
+  const rank         = found ? getEffectiveRank(found) : null;
   const next         = found ? nextRank(found.currentYearPurchases ?? 0) : null;
   const used         = found ? isBenefitUsed(found) : false;
   const isAlways     = rank?.benefit.type === "always_discount";
@@ -1005,8 +1013,8 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
 function RankingBoard({ customers, myId }) {
   // ランク順（rankBasis降順）→ 今年の購入回数降順 でソートしてTOP5
   const sorted = [...customers].sort((a, b) => {
-    const ra = getRank(a.rankBasis ?? 0);
-    const rb = getRank(b.rankBasis ?? 0);
+    const ra = getEffectiveRank(a);
+    const rb = getEffectiveRank(b);
     const ri = RANKS.findIndex(r=>r.name===ra.name);
     const rj = RANKS.findIndex(r=>r.name===rb.name);
     if (rj !== ri) return rj - ri;
@@ -1025,7 +1033,7 @@ function RankingBoard({ customers, myId }) {
 
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
         {sorted.map((c, i) => {
-          const r    = getRank(c.rankBasis ?? 0);
+          const r    = getEffectiveRank(c);
           const isMe = c.id === myId;
           return (
             <div key={c.id} style={{
@@ -1145,7 +1153,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
   const [pwTarget,  setPwTarget]  = useState(null);
 
   const isManager = staffRole === "manager";
-  const rank      = customer ? getRank(customer.rankBasis ?? customer.purchases ?? 0) : null;
+  const rank      = customer ? getEffectiveRank(customer) : null;
   const used      = customer ? isBenefitUsed(customer) : false;
   const isAlways  = rank?.benefit.type === "always_discount";
   const subtotal  = cart.reduce((s,i)=>s+i.price*i.qty, 0);
@@ -1288,7 +1296,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
                 return c.name.includes(query);
               })
               .map(c=>{
-                const r=getRank(c.rankBasis ?? c.purchases ?? 0);
+                const r=getEffectiveRank(c);
                 const u=isBenefitUsed(c);
                 const isAl=r.benefit.type==="always_discount";
                 return (
