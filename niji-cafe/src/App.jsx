@@ -272,7 +272,7 @@ export default function App() {
     <div style={S.root}>
       <style>{CSS}</style>
       {screen==="home"     && <Home setScreen={setScreen} setStaffRole={setStaffRole}/>}
-      {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} vipGiftDrink={vipGiftDrink} setScreen={setScreen}/>}
+      {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} managerAccounts={managerAccounts} vipGiftDrink={vipGiftDrink} setScreen={setScreen}/>}
       {screen==="login"    && <StaffLogin setScreen={setScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
       {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={setScreen}/>}
     </div>
@@ -341,7 +341,7 @@ function Home({ setScreen }) {
 // ══════════════════════════════════════════
 //  CUSTOMER VIEW
 // ══════════════════════════════════════════
-function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDrink, staffAccounts, vipGiftDrink, setScreen }) {
+function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDrink, staffAccounts, managerAccounts, vipGiftDrink, setScreen }) {
   const [input,        setInput]        = useState("");
   const [found,        setFound]        = useState(null);
   const [err,          setErr]          = useState("");
@@ -378,7 +378,9 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
 
   const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending") : null;
   // スタッフ・マネージャーリンク確認
-  const linkedStaff = found ? staffAccounts.find(s=>s.linkedCustomerId===found.id) : null;
+  const linkedStaff = found
+    ? (staffAccounts.find(s=>s.linkedCustomerId===found.id) || (managerAccounts||[]).find(s=>s.linkedCustomerId===found.id))
+    : null;
   const isStaffAccount = !!linkedStaff;
   const categories = [...new Set(menu.map(m=>m.category))];
   const subtotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
