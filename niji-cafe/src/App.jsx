@@ -1197,12 +1197,12 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
   const doCharge = () => requireManager(()=>{
     const updated = {
       ...customer,
-      balance:              customer.balance + 2000,
+      balance:              customer.balance + 2200,
       currentYearPurchases: (customer.currentYearPurchases ?? 0) + 1,
-      history:   [{type:"charge",amount:2000,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(customer.history||[])].slice(0,60),
+      history:   [{type:"charge",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(customer.history||[])].slice(0,60),
     };
     update(updated);
-    trigFlash("add", 2000);
+    trigFlash("add", 2200);
   });
 
   const useBenefit = () => {
@@ -1378,7 +1378,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
               </div>
             </div>
             <div style={{display:"flex",gap:6,marginTop:8}}>
-              {isManager && <button className="pill-btn-gold" onClick={doCharge}>🎫 +¥2,000</button>}
+              {isManager && <button className="pill-btn-gold" onClick={doCharge}>🎫 +¥2,200</button>}
               {isManager && <button className="pill-btn-dim" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
             </div>
           </div>
@@ -2393,7 +2393,7 @@ function HistoryModal({ customer, rank, onClose }) {
       if (h.items) parts.push(`| ${h.items}`);
       return parts.join(" ");
     }
-    if (h.type === "charge")         return `+¥2,000 · 購入回数+1`;
+    if (h.type === "charge")         return `+¥2,200 · 購入回数+1`;
     if (h.type === "benefit")        return h.desc || "特典使用";
     if (h.type === "edit_balance")   return `¥${h.before?.toLocaleString()} → ¥${h.after?.toLocaleString()}`;
     if (h.type === "edit_purchases") return `${h.label ? h.label+": " : ""}${h.before}回 → ${h.after}回`;
@@ -2566,8 +2566,8 @@ function EditCustomerModal({ customer, onSave, onDelete, onClose }) {
           <label style={S.label}>残高 (¥)</label>
           <input style={S.input} type="number" value={bal} onChange={e=>setBal(e.target.value)}/>
           <div style={{display:"flex",gap:6,marginTop:8}}>
-            {[2000,4000,6000].map(v=>(
-              <button key={v} className="preset-btn" onClick={()=>setBal(String((parseInt(bal)||0)+v))}>+¥{v/1000}k</button>
+            {[2200,4400,6600].map(v=>(
+              <button key={v} className="preset-btn" onClick={()=>setBal(String((parseInt(bal)||0)+v))}>+¥{(v/1000).toFixed(1)}k</button>
             ))}
             <button className="preset-btn" style={{color:"#e06655"}} onClick={()=>setBal("0")}>リセット</button>
           </div>
