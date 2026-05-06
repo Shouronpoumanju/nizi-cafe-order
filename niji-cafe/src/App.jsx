@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, set, onValue, runTransaction } from "firebase/database";
 
 // ══════════════════════════════════════════
 //  🔥 Firebase 設定（ここを書き換えてください）
