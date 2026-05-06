@@ -6,13 +6,13 @@ import { getDatabase, ref, set, onValue, runTransaction } from "https://www.gsta
 //  🔥 Firebase 設定（ここを書き換えてください）
 // ══════════════════════════════════════════
 const FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT.firebaseapp.com",
-  databaseURL:       "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId:         "YOUR_PROJECT",
-  storageBucket:     "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID",
+  apiKey:            "AIzaSyC58_CHa0RS0PtjnrotgrTt8Jc67tlDpWM",
+  authDomain:        "nizicafe-card.firebaseapp.com",
+  databaseURL:       "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "nizicafe-card",
+  storageBucket:     "nizicafe-card.firebasestorage.app",
+  messagingSenderId: "1067987470463",
+  appId:             "1:1067987470463:web:5bdece2b78159ef9b1974a",
 };
 
 const firebaseApp = initializeApp(FIREBASE_CONFIG);
