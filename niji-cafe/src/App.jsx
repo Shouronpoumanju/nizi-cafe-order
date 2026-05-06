@@ -20,7 +20,9 @@ const dbGet = (key) =>
 // ══════════════════════════════════════════
 //  設定
 // ══════════════════════════════════════════
-const DEFAULT_MANAGER_PASSWORD = "5678"; // 初期値（ストレージで上書き）
+const DEFAULT_MANAGER_ACCOUNTS = [
+  { id:"mg1", name:"マネージャー", password:"5678", linkedCustomerId:null },
+]; // マネージャーアカウント初期値
 
 const DEFAULT_STAFF_ACCOUNTS = [
   { id:"st1", name:"山田 花子", password:"1234" },
@@ -196,7 +198,7 @@ export default function App() {
   const [menu,           setMenu]           = useState(DEFAULT_MENU);
   const [orders,         setOrders]         = useState([]);
   const [staffAccounts,  setStaffAccounts]  = useState(DEFAULT_STAFF_ACCOUNTS);
-  const [managerPassword,setManagerPassword]= useState(DEFAULT_MANAGER_PASSWORD);
+  const [managerAccounts, setManagerAccounts]= useState(DEFAULT_MANAGER_ACCOUNTS);
   const [designatedDrink,setDesignatedDrink]= useState(null);
   const [vipGiftDrink,   setVipGiftDrink]   = useState(null);
   const [staffRole,      setStaffRole]      = useState(null);
@@ -261,7 +263,7 @@ export default function App() {
   const saveOrders      = (list) => { setOrders(list);           dbSet("cafe_v4_orders",           list); };
   const saveDesignatedDrink = (item)=> { setDesignatedDrink(item); dbSet("cafe_v4_designated_drink", item); };
   const saveVipGiftDrink    = (item)=> { setVipGiftDrink(item);    dbSet("cafe_v4_vip_gift_drink",   item); };
-  const saveManagerPassword = (pw)  => { setManagerPassword(pw);  dbSet("cafe_v4_manager_pw",       pw);   };
+  const saveManagerAccounts = (list)=> { setManagerAccounts(list); dbSet("cafe_v4_manager_accounts", list); };
   const saveStaffAccounts   = (list)=> { setStaffAccounts(list);   dbSet("cafe_v4_staff_accounts",   list); };
 
   if (!loaded) return <div style={S.loading}>読み込み中...</div>;
@@ -271,8 +273,8 @@ export default function App() {
       <style>{CSS}</style>
       {screen==="home"     && <Home setScreen={setScreen} setStaffRole={setStaffRole}/>}
       {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} vipGiftDrink={vipGiftDrink} setScreen={setScreen}/>}
-      {screen==="login"    && <StaffLogin setScreen={setScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} staffAccounts={staffAccounts} managerPassword={managerPassword}/>}
-      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerPassword={managerPassword} saveManagerPassword={saveManagerPassword} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={setScreen}/>}
+      {screen==="login"    && <StaffLogin setScreen={setScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
+      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={setScreen}/>}
     </div>
   );
 }
@@ -375,13 +377,14 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
     : 100;
 
   const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending") : null;
-  // スタッフリンク確認
+  // スタッフ・マネージャーリンク確認
   const linkedStaff = found ? staffAccounts.find(s=>s.linkedCustomerId===found.id) : null;
   const isStaffAccount = !!linkedStaff;
   const categories = [...new Set(menu.map(m=>m.category))];
   const subtotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
   // スタッフ割引：常に全品10%オフ
-  const staffDiscount = isStaffAccount ? Math.floor(subtotal * 0.1) : 0;
+  const discountRate  = linkedStaff ? (linkedStaff.discountRate ?? 10) : 0;
+  const staffDiscount = isStaffAccount ? Math.floor(subtotal * discountRate / 100) : 0;
   const discount = rank ? calcDiscount(rank, subtotal) : 0;
   const isSpecial = !!found?.isSpecial;
   const total    = isSpecial ? 0 : Math.max(0, subtotal - discount - staffDiscount);
@@ -605,7 +608,7 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
                     <div style={{background:"#0a1a10",border:"1px solid #5ecf7f44",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontSize:"1rem"}}>🟢</span>
                       <div>
-                        <div style={{color:"#5ecf7f",fontWeight:700,fontSize:"0.88rem"}}>スタッフ割引 10%OFF</div>
+                        <div style={{color:"#5ecf7f",fontWeight:700,fontSize:"0.88rem"}}>スタッフ割引 {discountRate}%OFF</div>
                         <div style={{color:"#555",fontSize:"0.72rem"}}>スタッフ紐付きアカウントは全商品10%オフ</div>
                       </div>
                     </div>
@@ -659,7 +662,7 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
                           <span style={{color:"#e040fb",fontSize:"0.8rem"}}>全品無料</span>
                         </div>}
                         {!isSpecial&&staffDiscount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                          <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>🟢 スタッフ割引 10%</span>
+                          <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>🟢 スタッフ割引 {discountRate}%</span>
                           <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>－¥{staffDiscount.toLocaleString()}</span>
                         </div>}
                         {!isSpecial&&discount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
@@ -1076,24 +1079,29 @@ function RankingBoard({ customers, myId }) {
 // ══════════════════════════════════════════
 //  STAFF LOGIN
 // ══════════════════════════════════════════
-function StaffLogin({ setScreen, setStaffRole, setStaffName, staffAccounts, managerPassword }) {
-  const [selected, setSelected] = useState(null); // null | "manager" | staffAccount
+function StaffLogin({ setScreen, setStaffRole, setStaffName, staffAccounts, managerAccounts }) {
+  const [selected, setSelected] = useState(null);
   const [pw, setPw]   = useState("");
   const [err, setErr] = useState("");
 
   const login = () => {
-    if (selected === "manager") {
-      if (pw === managerPassword) { setStaffRole("manager"); setStaffName("マネージャー"); setScreen("pos"); }
-      else setErr("パスワードが違います");
-    } else if (selected) {
-      if (pw === selected.password) { setStaffRole("staff"); setStaffName(selected.name); setScreen("pos"); }
-      else setErr("パスワードが違います");
-    }
+    if (!selected) return;
+    const isMgr = selected._role === "manager";
+    if (pw === selected.password) {
+      setStaffRole(isMgr ? "manager" : "staff");
+      setStaffName(selected.name);
+      setScreen("pos");
+    } else setErr("パスワードが違います");
   };
+
+  const allAccounts = [
+    ...(managerAccounts||[]).map(a=>({...a, _role:"manager"})),
+    ...(staffAccounts||[]).map(a=>({...a, _role:"staff"})),
+  ];
 
   return (
     <div style={S.page}>
-      <button className="back-btn" onClick={()=>{ if(selected) { setSelected(null); setPw(""); setErr(""); } else setScreen("home"); }}>
+      <button className="back-btn" onClick={()=>{ if(selected){setSelected(null);setPw("");setErr("");}else setScreen("home"); }}>
         {selected ? "← 戻る" : "← ホームへ"}
       </button>
       <h2 style={S.title}>スタッフログイン</h2>
@@ -1102,27 +1110,23 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, staffAccounts, mana
         <div>
           <p style={S.hint}>アカウントを選択してください</p>
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-            {staffAccounts.map(acc=>(
-              <button key={acc.id} className="staff-select-btn" onClick={()=>{ setSelected(acc); setPw(""); setErr(""); }}>
-                <span style={{fontSize:"1.1rem"}}>👤</span>
-                <span style={{fontWeight:700}}>{acc.name}</span>
+            {allAccounts.map(acc=>(
+              <button key={acc.id} className={`staff-select-btn${acc._role==="manager"?" manager":""}`}
+                onClick={()=>{setSelected(acc);setPw("");setErr("");}}>
+                <span style={{fontSize:"1.1rem"}}>{acc._role==="manager"?"👑":"👤"}</span>
+                <span style={{fontWeight:700,color:acc._role==="manager"?"#d4a853":"#e8e0d0"}}>{acc.name}</span>
                 <span style={{color:"#555",fontSize:"0.8rem",marginLeft:"auto"}}>→</span>
               </button>
             ))}
-            <button className="staff-select-btn manager" onClick={()=>{ setSelected("manager"); setPw(""); setErr(""); }}>
-              <span style={{fontSize:"1.1rem"}}>👑</span>
-              <span style={{fontWeight:700,color:"#d4a853"}}>マネージャー</span>
-              <span style={{color:"#555",fontSize:"0.8rem",marginLeft:"auto"}}>→</span>
-            </button>
           </div>
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
             <div style={{color:"#666",fontSize:"0.72rem",marginBottom:2}}>ログイン中のアカウント</div>
-            <div style={{fontWeight:700,color: selected==="manager"?"#d4a853":"#e8e0d0", display:"flex",alignItems:"center",gap:6}}>
-              <span>{selected==="manager"?"👑":"👤"}</span>
-              <span>{selected==="manager"?"マネージャー":selected.name}</span>
+            <div style={{fontWeight:700,color:selected._role==="manager"?"#d4a853":"#e8e0d0",display:"flex",alignItems:"center",gap:6}}>
+              <span>{selected._role==="manager"?"👑":"👤"}</span>
+              <span>{selected.name}</span>
             </div>
           </div>
           <input style={S.input} type="password" placeholder="パスワード"
@@ -1138,7 +1142,7 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, staffAccounts, mana
 // ══════════════════════════════════════════
 //  POS
 // ══════════════════════════════════════════
-function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, saveStaffAccounts, managerPassword, saveManagerPassword, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen }) {
+function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen }) {
   const [customer,  setCustomer]  = useState(null);
   const [cart,      setCart]      = useState([]);
   const [query,     setQuery]     = useState("");
@@ -1232,7 +1236,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
     setPwTarget(()=>fn); setPwPrompt("auth"); setPwInput(""); setPwErr("");
   };
   const confirmManager = () => {
-    if (pwInput===managerPassword) { setPwPrompt(null); pwTarget&&pwTarget(); }
+    if ((managerAccounts||[]).some(a=>a.password===pwInput)) { setPwPrompt(null); pwTarget&&pwTarget(); }
     else setPwErr("マネージャーパスワードが違います");
   };
 
@@ -1342,7 +1346,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
 
       {/* ── スタッフ管理（マネージャーのみ） ── */}
       {!customer && posTab==="staffmgmt" && isManager && (
-        <StaffMgmtPanel staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerPassword={managerPassword} saveManagerPassword={saveManagerPassword} customers={customers} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} menu={menu}/>
+        <StaffMgmtPanel staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} customers={customers} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} menu={menu}/>
       )}
 
       {/* ── 会計履歴 ── */}
@@ -1663,99 +1667,129 @@ function BackupPanel({ customers }) {
 }
 
 // ── STAFF MGMT PANEL ─────────────────────
-function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerPassword, saveManagerPassword, customers, vipGiftDrink, saveVipGiftDrink, menu }) {
-  const [editing,   setEditing]   = useState(null);
-  const [form,      setForm]      = useState({});
-  const [mgPwMode,  setMgPwMode]  = useState(false);
-  const [newMgPw,   setNewMgPw]   = useState("");
-  const [confirmPw, setConfirmPw] = useState("");
-  const [mgPwErr,   setMgPwErr]   = useState("");
-  const [mgPwOk,    setMgPwOk]    = useState(false);
-  const [linkTarget,setLinkTarget]= useState(null);
+function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, customers, vipGiftDrink, saveVipGiftDrink, menu }) {
+  const [editingStaff,  setEditingStaff]  = useState(null);
+  const [editingMgr,    setEditingMgr]    = useState(null);
+  const [form,          setForm]          = useState({});
+  const [linkTarget,    setLinkTarget]    = useState(null);
+  const [linkTargetMgr, setLinkTargetMgr] = useState(null);
   const upd = (f,v) => setForm(p=>({...p,[f]:v}));
 
-  const openNew  = () => { setForm({ id:`st_${Date.now()}`, name:"", password:"", linkedCustomerId:null }); setEditing("new"); };
-  const openEdit = (acc) => { setForm({...acc}); setEditing(acc.id); };
-  const save = () => {
-    if (!form.name.trim() || !form.password.trim()) return;
-    if (editing==="new") saveStaffAccounts([...staffAccounts, form]);
-    else saveStaffAccounts(staffAccounts.map(a=>a.id===editing ? form : a));
-    setEditing(null);
+  const openNewStaff  = () => { setForm({id:`st_${Date.now()}`,name:"",password:"",linkedCustomerId:null}); setEditingStaff("new"); };
+  const openEditStaff = (acc) => { setForm({...acc}); setEditingStaff(acc.id); };
+  const saveStaff = () => {
+    if (!form.name.trim()||!form.password.trim()) return;
+    if (editingStaff==="new") saveStaffAccounts([...staffAccounts, form]);
+    else saveStaffAccounts(staffAccounts.map(a=>a.id===editingStaff?form:a));
+    setEditingStaff(null);
   };
-  const del = (id) => {
-    if (window.confirm("このスタッフアカウントを削除しますか？"))
-      saveStaffAccounts(staffAccounts.filter(a=>a.id!==id));
+  const delStaff = (id) => { if(window.confirm("削除しますか？")) saveStaffAccounts(staffAccounts.filter(a=>a.id!==id)); };
+
+  const openNewMgr  = () => { setForm({id:`mg_${Date.now()}`,name:"",password:"",linkedCustomerId:null}); setEditingMgr("new"); };
+  const openEditMgr = (acc) => { setForm({...acc}); setEditingMgr(acc.id); };
+  const saveMgr = () => {
+    if (!form.name.trim()||!form.password.trim()) return;
+    if (editingMgr==="new") saveManagerAccounts([...managerAccounts, form]);
+    else saveManagerAccounts(managerAccounts.map(a=>a.id===editingMgr?form:a));
+    setEditingMgr(null);
   };
-  const linkCustomer = (staffId, customerId) => {
-    saveStaffAccounts(staffAccounts.map(a=>a.id===staffId ? {...a, linkedCustomerId: customerId} : a));
-    setLinkTarget(null);
-  };
-  const unlink = (staffId) => saveStaffAccounts(staffAccounts.map(a=>a.id===staffId ? {...a, linkedCustomerId: null} : a));
-  const saveMgPw = () => {
-    setMgPwErr(""); setMgPwOk(false);
-    if (!newMgPw.trim()) { setMgPwErr("新しいパスワードを入力してください"); return; }
-    if (newMgPw !== confirmPw) { setMgPwErr("パスワードが一致しません"); return; }
-    saveManagerPassword(newMgPw.trim());
-    setNewMgPw(""); setConfirmPw(""); setMgPwOk(true);
-    setTimeout(()=>setMgPwOk(false), 2000);
+  const delMgr = (id) => {
+    if (managerAccounts.length<=1) { alert("マネージャーは最低1人必要です"); return; }
+    if(window.confirm("削除しますか？")) saveManagerAccounts(managerAccounts.filter(a=>a.id!==id));
   };
 
+  const linkStaff  = (sid, cid) => { saveStaffAccounts(staffAccounts.map(a=>a.id===sid?{...a,linkedCustomerId:cid}:a)); setLinkTarget(null); };
+  const unlinkStaff= (sid) => saveStaffAccounts(staffAccounts.map(a=>a.id===sid?{...a,linkedCustomerId:null}:a));
+  const linkMgr    = (mid, cid) => { saveManagerAccounts(managerAccounts.map(a=>a.id===mid?{...a,linkedCustomerId:cid}:a)); setLinkTargetMgr(null); };
+  const unlinkMgr  = (mid) => saveManagerAccounts(managerAccounts.map(a=>a.id===mid?{...a,linkedCustomerId:null}:a));
+
+  const AccCard = ({acc, isManager, onEdit, onDel, ltId, setLtId, onLink, onUnlink}) => {
+    const linked = acc.linkedCustomerId ? customers.find(c=>c.id===acc.linkedCustomerId) : null;
+    return (
+      <div style={{background:"#111",border:`1px solid ${isManager?"#d4a85333":"#1e1e1e"}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <span style={{fontSize:"1.2rem"}}>{isManager?"👑":"👤"}</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:"0.95rem",color:isManager?"#d4a853":"#e8e0d0"}}>{acc.name}</div>
+            <div style={{color:"#888",fontSize:"0.75rem",marginTop:2}}>PW: {acc.password}</div>
+          </div>
+          <button className="btn-tiny-edit" onClick={()=>onEdit(acc)}>✏️</button>
+          <button className="btn-tiny-del"  onClick={()=>onDel(acc.id)}>🗑</button>
+        </div>
+        <div style={{borderTop:"1px solid #1a1a1a",paddingTop:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <div style={{color:"#555",fontSize:"0.72rem"}}>🔗 客アカウントリンク</div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{color:"#555",fontSize:"0.72rem"}}>割引率:</span>
+              <input
+                type="number" min="0" max="100"
+                value={acc.discountRate ?? 10}
+                onChange={e=>{
+                  const rate = Math.min(100, Math.max(0, parseInt(e.target.value)||0));
+                  if (isManager) saveManagerAccounts(managerAccounts.map(a=>a.id===acc.id?{...a,discountRate:rate}:a));
+                  else saveStaffAccounts(staffAccounts.map(a=>a.id===acc.id?{...a,discountRate:rate}:a));
+                }}
+                style={{width:52,background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:6,padding:"3px 6px",color:"#5ecf7f",fontSize:"0.82rem",fontWeight:700,fontFamily:"inherit",textAlign:"center"}}
+              />
+              <span style={{color:"#5ecf7f",fontSize:"0.72rem"}}>%</span>
+            </div>
+          </div>
+          {linked ? (
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{color:"#7be8c8",fontSize:"0.82rem",fontWeight:600}}>{linked.name}</span>
+              <div style={{display:"flex",gap:6}}>
+                <button style={{background:"transparent",border:"1px solid #2a2a2a",borderRadius:20,padding:"3px 10px",color:"#888",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>変更</button>
+                <button style={{background:"transparent",border:"1px solid #3a2020",borderRadius:20,padding:"3px 10px",color:"#e06655",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>onUnlink(acc.id)}>解除</button>
+              </div>
+            </div>
+          ) : (
+            <button style={{background:"#111820",border:"1px solid #7be8c833",borderRadius:20,padding:"4px 12px",color:"#7be8c8",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>
+              {ltId===acc.id?"閉じる ↑":"客アカウントを紐付ける"}
+            </button>
+          )}
+          {ltId===acc.id && (
+            <div style={{marginTop:8,maxHeight:160,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+              {customers.map(c=>(
+                <button key={c.id} style={{background:acc.linkedCustomerId===c.id?"#1a2a20":"#141414",border:`1px solid ${acc.linkedCustomerId===c.id?"#7be8c855":"#222"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontFamily:"inherit",display:"flex",justifyContent:"space-between"}}
+                  onClick={()=>onLink(acc.id, c.id)}>
+                  <span style={{color:"#e8e0d0",fontSize:"0.85rem"}}>{c.name}</span>
+                  <span style={{color:"#555",fontSize:"0.72rem"}}>No.{c.id}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={{...S.page, paddingTop:14, paddingBottom:40}}>
-
-      {/* ── バックアップ & リストア ── */}
       <BackupPanel customers={customers}/>
 
-      {/* マネージャーパスワード変更 */}
-      <div style={{background:"#0e1218",border:"1px solid #d4a85333",borderRadius:12,padding:"14px",marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:mgPwMode?12:0}}>
-          <div>
-            <div style={{color:"#d4a853",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:2}}>👑 マネージャー</div>
-            <div style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.9rem"}}>パスワード変更</div>
-          </div>
-          <button style={{background:"transparent",border:"1px solid #d4a85355",borderRadius:20,padding:"4px 12px",color:"#d4a853",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}
-            onClick={()=>{ setMgPwMode(p=>!p); setMgPwErr(""); setMgPwOk(false); setNewMgPw(""); setConfirmPw(""); }}>
-            {mgPwMode?"閉じる":"変更する"}
-          </button>
-        </div>
-        {mgPwMode && (
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div>
-              <label style={S.label}>新しいパスワード</label>
-              <input style={S.input} type="password" placeholder="新しいパスワード" value={newMgPw} onChange={e=>setNewMgPw(e.target.value)}/>
-            </div>
-            <div>
-              <label style={S.label}>確認（もう一度入力）</label>
-              <input style={S.input} type="password" placeholder="確認のため再入力" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveMgPw()}/>
-            </div>
-            {mgPwErr && <p style={S.err}>{mgPwErr}</p>}
-            {mgPwOk  && <p style={{color:"#5ecf7f",fontSize:"0.85rem",margin:0}}>✓ 変更しました</p>}
-            <button className="btn-save" onClick={saveMgPw}>変更を保存</button>
-          </div>
-        )}
+      {/* マネージャーアカウント */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <h2 style={{...S.title,margin:0,color:"#d4a853"}}>👑 マネージャー</h2>
+        <button className="btn-sm-gold" onClick={openNewMgr}>＋ 追加</button>
       </div>
+      {(managerAccounts||[]).map(acc=>(
+        <AccCard key={acc.id} acc={acc} isManager={true} onEdit={openEditMgr} onDel={delMgr}
+          ltId={linkTargetMgr} setLtId={setLinkTargetMgr} onLink={linkMgr} onUnlink={unlinkMgr}/>
+      ))}
 
       {/* VIPプレゼントドリンク設定 */}
-      <div style={{background:"linear-gradient(135deg,#1a1400,#2a2000)",border:"1px solid #ffd70044",borderRadius:12,padding:"14px",marginBottom:14}}>
+      <div style={{background:"linear-gradient(135deg,#1a1400,#2a2000)",border:"1px solid #ffd70044",borderRadius:12,padding:"14px",marginBottom:14,marginTop:10}}>
         <div style={{color:"#ffd700",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>⭐ VIPプレゼント — 今月のドリンク</div>
         {vipGiftDrink ? (
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.9rem"}}>{vipGiftDrink.emoji} {vipGiftDrink.name}</span>
-            <button style={{background:"transparent",border:"1px solid #3a3a3a",borderRadius:20,padding:"3px 10px",color:"#666",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}
-              onClick={()=>saveVipGiftDrink(null)}>解除</button>
+            <span style={{color:"#e8e0d0",fontWeight:700}}>{vipGiftDrink.emoji} {vipGiftDrink.name}</span>
+            <button style={{background:"transparent",border:"1px solid #3a3a3a",borderRadius:20,padding:"3px 10px",color:"#666",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveVipGiftDrink(null)}>解除</button>
           </div>
-        ) : (
-          <div style={{color:"#555",fontSize:"0.82rem",marginBottom:10}}>未設定 — 下から選択してください</div>
-        )}
+        ) : <div style={{color:"#555",fontSize:"0.82rem",marginBottom:10}}>未設定</div>}
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
           {menu.map(item=>(
             <button key={item.id}
-              style={{background:vipGiftDrink?.id===item.id?"#2a2000":"#141414",
-                border:`1px solid ${vipGiftDrink?.id===item.id?"#ffd700":"#2a2a2a"}`,
-                borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",
-                color:vipGiftDrink?.id===item.id?"#ffd700":"#888",fontSize:"0.8rem",
-                fontWeight:vipGiftDrink?.id===item.id?700:400,transition:"all 0.15s"}}
+              style={{background:vipGiftDrink?.id===item.id?"#2a2000":"#141414",border:`1px solid ${vipGiftDrink?.id===item.id?"#ffd700":"#2a2a2a"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",color:vipGiftDrink?.id===item.id?"#ffd700":"#888",fontSize:"0.8rem",fontWeight:vipGiftDrink?.id===item.id?700:400,transition:"all 0.15s"}}
               onClick={()=>saveVipGiftDrink(item)}>
               {item.emoji} {item.name}
             </button>
@@ -1763,81 +1797,43 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerPassword, sav
         </div>
       </div>
 
-      {/* スタッフアカウント一覧 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h2 style={{...S.title,margin:0}}>スタッフアカウント</h2>
-        <button className="btn-sm-gold" onClick={openNew}>＋ 追加</button>
+      {/* スタッフアカウント */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <h2 style={{...S.title,margin:0}}>👤 スタッフ</h2>
+        <button className="btn-sm-gold" onClick={openNewStaff}>＋ 追加</button>
       </div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {staffAccounts.map(acc=>{
-          const linked = acc.linkedCustomerId ? customers.find(c=>c.id===acc.linkedCustomerId) : null;
-          return (
-            <div key={acc.id} style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:12,padding:"12px 14px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                <span style={{fontSize:"1.2rem"}}>👤</span>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:"0.95rem",color:"#e8e0d0"}}>{acc.name}</div>
-                  <div style={{color:"#888",fontSize:"0.75rem",marginTop:2}}>PW: {acc.password}</div>
-                </div>
-                <button className="btn-tiny-edit" onClick={()=>openEdit(acc)}>✏️</button>
-                <button className="btn-tiny-del"  onClick={()=>del(acc.id)}>🗑</button>
-              </div>
-              {/* 客アカウントリンク */}
-              <div style={{borderTop:"1px solid #1a1a1a",paddingTop:8}}>
-                <div style={{color:"#555",fontSize:"0.72rem",marginBottom:6}}>🔗 客アカウントリンク</div>
-                {linked ? (
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{color:"#7be8c8",fontSize:"0.82rem",fontWeight:600}}>{linked.name} (No.{linked.id})</span>
-                    <div style={{display:"flex",gap:6}}>
-                      <button style={{background:"transparent",border:"1px solid #2a2a2a",borderRadius:20,padding:"3px 10px",color:"#888",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLinkTarget(linkTarget===acc.id?null:acc.id)}>変更</button>
-                      <button style={{background:"transparent",border:"1px solid #3a2020",borderRadius:20,padding:"3px 10px",color:"#e06655",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>unlink(acc.id)}>解除</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button style={{background:"#111820",border:"1px solid #7be8c833",borderRadius:20,padding:"4px 12px",color:"#7be8c8",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLinkTarget(linkTarget===acc.id?null:acc.id)}>
-                    {linkTarget===acc.id?"閉じる ↑":"客アカウントを紐付ける"}
-                  </button>
-                )}
-                {linkTarget===acc.id && (
-                  <div style={{marginTop:8,maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
-                    {customers.map(c=>(
-                      <button key={c.id}
-                        style={{background:acc.linkedCustomerId===c.id?"#1a2a20":"#141414",
-                          border:`1px solid ${acc.linkedCustomerId===c.id?"#7be8c855":"#222"}`,
-                          borderRadius:8,padding:"8px 12px",cursor:"pointer",fontFamily:"inherit",
-                          display:"flex",justifyContent:"space-between",alignItems:"center"}}
-                        onClick={()=>linkCustomer(acc.id, c.id)}>
-                        <span style={{color:"#e8e0d0",fontSize:"0.85rem"}}>{c.name}</span>
-                        <span style={{color:"#555",fontSize:"0.72rem"}}>No.{c.id}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {staffAccounts.length===0&&<div style={{textAlign:"center",color:"#333",padding:"24px",background:"#0f0f0f",borderRadius:12}}>スタッフアカウントがありません</div>}
-      </div>
+      {staffAccounts.map(acc=>(
+        <AccCard key={acc.id} acc={acc} isManager={false} onEdit={openEditStaff} onDel={delStaff}
+          ltId={linkTarget} setLtId={setLinkTarget} onLink={linkStaff} onUnlink={unlinkStaff}/>
+      ))}
+      {staffAccounts.length===0&&<div style={{textAlign:"center",color:"#333",padding:"20px",background:"#0f0f0f",borderRadius:12}}>スタッフアカウントがありません</div>}
 
-      {editing && (
+      {/* マネージャー編集モーダル */}
+      {editingMgr && (
         <div style={S.overlay}>
           <div style={{...S.modal,paddingBottom:28}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{color:"#d4a853",margin:0}}>{editing==="new"?"スタッフ追加":"スタッフ編集"}</h3>
-              <button className="close-btn" onClick={()=>setEditing(null)}>✕</button>
+              <h3 style={{color:"#d4a853",margin:0}}>{editingMgr==="new"?"マネージャー追加":"マネージャー編集"}</h3>
+              <button className="close-btn" onClick={()=>setEditingMgr(null)}>✕</button>
             </div>
-            <div style={{marginBottom:12}}>
-              <label style={S.label}>名前 *</label>
-              <input style={S.input} placeholder="例: 山田 花子" value={form.name||""} onChange={e=>upd("name",e.target.value)}/>
+            <div style={{marginBottom:12}}><label style={S.label}>名前 *</label><input style={S.input} placeholder="例: 田中 店長" value={form.name||""} onChange={e=>upd("name",e.target.value)}/></div>
+            <div style={{marginBottom:16}}><label style={S.label}>パスワード *</label><input style={S.input} type="text" value={form.password||""} onChange={e=>upd("password",e.target.value)}/></div>
+            <button className="btn-save" style={{opacity:(form.name?.trim()&&form.password?.trim())?1:0.4}} onClick={saveMgr}>{editingMgr==="new"?"追加する":"保存する"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* スタッフ編集モーダル */}
+      {editingStaff && (
+        <div style={S.overlay}>
+          <div style={{...S.modal,paddingBottom:28}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{color:"#d4a853",margin:0}}>{editingStaff==="new"?"スタッフ追加":"スタッフ編集"}</h3>
+              <button className="close-btn" onClick={()=>setEditingStaff(null)}>✕</button>
             </div>
-            <div style={{marginBottom:16}}>
-              <label style={S.label}>パスワード *</label>
-              <input style={S.input} type="text" placeholder="パスワードを設定" value={form.password||""} onChange={e=>upd("password",e.target.value)}/>
-            </div>
-            <button className="btn-save" style={{opacity:(form.name?.trim()&&form.password?.trim())?1:0.4}} onClick={save}>
-              {editing==="new"?"追加する":"保存する"}
-            </button>
+            <div style={{marginBottom:12}}><label style={S.label}>名前 *</label><input style={S.input} placeholder="例: 山田 花子" value={form.name||""} onChange={e=>upd("name",e.target.value)}/></div>
+            <div style={{marginBottom:16}}><label style={S.label}>パスワード *</label><input style={S.input} type="text" value={form.password||""} onChange={e=>upd("password",e.target.value)}/></div>
+            <button className="btn-save" style={{opacity:(form.name?.trim()&&form.password?.trim())?1:0.4}} onClick={saveStaff}>{editingStaff==="new"?"追加する":"保存する"}</button>
           </div>
         </div>
       )}
