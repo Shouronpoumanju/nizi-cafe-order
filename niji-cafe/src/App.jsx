@@ -1274,7 +1274,6 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
     const updated = {
       ...customer,
       balance:              customer.balance + 2200,
-      currentYearPurchases: (customer.currentYearPurchases ?? 0) + 1,
       history:   [{type:"charge",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(customer.history||[])].slice(0,60),
     };
     update(updated);
