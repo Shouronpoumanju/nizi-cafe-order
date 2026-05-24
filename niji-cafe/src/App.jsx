@@ -246,6 +246,9 @@ export default function App() {
   const [staffName,      setStaffName]      = useState("");
   const [loaded,         setLoaded]         = useState(false);
 
+  // 直近に保存した時刻を覚えておく（この直後の同期で上書きを防ぐ）
+  const lastSaveAt = useRef(0);
+
   // Firebase REST API + ポーリング（3秒ごとに同期）
   useEffect(() => {
     let mounted = true;
@@ -285,12 +288,16 @@ export default function App() {
     // リアルタイム同期（3秒ポーリング）
     const timer = setInterval(async () => {
       if (!mounted) return;
+      // 直近5秒以内に保存していたら、まだ書き込み中の可能性があるので同期をスキップ
+      if (Date.now() - lastSaveAt.current < 5000) return;
       try {
         const [cust, ord] = await Promise.all([
           dbGet("cafe_v4_customers"),
           dbGet("cafe_v4_orders"),
         ]);
         if (!mounted) return;
+        // 取得中に保存が走っていたら、その結果は古い可能性があるので捨てる
+        if (Date.now() - lastSaveAt.current < 5000) return;
         if (cust) setCustomers(cust.map(checkYearRollover));
         if (ord)  setOrders(ord);
       } catch {}
@@ -299,13 +306,13 @@ export default function App() {
     return () => { mounted = false; clearInterval(timer); };
   }, []);
 
-  const saveC           = (list) => { setCustomers(list);        dbSet("cafe_v4_customers",        list); };
-  const saveMenu        = (list) => { setMenu(list);             dbSet("cafe_v4_menu",             list); };
-  const saveOrders      = (list) => { setOrders(list);           dbSet("cafe_v4_orders",           list); };
-  const saveDesignatedDrink = (item)=> { setDesignatedDrink(item); dbSet("cafe_v4_designated_drink", item); };
-  const saveVipGiftDrink    = (item)=> { setVipGiftDrink(item);    dbSet("cafe_v4_vip_gift_drink",   item); };
-  const saveManagerAccounts = (list)=> { setManagerAccounts(list); dbSet("cafe_v4_manager_accounts", list); };
-  const saveStaffAccounts   = (list)=> { setStaffAccounts(list);   dbSet("cafe_v4_staff_accounts",   list); };
+  const saveC           = (list) => { lastSaveAt.current = Date.now(); setCustomers(list);        dbSet("cafe_v4_customers",        list); };
+  const saveMenu        = (list) => { lastSaveAt.current = Date.now(); setMenu(list);             dbSet("cafe_v4_menu",             list); };
+  const saveOrders      = (list) => { lastSaveAt.current = Date.now(); setOrders(list);           dbSet("cafe_v4_orders",           list); };
+  const saveDesignatedDrink = (item)=> { lastSaveAt.current = Date.now(); setDesignatedDrink(item); dbSet("cafe_v4_designated_drink", item); };
+  const saveVipGiftDrink    = (item)=> { lastSaveAt.current = Date.now(); setVipGiftDrink(item);    dbSet("cafe_v4_vip_gift_drink",   item); };
+  const saveManagerAccounts = (list)=> { lastSaveAt.current = Date.now(); setManagerAccounts(list); dbSet("cafe_v4_manager_accounts", list); };
+  const saveStaffAccounts   = (list)=> { lastSaveAt.current = Date.now(); setStaffAccounts(list);   dbSet("cafe_v4_staff_accounts",   list); };
 
   if (!loaded) return <div style={S.loading}>読み込み中...</div>;
 
