@@ -1248,6 +1248,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
     };
     update(updated);
     trigFlash("sub", total);
+    dbSet("cafe_v4_payment_today", { totalSales: total, at: new Date().toLocaleString("ja-JP") });
     setCart([]);
   };
 
@@ -2031,6 +2032,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       ? {...o, status:"completed", completedAt:now, completedBy: staffName || "スタッフ"}
       : o
     ));
+    dbSet("cafe_v4_payment_today", { totalSales: order.total, at: now });
   };
 
   const deleteOrder = (orderId) => {
