@@ -562,6 +562,7 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
               customers={customers}
             />
           )}
+          {cvTab==="order" && (
             <div>
               {myPendingOrder ? (
                 <div style={{background:"#0f1a0f",border:"1px solid #2a5a2a",borderRadius:14,padding:16}}>
@@ -696,6 +697,7 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
             </div>
           )}
         </div>
+      )}
       )}
     </div>
   );
