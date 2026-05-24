@@ -757,7 +757,6 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
           )}
         </div>
       )}
-      )}
     </div>
   );
 }
@@ -1330,7 +1329,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
       {/* TAB NAV（客未選択時のみ） */}
       {!customer && (
         <div style={{display:"flex",background:"#0d0d0d",borderBottom:"1px solid #1a1a1a",overflowX:"auto"}}>
-          {[["order","👥 会員"],["menu","🍽 メニュー"],["orders","📋 注文"],["history","🗂 履歴"],
+          {[["order","👥 会員"],["menu","🍽 メニュー"],["cash","💵 現金注文"],["orders","📋 注文"],["history","🗂 履歴"],
             ...(isManager?[["staffmgmt","🔐 スタッフ"]]:[])
           ].map(([k,l])=>(
             <button key={k} className={`pos-tab ${posTab===k?"pos-tab-active":""}`}
@@ -1400,6 +1399,11 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
       {/* ── メニュー管理 ── */}
       {!customer && posTab==="menu" && (
         <MenuManager menu={menu} saveMenu={saveMenu} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink}/>
+      )}
+      
+      {/* ── 現金注文 ── */}
+      {!customer && posTab==="cash" && (
+        <CashOrderPanel menu={menu} staffName={staffName} isManager={isManager}/>
       )}
 
       {/* ── 注文管理 ── */}
@@ -2033,7 +2037,6 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     const updatedCustomer = {
       ...customer,
       balance: (order.isSpecial || order.isVipGift) ? customer.balance : Math.max(0, customer.balance - order.total),
-      currentYearPurchases: (customer.currentYearPurchases ?? 0) + 1,
       history: [{
         type:"use", amount:order.total, subtotal:order.subtotal, discount:order.discount,
         items:[
@@ -2701,7 +2704,178 @@ function EditCustomerModal({ customer, onSave, onDelete, onClose }) {
     </div>
   );
 }
+// ── CASH ORDER PANEL（現金注文・代理注文） ──
+function CashOrderPanel({ menu, staffName, isManager }) {
+  const [cart,      setCart]      = useState([]);
+  const [custName,  setCustName]  = useState("");
+  const [done,      setDone]      = useState(false);
+  const categories = [...new Set(menu.map(m=>m.category))];
 
+  const addToCart = (item) => setCart(prev=>{
+    const ex=prev.find(c=>c.id===item.id);
+    return ex ? prev.map(c=>c.id===item.id?{...c,qty:c.qty+1}:c) : [...prev,{...item,qty:1}];
+  });
+  const removeOne = (id) => setCart(prev=>{
+    const ex=prev.find(c=>c.id===id);
+    if(!ex) return prev;
+    return ex.qty===1 ? prev.filter(c=>c.id!==id) : prev.map(c=>c.id===id?{...c,qty:c.qty-1}:c);
+  });
+
+  const subtotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
+
+  const confirmCash = () => {
+    if (cart.length===0) return;
+    const now = new Date().toLocaleString("ja-JP");
+    const record = {
+      id:        `cash_${Date.now()}`,
+      custName:  custName.trim() || "（名前なし）",
+      items:     cart.map(c=>`${c.name}×${c.qty}`).join(", "),
+      amount:    subtotal,
+      performer: staffName || "スタッフ",
+      date:      now,
+    };
+    dbGet("cafe_v4_cash_orders").then(list=>{
+      const arr = Array.isArray(list) ? list : [];
+      dbSet("cafe_v4_cash_orders", [record, ...arr].slice(0,500));
+    });
+    dbGet("cafe_v4_payment_today").then(flag=>{
+      const prev = (flag && flag.totalSales) ? flag.totalSales : 0;
+      const prevCash = (flag && flag.cashSales) ? flag.cashSales : 0;
+      dbSet("cafe_v4_payment_today", {
+        totalSales: prev + subtotal,
+        cashSales:  prevCash + subtotal,
+        at: now,
+      });
+    });
+    setCart([]); setCustName(""); setDone(true);
+    setTimeout(()=>setDone(false), 2500);
+  };
+
+  return (
+    <div style={{...S.page, paddingTop:14, paddingBottom:40}}>
+      <h2 style={{...S.title,margin:"0 0 6px"}}>💵 現金注文</h2>
+      <p style={{color:"#777",fontSize:"0.8rem",lineHeight:1.6,marginBottom:14}}>
+        会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。会員の残高・購入回数には影響しません。
+      </p>
+
+      {done && (
+        <div style={{background:"#0f1a0f",border:"1px solid #2a5a2a",borderRadius:10,padding:"12px 14px",marginBottom:14,color:"#5ecf7f",fontWeight:700,fontSize:"0.9rem"}}>
+          ✅ 現金注文を記録しました（担当: {staffName}）
+        </div>
+      )}
+
+      <div style={{marginBottom:14}}>
+        <label style={S.label}>お客様の名前（任意・空欄でもOK）</label>
+        <input style={S.input} placeholder="例: 常連の田中さん / 空欄でも可"
+          value={custName} onChange={e=>setCustName(e.target.value)}/>
+      </div>
+
+      {categories.map(cat=>(
+        <div key={cat} style={{marginBottom:14}}>
+          <div style={S.catLabel}>{cat}</div>
+          <div style={S.menuGrid}>
+            {menu.filter(m=>m.category===cat).map(item=>{
+              const inCart=cart.find(c=>c.id===item.id);
+              return (
+                <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
+                  <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                  <span style={{fontSize:"0.78rem",fontWeight:600,color:"#ddd",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                  <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                  {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {cart.length>0 && (
+        <div style={{background:"#0e0e0e",border:"1px solid #1e1e1e",borderRadius:14,padding:"12px 14px",marginTop:8}}>
+          {cart.map(item=>(
+            <div key={item.id} style={S.cartRow}>
+              <span style={{color:"#ccc",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
+                <span style={{color:"#e8e0d0",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
+                <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
+                <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+              </div>
+            </div>
+          ))}
+          <div style={{paddingTop:8,borderTop:"1px solid #222",marginTop:6}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{color:"#aaa",fontSize:"0.85rem"}}>現金で受け取る金額</span>
+              <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"1.3rem"}}>¥{subtotal.toLocaleString()}</span>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn-clear" onClick={()=>{setCart([]);setCustName("");}}>クリア</button>
+              <button className="btn-pay" onClick={confirmCash}>🧾 現金で確定</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <CashOrderHistory />
+    </div>
+  );
+}
+
+// ── CASH ORDER HISTORY（現金注文の履歴表示） ──
+function CashOrderHistory() {
+  const [list, setList] = useState([]);
+  useEffect(()=>{
+    let mounted = true;
+    const load = () => dbGet("cafe_v4_cash_orders").then(d=>{ if(mounted) setList(Array.isArray(d)?d:[]); });
+    load();
+    const t = setInterval(load, 4000);
+    return ()=>{ mounted=false; clearInterval(t); };
+  }, []);
+
+  if (list.length===0) return null;
+
+  const groups = {};
+  list.forEach(h=>{
+    const day = h.date ? h.date.split(" ")[0] : "不明";
+    if(!groups[day]) groups[day]=[];
+    groups[day].push(h);
+  });
+  const days = Object.keys(groups);
+
+  return (
+    <div style={{marginTop:24}}>
+      <div style={{color:"#555",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:10}}>🧾 現金注文の記録</div>
+      {days.map(day=>{
+        const entries = groups[day];
+        const dayTotal = entries.reduce((s,h)=>s+(h.amount||0),0);
+        return (
+          <div key={day} style={{marginBottom:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+              background:"#141414",border:"1px solid #222",borderRadius:10,padding:"8px 12px",marginBottom:6}}>
+              <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.85rem"}}>📅 {day}</span>
+              <span style={{color:"#d4a853",fontWeight:800,fontSize:"0.95rem"}}>現金計 ¥{dayTotal.toLocaleString()}</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {entries.map((h,i)=>(
+                <div key={i} style={{background:"#0f0f0f",border:"1px solid #1a1a1a",borderRadius:10,padding:"9px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.85rem"}}>{h.custName}</span>
+                    <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"0.92rem"}}>¥{(h.amount||0).toLocaleString()}</span>
+                  </div>
+                  <div style={{color:"#555",fontSize:"0.74rem",marginTop:3}}>{h.items}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                    <span style={{color:"#5ecf7f",background:"#0a1a10",border:"1px solid #5ecf7f33",borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>🧾 現金</span>
+                    <span style={{color:"#7ab8e8",background:"#111820",border:"1px solid #7ab8e833",borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>👤 {h.performer}</span>
+                    <span style={{color:"#444",fontSize:"0.7rem"}}>{h.date ? h.date.split(" ")[1] : ""}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 // ── ADD CUSTOMER ─────────────────────────
 function AddCustomerModal({ onSave, onClose, nextId }) {
   const year = new Date().getFullYear();
