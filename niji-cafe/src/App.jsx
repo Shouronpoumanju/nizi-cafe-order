@@ -20,19 +20,37 @@ const firebaseAuth = getAuth(firebaseApp);
 
 const DB_BASE = "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app";
 
-// 匿名ログインを開始（アプリ起動時に1回）
+// アプリ起動時に匿名ログインを開始
 signInAnonymously(firebaseAuth).catch(() => {});
 
-// 現在ログイン中ユーザーの「会員証（IDトークン）」を取得する
-// まだログインできていなければ、できるまで少し待つ
+// 「会員証（IDトークン）」を確実に取得する。
+// まだログインできていなければ、その場でログインを試みて、できるまで待つ。
 function getAuthToken() {
   return new Promise((resolve) => {
-    const user = firebaseAuth.currentUser;
-    if (user) { user.getIdToken().then(resolve).catch(() => resolve(null)); return; }
+    let done = false;
+    const finish = (token) => { if (!done) { done = true; resolve(token); } };
+
+    const tryUser = (user) => {
+      if (!user) return false;
+      user.getIdToken().then(finish).catch(() => finish(null));
+      return true;
+    };
+
+    // すでにログイン済みなら即取得
+    if (tryUser(firebaseAuth.currentUser)) return;
+
+    // ログイン状態の変化を待つ
     const unsub = onAuthStateChanged(firebaseAuth, (u) => {
-      if (u) { unsub(); u.getIdToken().then(resolve).catch(() => resolve(null)); }
+      if (u) { try { unsub(); } catch {} tryUser(u); }
     });
-    setTimeout(() => { try { unsub(); } catch {} resolve(null); }, 5000);
+
+    // まだなら、その場で匿名ログインを試みる
+    signInAnonymously(firebaseAuth)
+      .then((cred) => { try { unsub(); } catch {} tryUser(cred.user); })
+      .catch(() => {});
+
+    // 念のため、8秒で諦めて null（アプリが固まらないように）
+    setTimeout(() => { try { unsub(); } catch {} finish(null); }, 8000);
   });
 }
 
