@@ -1978,7 +1978,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       history: [{
         type:"use", amount:order.total, subtotal:order.subtotal, discount:order.discount,
         items:[
-          ...order.items.map(i=>`${i.name}×${i.qty}`),
+          ...(order.items||[]).map(i=>`${i.name}×${i.qty}`),
           ...(order.benefitItems||[]).map(i=>`${i.name}(特典)`),
           ...(order.makaiItem ? [`${order.makaiItem.name}(賄い)`] : []),
         ].join(", "),
@@ -2040,7 +2040,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                 </div>
               </div>
               <div style={{borderTop:"1px solid #1e2a10",paddingTop:8,marginBottom:10}}>
-                {order.items.map((item,i)=>(
+                {(order.items||[]).map((item,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.82rem",marginBottom:3}}>
                     <span style={{color:"#aaa"}}>{item.emoji} {item.name} × {item.qty}</span>
                     <span style={{color:"#888"}}>¥{(item.price*item.qty).toLocaleString()}</span>
