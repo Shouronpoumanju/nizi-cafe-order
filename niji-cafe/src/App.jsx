@@ -1,58 +1,51 @@
 import { useState, useEffect, useRef } from "react";
-import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 // ══════════════════════════════════════════
-//  🔥 Firebase 設定（SDK + 匿名認証）
+//  🔥 Firebase 設定（REST API + 匿名認証トークン）
 // ══════════════════════════════════════════
-const firebaseConfig = {
-  apiKey: "AIzaSyC58_CHa0RS0PtjnrotgrTt8Jc67tlDpWM",
-  authDomain: "nizicafe-card.firebaseapp.com",
-  databaseURL: "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "nizicafe-card",
-  storageBucket: "nizicafe-card.firebasestorage.app",
-  messagingSenderId: "1067987470463",
-  appId: "1:1067987470463:web:5bdece2b78159ef9b1974a",
-};
-
-const firebaseApp  = initializeApp(firebaseConfig);
-const firebaseAuth = getAuth(firebaseApp);
-
+const FIREBASE_API_KEY = "AIzaSyC58_CHa0RS0PtjnrotgrTt8Jc67tlDpWM";
 const DB_BASE = "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app";
 
-// アプリ起動時に匿名ログインを開始
-signInAnonymously(firebaseAuth).catch(() => {});
+// 匿名ログインの「会員証（IDトークン）」を取得・保持する。
+// Firebase の認証 REST API を直接呼ぶので、SDK のビルド差異に左右されず確実に動く。
+let _authToken = null;       // 現在のトークン
+let _authTokenExp = 0;       // 有効期限（ミリ秒）
+let _authPromise = null;     // 取得中の重複呼び出しを防ぐ
 
-// 「会員証（IDトークン）」を確実に取得する。
-// まだログインできていなければ、その場でログインを試みて、できるまで待つ。
-function getAuthToken() {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (token) => { if (!done) { done = true; resolve(token); } };
-
-    const tryUser = (user) => {
-      if (!user) return false;
-      user.getIdToken().then(finish).catch(() => finish(null));
-      return true;
-    };
-
-    // すでにログイン済みなら即取得
-    if (tryUser(firebaseAuth.currentUser)) return;
-
-    // ログイン状態の変化を待つ
-    const unsub = onAuthStateChanged(firebaseAuth, (u) => {
-      if (u) { try { unsub(); } catch {} tryUser(u); }
-    });
-
-    // まだなら、その場で匿名ログインを試みる
-    signInAnonymously(firebaseAuth)
-      .then((cred) => { try { unsub(); } catch {} tryUser(cred.user); })
-      .catch(() => {});
-
-    // 念のため、8秒で諦めて null（アプリが固まらないように）
-    setTimeout(() => { try { unsub(); } catch {} finish(null); }, 8000);
-  });
+async function fetchNewToken() {
+  // 匿名サインアップでトークンを新規取得
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ returnSecureToken: true }),
+    }
+  );
+  if (!res.ok) throw new Error("auth failed");
+  const data = await res.json();
+  _authToken = data.idToken;
+  // expiresIn は秒。安全のため少し早め（60秒手前）に期限切れ扱いにする
+  const ttl = (parseInt(data.expiresIn, 10) || 3600) * 1000;
+  _authTokenExp = Date.now() + ttl - 60000;
+  return _authToken;
 }
+
+async function getAuthToken() {
+  try {
+    // まだ有効なトークンがあれば使い回す
+    if (_authToken && Date.now() < _authTokenExp) return _authToken;
+    // 取得中なら、その結果を待つ（同時に何度も取りに行かない）
+    if (_authPromise) return await _authPromise;
+    _authPromise = fetchNewToken().finally(() => { _authPromise = null; });
+    return await _authPromise;
+  } catch {
+    return null;
+  }
+}
+
+// アプリ起動時に先にトークンを取りに行っておく（書き込み時に待たないように）
+getAuthToken();
 
 const dbSet = async (key, val) => {
   try {
