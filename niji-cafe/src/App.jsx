@@ -1,22 +1,63 @@
 import { useState, useEffect, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 // ══════════════════════════════════════════
-//  🔥 Firebase REST API 設定
+//  🔥 Firebase 設定（SDK + 匿名認証）
 // ══════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyC58_CHa0RS0PtjnrotgrTt8Jc67tlDpWM",
+  authDomain: "nizicafe-card.firebaseapp.com",
+  databaseURL: "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "nizicafe-card",
+  storageBucket: "nizicafe-card.firebasestorage.app",
+  messagingSenderId: "1067987470463",
+  appId: "1:1067987470463:web:5bdece2b78159ef9b1974a",
+};
+
+const firebaseApp  = initializeApp(firebaseConfig);
+const firebaseAuth = getAuth(firebaseApp);
+
 const DB_BASE = "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app";
 
-const dbSet = (key, val) =>
-  fetch(`${DB_BASE}/${key}.json`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(val),
-  }).catch(() => {});
+// 匿名ログインを開始（アプリ起動時に1回）
+signInAnonymously(firebaseAuth).catch(() => {});
 
-const dbGet = (key) =>
-  fetch(`${DB_BASE}/${key}.json`)
-    .then(r => r.json())
-    .catch(() => null);
+// 現在ログイン中ユーザーの「会員証（IDトークン）」を取得する
+// まだログインできていなければ、できるまで少し待つ
+function getAuthToken() {
+  return new Promise((resolve) => {
+    const user = firebaseAuth.currentUser;
+    if (user) { user.getIdToken().then(resolve).catch(() => resolve(null)); return; }
+    const unsub = onAuthStateChanged(firebaseAuth, (u) => {
+      if (u) { unsub(); u.getIdToken().then(resolve).catch(() => resolve(null)); }
+    });
+    setTimeout(() => { try { unsub(); } catch {} resolve(null); }, 5000);
+  });
+}
 
+const dbSet = async (key, val) => {
+  try {
+    const token = await getAuthToken();
+    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
+    await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(val),
+    });
+  } catch {}
+};
+
+const dbGet = async (key) => {
+  try {
+    const token = await getAuthToken();
+    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
+    const r = await fetch(url);
+    return await r.json();
+  } catch {
+    return null;
+  }
+};
 // ══════════════════════════════════════════
 //  設定
 // ══════════════════════════════════════════
