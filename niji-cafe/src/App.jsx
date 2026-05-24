@@ -1403,7 +1403,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
       
       {/* ── 現金注文 ── */}
       {!customer && posTab==="cash" && (
-        <CashOrderPanel menu={menu} staffName={staffName} isManager={isManager}/>
+        <CashOrderPanel menu={menu} staffName={staffName} orders={orders} saveOrders={saveOrders}/>
       )}
 
       {/* ── 注文管理 ── */}
@@ -1418,7 +1418,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
 
       {/* ── 会計履歴 ── */}
       {!customer && posTab==="history" && (
-        <SalesHistoryPanel customers={customers}/>
+        <SalesHistoryPanel customers={customers} orders={orders}/>
       )}
       {customer && (
         <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 44px)",overflow:"hidden"}}>
@@ -1908,7 +1908,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
   );
 }
 
-function SalesHistoryPanel({ customers }) {
+function SalesHistoryPanel({ customers, orders }) {
   // 全会員のhistoryからtype:"use"を集めて日付でグループ化
   const allEntries = [];
   customers.forEach(c => {
@@ -1917,6 +1917,22 @@ function SalesHistoryPanel({ customers }) {
         allEntries.push({ ...h, customerName: c.name });
       }
     });
+  });
+  // 完了した現金注文も会計履歴に含める
+  (orders || []).forEach(o => {
+    if (o.isCash && o.status === "completed") {
+      allEntries.push({
+        type: "use",
+        amount: o.total || 0,
+        subtotal: o.subtotal || 0,
+        discount: 0,
+        items: (o.items || []).map(i=>`${i.name}×${i.qty}`).join(", "),
+        performer: o.completedBy || "スタッフ",
+        date: o.completedAt || o.createdAt,
+        customerName: o.customerName || "現金のお客様",
+        isCash: true,
+      });
+    }
   });
 
   // 日付文字列のパース（"2026/5/6 12:34:56" → "2026/5/6"）
@@ -1983,7 +1999,10 @@ function SalesHistoryPanel({ customers }) {
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                        <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.88rem"}}>{h.customerName}</span>
+                        <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.88rem"}}>
+                          {h.isCash && <span style={{color:"#5ecf7f",marginRight:4}}>💵</span>}
+                          {h.customerName}
+                        </span>
                         <div style={{textAlign:"right",flexShrink:0}}>
                           <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"0.95rem"}}>¥{(h.amount||0).toLocaleString()}</span>
                           {h.discount>0 && (
@@ -1998,6 +2017,11 @@ function SalesHistoryPanel({ customers }) {
                         </div>
                       )}
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                        {h.isCash ? (
+                          <span style={{color:"#5ecf7f",background:"#0a1a10",border:"1px solid #5ecf7f33",borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>
+                            🧾 現金 · 👤 {h.performer || "スタッフ"}
+                          </span>
+                        ) : (
                         <span style={{
                           color: h.performer==="マネージャー" ? "#d4a853" : "#7ab8e8",
                           background: h.performer==="マネージャー" ? "#1a1400" : "#111820",
@@ -2006,6 +2030,7 @@ function SalesHistoryPanel({ customers }) {
                         }}>
                           {h.performer==="マネージャー" ? "👑" : "👤"} {h.performer || "スタッフ"}
                         </span>
+                        )}
                         {h.subtotal && h.subtotal !== h.amount && (
                           <span style={{color:"#3a3a3a",fontSize:"0.7rem"}}>小計 ¥{h.subtotal.toLocaleString()}</span>
                         )}
@@ -2028,12 +2053,28 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
   const completed = orders.filter(o=>o.status==="completed").sort((a,b)=>a.completedAt<b.completedAt?1:-1).slice(0,10);
 
   const completeOrder = (order) => {
+    const now = new Date().toLocaleString("ja-JP");
+    if (order.isCash) {
+      saveOrders(orders.map(o=>o.orderId===order.orderId
+        ? {...o, status:"completed", completedAt:now, completedBy: staffName || "スタッフ"}
+        : o
+      ));
+      dbGet("cafe_v4_payment_today").then(flag=>{
+        const prev = (flag && flag.totalSales) ? flag.totalSales : 0;
+        const prevCash = (flag && flag.cashSales) ? flag.cashSales : 0;
+        dbSet("cafe_v4_payment_today", {
+          totalSales: prev + (order.total||0),
+          cashSales:  prevCash + (order.total||0),
+          at: now,
+        });
+      });
+      return;
+    }
     const customer = customers.find(c=>c.id===order.customerId);
     if (!customer) { alert("会員が見つかりません"); return; }
     if (order.total > customer.balance) {
       if (!window.confirm(`残高不足です（残高: ¥${customer.balance.toLocaleString()} / 合計: ¥${order.total.toLocaleString()}）\n続行しますか？`)) return;
     }
-    const now = new Date().toLocaleString("ja-JP");
     const updatedCustomer = {
       ...customer,
       balance: (order.isSpecial || order.isVipGift) ? customer.balance : Math.max(0, customer.balance - order.total),
@@ -2090,9 +2131,11 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                     <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
                     {order.isVipGift
                       ? <span style={{color:"#ffd700",fontSize:"0.72rem",border:"1px solid #ffd70055",borderRadius:20,padding:"1px 8px",fontWeight:700}}>⭐ VIPギフト</span>
-                      : order.isSpecial
-                        ? <span style={{color:"#e040fb",fontSize:"0.72rem",border:"1px solid #e040fb55",borderRadius:20,padding:"1px 8px",fontWeight:700}}>💜 スペシャル</span>
-                        : <span style={{color:order.rankColor,fontSize:"0.72rem",border:`1px solid ${order.rankColor}55`,borderRadius:20,padding:"1px 7px"}}>{order.rankName}</span>
+                      : order.isCash
+                        ? <span style={{color:"#5ecf7f",fontSize:"0.72rem",border:"1px solid #5ecf7f55",borderRadius:20,padding:"1px 8px",fontWeight:700}}>💵 現金</span>
+                        : order.isSpecial
+                          ? <span style={{color:"#e040fb",fontSize:"0.72rem",border:"1px solid #e040fb55",borderRadius:20,padding:"1px 8px",fontWeight:700}}>💜 スペシャル</span>
+                          : <span style={{color:order.rankColor,fontSize:"0.72rem",border:`1px solid ${order.rankColor}55`,borderRadius:20,padding:"1px 7px"}}>{order.rankName}</span>
                     }
                   </div>
                   <div style={{color:"#555",fontSize:"0.72rem"}}>{order.createdAt}</div>
@@ -2705,7 +2748,7 @@ function EditCustomerModal({ customer, onSave, onDelete, onClose }) {
   );
 }
 // ── CASH ORDER PANEL（現金注文・代理注文） ──
-function CashOrderPanel({ menu, staffName, isManager }) {
+function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
   const [cart,      setCart]      = useState([]);
   const [custName,  setCustName]  = useState("");
   const [done,      setDone]      = useState(false);
@@ -2725,28 +2768,20 @@ function CashOrderPanel({ menu, staffName, isManager }) {
 
   const confirmCash = () => {
     if (cart.length===0) return;
-    const now = new Date().toLocaleString("ja-JP");
-    const record = {
-      id:        `cash_${Date.now()}`,
-      custName:  custName.trim() || "（名前なし）",
-      items:     cart.map(c=>`${c.name}×${c.qty}`).join(", "),
-      amount:    subtotal,
-      performer: staffName || "スタッフ",
-      date:      now,
+    const order = {
+      orderId:      `ord_${Date.now()}`,
+      customerId:   `cash_${Date.now()}`,
+      customerName: custName.trim() || "現金のお客様",
+      rankName: "現金", rankColor: "#5ecf7f", rankGem: "💵",
+      items: cart, benefitItems: [],
+      subtotal, discount: 0, staffDiscount: 0, total: subtotal,
+      usedBenefit: false, usedToppingCount: 0,
+      isCash: true,
+      staffLinked: null,
+      status: "pending",
+      createdAt: new Date().toLocaleString("ja-JP"),
     };
-    dbGet("cafe_v4_cash_orders").then(list=>{
-      const arr = Array.isArray(list) ? list : [];
-      dbSet("cafe_v4_cash_orders", [record, ...arr].slice(0,500));
-    });
-    dbGet("cafe_v4_payment_today").then(flag=>{
-      const prev = (flag && flag.totalSales) ? flag.totalSales : 0;
-      const prevCash = (flag && flag.cashSales) ? flag.cashSales : 0;
-      dbSet("cafe_v4_payment_today", {
-        totalSales: prev + subtotal,
-        cashSales:  prevCash + subtotal,
-        at: now,
-      });
-    });
+    saveOrders([order, ...orders]);
     setCart([]); setCustName(""); setDone(true);
     setTimeout(()=>setDone(false), 2500);
   };
@@ -2755,12 +2790,12 @@ function CashOrderPanel({ menu, staffName, isManager }) {
     <div style={{...S.page, paddingTop:14, paddingBottom:40}}>
       <h2 style={{...S.title,margin:"0 0 6px"}}>💵 現金注文</h2>
       <p style={{color:"#777",fontSize:"0.8rem",lineHeight:1.6,marginBottom:14}}>
-        会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。会員の残高・購入回数には影響しません。
+        会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。確定すると「📋 注文」に届き、完了すると会計履歴にも残ります。会員の残高・購入回数には影響しません。
       </p>
 
       {done && (
         <div style={{background:"#0f1a0f",border:"1px solid #2a5a2a",borderRadius:10,padding:"12px 14px",marginBottom:14,color:"#5ecf7f",fontWeight:700,fontSize:"0.9rem"}}>
-          ✅ 現金注文を記録しました（担当: {staffName}）
+          ✅ 現金注文を「📋 注文」に送りました（担当: {staffName}）
         </div>
       )}
 
@@ -2809,13 +2844,11 @@ function CashOrderPanel({ menu, staffName, isManager }) {
             </div>
             <div style={{display:"flex",gap:8}}>
               <button className="btn-clear" onClick={()=>{setCart([]);setCustName("");}}>クリア</button>
-              <button className="btn-pay" onClick={confirmCash}>🧾 現金で確定</button>
+              <button className="btn-pay" onClick={confirmCash}>🧾 注文に送る</button>
             </div>
           </div>
         </div>
       )}
-
-      <CashOrderHistory />
     </div>
   );
 }
