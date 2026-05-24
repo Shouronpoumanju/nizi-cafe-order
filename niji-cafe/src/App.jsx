@@ -127,12 +127,6 @@ function getEffectiveRank(customer) {
 }
 function nextRank(p)   { for(const x of RANKS) if(p<x.min) return x; return null; }
 function currentMonth(){ return new Date().toISOString().slice(0,7); } // "2026-05"
-function currentWeek() {
-  const d = new Date();
-  const jan1 = new Date(d.getFullYear(), 0, 1);
-  const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-  return `${d.getFullYear()}-W${week}`;
-}
 
 // トッピング最大選択数（ランク別）
 function getToppingMax(rank) {
@@ -217,11 +211,6 @@ function checkYearRollover(c) {
   }
   return { ...c, yearlyStats: c.yearlyStats||[] };
 }
-
-const TOPPINGS = [
-  { id:"top1", name:"チョコソース",     emoji:"🍫" },
-  { id:"top2", name:"キャラメルソース", emoji:"🍯" },
-];
 
 const DEFAULT_MENU = [
   { id:"m1",  category:"コーヒー",   name:"エスプレッソ",     price:400, emoji:"☕" },
@@ -1280,6 +1269,19 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
     trigFlash("add", 2200);
   });
 
+  const undoCharge = () => requireManager(()=>{
+    const newBalance = Math.max(0, customer.balance - 2200);
+    const newPurchases = Math.max(0, (customer.currentYearPurchases ?? 0) - 1);
+    const updated = {
+      ...customer,
+      balance:              newBalance,
+      currentYearPurchases: newPurchases,
+      history:   [{type:"charge_undo",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(customer.history||[])].slice(0,60),
+    };
+    update(updated);
+    trigFlash("sub", 2200);
+  });
+
   const useBenefit = () => {
     if (!customer || isAlways || used) return;
     const updated = {
@@ -1459,6 +1461,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
             </div>
             <div style={{display:"flex",gap:6,marginTop:8}}>
               {isManager && <button className="pill-btn-gold" onClick={doCharge}>🎫 +¥2,200</button>}
+              {isManager && <button className="pill-btn-dim" onClick={()=>{ if(window.confirm("直前のチャージ1回分を取り消します。\n残高 -¥2,200・購入回数 -1 でよろしいですか？")) undoCharge(); }}>↩️ チャージ取消</button>}
               {isManager && <button className="pill-btn-dim" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
             </div>
           </div>
@@ -2484,6 +2487,7 @@ function YearHistoryModal({ customer, rank, onClose }) {
 const HIST_CONFIG = {
   use:            { icon:"💳", label:"決済",          color:"#e06655" },
   charge:         { icon:"🎫", label:"チャージ",       color:"#5ecf7f" },
+  charge_undo:    { icon:"↩️", label:"チャージ取消",   color:"#e06655" },
   benefit:        { icon:"🎁", label:"特典使用",       color:"#d4a853" },
   edit_balance:   { icon:"✏️", label:"残高編集",       color:"#7ab8e8" },
   edit_purchases: { icon:"✏️", label:"購入回数変更",   color:"#7ab8e8" },
@@ -2509,6 +2513,7 @@ function HistoryModal({ customer, rank, onClose }) {
       return parts.join(" ");
     }
     if (h.type === "charge")         return `+¥2,200 · 購入回数+1`;
+    if (h.type === "charge_undo")    return `-¥2,200 · 購入回数-1（取消）`;
     if (h.type === "benefit")        return h.desc || "特典使用";
     if (h.type === "edit_balance")   return `¥${h.before?.toLocaleString()} → ¥${h.after?.toLocaleString()}`;
     if (h.type === "edit_purchases") return `${h.label ? h.label+": " : ""}${h.before}回 → ${h.after}回`;
@@ -2854,62 +2859,6 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
   );
 }
 
-// ── CASH ORDER HISTORY（現金注文の履歴表示） ──
-function CashOrderHistory() {
-  const [list, setList] = useState([]);
-  useEffect(()=>{
-    let mounted = true;
-    const load = () => dbGet("cafe_v4_cash_orders").then(d=>{ if(mounted) setList(Array.isArray(d)?d:[]); });
-    load();
-    const t = setInterval(load, 4000);
-    return ()=>{ mounted=false; clearInterval(t); };
-  }, []);
-
-  if (list.length===0) return null;
-
-  const groups = {};
-  list.forEach(h=>{
-    const day = h.date ? h.date.split(" ")[0] : "不明";
-    if(!groups[day]) groups[day]=[];
-    groups[day].push(h);
-  });
-  const days = Object.keys(groups);
-
-  return (
-    <div style={{marginTop:24}}>
-      <div style={{color:"#555",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:10}}>🧾 現金注文の記録</div>
-      {days.map(day=>{
-        const entries = groups[day];
-        const dayTotal = entries.reduce((s,h)=>s+(h.amount||0),0);
-        return (
-          <div key={day} style={{marginBottom:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-              background:"#141414",border:"1px solid #222",borderRadius:10,padding:"8px 12px",marginBottom:6}}>
-              <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.85rem"}}>📅 {day}</span>
-              <span style={{color:"#d4a853",fontWeight:800,fontSize:"0.95rem"}}>現金計 ¥{dayTotal.toLocaleString()}</span>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {entries.map((h,i)=>(
-                <div key={i} style={{background:"#0f0f0f",border:"1px solid #1a1a1a",borderRadius:10,padding:"9px 12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                    <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.85rem"}}>{h.custName}</span>
-                    <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"0.92rem"}}>¥{(h.amount||0).toLocaleString()}</span>
-                  </div>
-                  <div style={{color:"#555",fontSize:"0.74rem",marginTop:3}}>{h.items}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                    <span style={{color:"#5ecf7f",background:"#0a1a10",border:"1px solid #5ecf7f33",borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>🧾 現金</span>
-                    <span style={{color:"#7ab8e8",background:"#111820",border:"1px solid #7ab8e833",borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>👤 {h.performer}</span>
-                    <span style={{color:"#444",fontSize:"0.7rem"}}>{h.date ? h.date.split(" ")[1] : ""}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 // ── ADD CUSTOMER ─────────────────────────
 function AddCustomerModal({ onSave, onClose, nextId }) {
   const year = new Date().getFullYear();
