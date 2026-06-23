@@ -70,6 +70,21 @@ const dbGet = async (key) => {
   }
 };
 // ══════════════════════════════════════════
+// 売上集計（その日の合計を加算。日付が変わったらリセット）
+const recordSale = async (amount, isCash) => {
+  try {
+    const today = new Date().toLocaleDateString("sv-SE");
+    const cur = await dbGet("cafe_v4_payment_today");
+    const base = (cur && cur.date === today) ? cur : { date: today, totalSales: 0, cashSales: 0 };
+    await dbSet("cafe_v4_payment_today", {
+      date: today,
+      totalSales: (base.totalSales || 0) + (amount || 0),
+      cashSales: (base.cashSales || 0) + (isCash ? (amount || 0) : 0),
+      at: new Date().toLocaleString("ja-JP"),
+    });
+  } catch {}
+};
+
 //  設定
 // ══════════════════════════════════════════
 const DEFAULT_MANAGER_ACCOUNTS = [
@@ -1254,7 +1269,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
     };
     update(updated);
     trigFlash("sub", total);
-    dbSet("cafe_v4_payment_today", { totalSales: total, at: new Date().toLocaleString("ja-JP") });
+    recordSale(total, false);
     setCart([]);
   };
 
@@ -2063,15 +2078,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
         ? {...o, status:"completed", completedAt:now, completedBy: staffName || "スタッフ"}
         : o
       ));
-      dbGet("cafe_v4_payment_today").then(flag=>{
-        const prev = (flag && flag.totalSales) ? flag.totalSales : 0;
-        const prevCash = (flag && flag.cashSales) ? flag.cashSales : 0;
-        dbSet("cafe_v4_payment_today", {
-          totalSales: prev + (order.total||0),
-          cashSales:  prevCash + (order.total||0),
-          at: now,
-        });
-      });
+      recordSale(order.total, true);
       return;
     }
     const customer = customers.find(c=>c.id===order.customerId);
@@ -2097,7 +2104,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       ? {...o, status:"completed", completedAt:now, completedBy: staffName || "スタッフ"}
       : o
     ));
-    dbSet("cafe_v4_payment_today", { totalSales: order.total, at: now });
+    recordSale(order.total, false);
   };
 
   const deleteOrder = (orderId) => {
