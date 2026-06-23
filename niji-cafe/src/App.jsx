@@ -2156,6 +2156,12 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                     <span style={{color:"#888"}}>¥{(item.price*item.qty).toLocaleString()}</span>
                   </div>
                 ))}
+                {(order.benefitItems||[]).map((item,i)=>(
+                  <div key={"b"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.82rem",marginBottom:3}}>
+                    <span style={{color:order.rankColor||"#e0b84a"}}>🎁 {item.emoji} {item.name} × {item.qty}（特典）</span>
+                    <span style={{color:"#5ecf7f"}}>無料</span>
+                  </div>
+                ))}
               </div>
               <div style={{display:"flex",gap:8}}>
                 <button className="btn-danger" style={{padding:"8px",fontSize:"0.8rem"}}
