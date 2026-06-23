@@ -48,15 +48,21 @@ async function getAuthToken() {
 getAuthToken();
 
 const dbSet = async (key, val) => {
-  try {
-    const token = await getAuthToken();
-    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
-    await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(val),
-    });
-  } catch {}
+  // 保存は最大3回まで自動リトライ。最後まで失敗したら画面に通知する。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const token = await getAuthToken();
+      const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
+      const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return true;
+    } catch (e) {
+      if (attempt < 2) { await new Promise(r => setTimeout(r, 600)); continue; }
+      console.error("保存に失敗しました", key, e);
+      try { alert("保存に失敗しました。通信状況を確認して、もう一度お試しください。"); } catch {}
+      return false;
+    }
+  }
 };
 
 const dbGet = async (key) => {
