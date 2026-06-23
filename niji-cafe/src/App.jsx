@@ -329,7 +329,38 @@ export default function App() {
 
   const saveC           = (list) => { lastSaveAt.current = Date.now(); setCustomers(list);        dbSet("cafe_v4_customers",        list); };
   const saveMenu        = (list) => { lastSaveAt.current = Date.now(); setMenu(list);             dbSet("cafe_v4_menu",             list); };
-  const saveOrders      = (list) => { lastSaveAt.current = Date.now(); setOrders(list);           dbSet("cafe_v4_orders",           list); };
+  const saveOrders = async (list) => {
+    lastSaveAt.current = Date.now();
+    setOrders(list); // 画面はすぐ更新（従来どおり）
+    try {
+      const prev = orders;
+      const latest = await dbGet("cafe_v4_orders");
+      if (!Array.isArray(latest)) { dbSet("cafe_v4_orders", list); return; }
+      const byId = {}; list.forEach(o => { if (o && o.orderId) byId[o.orderId] = o; });
+      const prevById = {}; prev.forEach(o => { if (o && o.orderId) prevById[o.orderId] = o; });
+      const listIds = new Set(list.map(o => o && o.orderId));
+      const removed = new Set(prev.filter(o => o && o.orderId && !listIds.has(o.orderId)).map(o => o.orderId));
+      const result = []; const used = new Set();
+      latest.forEach(o => {
+        if (!o || !o.orderId) return;
+        const id = o.orderId;
+        if (removed.has(id)) return; // 自分が消した注文は除外
+        if (byId[id]) {
+          const callerV = byId[id], prevV = prevById[id];
+          const changed = !prevV || JSON.stringify(callerV) !== JSON.stringify(prevV);
+          result.push(changed ? callerV : o); // 自分が変えた分だけ反映、未変更は最新を維持
+          used.add(id);
+        } else {
+          result.push(o); // 他端末の注文は消さずに残す
+        }
+      });
+      list.forEach(o => { if (o && o.orderId && !used.has(o.orderId)) { result.unshift(o); used.add(o.orderId); } });
+      setOrders(result);
+      dbSet("cafe_v4_orders", result);
+    } catch (e) {
+      dbSet("cafe_v4_orders", list); // 失敗時は従来動作にフォールバック
+    }
+  };
   const saveDesignatedDrink = (item)=> { lastSaveAt.current = Date.now(); setDesignatedDrink(item); dbSet("cafe_v4_designated_drink", item); };
   const saveVipGiftDrink    = (item)=> { lastSaveAt.current = Date.now(); setVipGiftDrink(item);    dbSet("cafe_v4_vip_gift_drink",   item); };
   const saveManagerAccounts = (list)=> { lastSaveAt.current = Date.now(); setManagerAccounts(list); dbSet("cafe_v4_manager_accounts", list); };
