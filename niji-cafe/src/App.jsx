@@ -327,7 +327,37 @@ export default function App() {
     return () => { mounted = false; clearInterval(timer); };
   }, []);
 
-  const saveC           = (list) => { lastSaveAt.current = Date.now(); setCustomers(list);        dbSet("cafe_v4_customers",        list); };
+  const saveC = async (list) => {
+    lastSaveAt.current = Date.now();
+    setCustomers(list); // 画面はすぐ更新（従来どおり）
+    try {
+      const prev = customers;
+      const latest = await dbGet("cafe_v4_customers");
+      if (!Array.isArray(latest)) { dbSet("cafe_v4_customers", list); return; }
+      const byId = {}; list.forEach(c => { if (c && c.id) byId[c.id] = c; });
+      const prevById = {}; prev.forEach(c => { if (c && c.id) prevById[c.id] = c; });
+      const listIds = new Set(list.map(c => c && c.id));
+      const removed = new Set(prev.filter(c => c && c.id && !listIds.has(c.id)).map(c => c.id));
+      const result = []; const used = new Set();
+      latest.forEach(c => {
+        const id = c.id;
+        if (removed.has(id)) return; // 自分が消した会員は除外
+        if (byId[id]) {
+          const callerV = byId[id], prevV = prevById[id];
+          const changed = !prevV || JSON.stringify(callerV) !== JSON.stringify(prevV);
+          result.push(changed ? callerV : c); // 自分が変えた分だけ反映、未変更は最新を維持
+          used.add(id);
+        } else {
+          result.push(c); // 他端末の会員は消さずに残す
+        }
+      });
+      list.forEach(c => { if (c && c.id && !used.has(c.id)) { result.push(c); used.add(c.id); } });
+      setCustomers(result);
+      dbSet("cafe_v4_customers", result);
+    } catch (e) {
+      dbSet("cafe_v4_customers", list); // 失敗時は従来動作にフォールバック
+    }
+  };
   const saveMenu        = (list) => { lastSaveAt.current = Date.now(); setMenu(list);             dbSet("cafe_v4_menu",             list); };
   const saveOrders = async (list) => {
     lastSaveAt.current = Date.now();
