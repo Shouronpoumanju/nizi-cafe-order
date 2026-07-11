@@ -289,8 +289,8 @@ export default function App() {
         const raw = cust || SAMPLE;
         const migrated = raw.map(checkYearRollover);
         setCustomers(migrated);
-        if (!cust) dbSet("cafe_v4_customers", migrated);
-        else {
+        // 読み込み失敗時（cust が無い）は DB に一切書き込まない（見本データでの上書き事故を防止）
+        if (cust) {
           const changed = migrated.some((c,i)=>raw[i]&&c.dataYear!==raw[i].dataYear);
           if (changed) dbSet("cafe_v4_customers", migrated);
         }
