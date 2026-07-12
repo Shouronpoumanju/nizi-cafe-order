@@ -102,6 +102,31 @@ const DEFAULT_STAFF_ACCOUNTS = [
   { id:"st2", name:"田中 一郎", password:"2345" },
 ];
 
+// 店長/マネージャーが会員の暗証番号(PIN)だけを変更する小モーダル
+function PinChangeModal({ customer, onSave, onClose }) {
+  const [pin, setPin] = useState("");
+  const [err, setErr] = useState("");
+  const submit = () => {
+    const v = (pin||"").trim();
+    if (!/^\d{4}$/.test(v)) { setErr("暗証番号は4桁の数字で入力してください"); return; }
+    onSave(v);
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
+      <div style={{background:"#141414",border:"1px solid #d4a85355",borderRadius:16,padding:"20px",width:"100%",maxWidth:340}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,color:"#d4a853",fontSize:"1rem",marginBottom:4}}>🔑 暗証番号の変更</div>
+        <div style={{color:"#aaa",fontSize:"0.8rem",marginBottom:14}}>{customer.name} さんの新しい暗証番号（4桁）を入力してください。</div>
+        <input value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} inputMode="numeric" maxLength={4} placeholder="0000" autoFocus style={{width:"100%",boxSizing:"border-box",background:"#0d0d0d",border:"1px solid #333",borderRadius:10,color:"#fff",fontSize:"1.4rem",letterSpacing:"0.3em",textAlign:"center",padding:"12px"}}/>
+        {err && <div style={{color:"#ff6b6b",fontSize:"0.78rem",marginTop:8}}>{err}</div>}
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          <button onClick={onClose} style={{flex:1,background:"#222",border:"none",borderRadius:10,color:"#ccc",padding:"12px",fontWeight:600,cursor:"pointer"}}>キャンセル</button>
+          <button onClick={submit} style={{flex:1,background:"linear-gradient(135deg,#d4a853,#b8860b)",border:"none",borderRadius:10,color:"#1a1a1a",padding:"12px",fontWeight:700,cursor:"pointer"}}>変更する</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // benefit.type:
 //   "monthly"   → 毎月1回リセット、スタッフが「使用」ボタンで消費
 //   "always_discount" → 毎回自動割引（amount: 固定額 or "half"）
@@ -265,6 +290,7 @@ export default function App() {
   const [vipGiftDrink,   setVipGiftDrink]   = useState(null);
   const [staffRole,      setStaffRole]      = useState(null);
   const [staffName,      setStaffName]      = useState("");
+  const [staffIsChief,   setStaffIsChief]   = useState(false);
   const [loaded,         setLoaded]         = useState(false);
 
   // 直近に保存した時刻を覚えておく（この直後の同期で上書きを防ぐ）
@@ -403,8 +429,8 @@ export default function App() {
       <style>{CSS}</style>
       {screen==="home"     && <Home setScreen={setScreen} setStaffRole={setStaffRole}/>}
       {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} managerAccounts={managerAccounts} vipGiftDrink={vipGiftDrink} setScreen={setScreen}/>}
-      {screen==="login"    && <StaffLogin setScreen={setScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
-      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={setScreen}/>}
+      {screen==="login"    && <StaffLogin setScreen={setScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} setStaffIsChief={setStaffIsChief} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
+      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffIsChief={staffIsChief} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={setScreen}/>}
     </div>
   );
 }
@@ -1212,7 +1238,7 @@ function RankingBoard({ customers, myId }) {
 // ══════════════════════════════════════════
 //  STAFF LOGIN
 // ══════════════════════════════════════════
-function StaffLogin({ setScreen, setStaffRole, setStaffName, staffAccounts, managerAccounts }) {
+function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, staffAccounts, managerAccounts }) {
   const [selected, setSelected] = useState(null);
   const [pw, setPw]   = useState("");
   const [err, setErr] = useState("");
@@ -1222,6 +1248,7 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, staffAccounts, mana
     const isMgr = selected._role === "manager";
     if (pw === selected.password) {
       setStaffRole(isMgr ? "manager" : "staff");
+      setStaffIsChief(!isMgr && !!selected.isChief);
       setStaffName(selected.name);
       setScreen("pos");
     } else setErr("パスワードが違います");
@@ -1275,7 +1302,7 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, staffAccounts, mana
 // ══════════════════════════════════════════
 //  POS
 // ══════════════════════════════════════════
-function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen }) {
+function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen }) {
   const [customer,  setCustomer]  = useState(null);
   const [cart,      setCart]      = useState([]);
   const [query,     setQuery]     = useState("");
@@ -1290,6 +1317,8 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
   const [pwTarget,  setPwTarget]  = useState(null);
 
   const isManager = staffRole === "manager";
+  const canEditPin = isManager || staffIsChief;
+  const [pinEdit, setPinEdit] = useState(false);
   const rank      = customer ? getEffectiveRank(customer) : null;
   const used      = customer ? isBenefitUsed(customer) : false;
   const isAlways  = rank?.benefit.type === "always_discount";
@@ -1545,6 +1574,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
               {isManager && <button className="pill-btn-gold" onClick={doCharge}>🎫 +¥2,200</button>}
               {isManager && <button className="pill-btn-dim" onClick={()=>{ if(window.confirm("直前のチャージ1回分を取り消します。\n残高 -¥2,200・購入回数 -1 でよろしいですか？")) undoCharge(); }}>↩️ チャージ取消</button>}
               {isManager && <button className="pill-btn-dim" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
+              {!isManager && staffIsChief && <button className="pill-btn-dim" onClick={()=>setPinEdit(true)}>🔑 暗証番号を変更</button>}
             </div>
           </div>
 
@@ -1637,6 +1667,11 @@ function POS({ customers, menu, orders, staffRole, staffName, staffAccounts, sav
           onSave={updated=>{update(updated);setPwPrompt(null);}}
           onDelete={()=>{if(window.confirm(`${customer.name} を削除しますか？`)){saveC(customers.filter(c=>c.id!==customer.id));setCustomer(null);setPwPrompt(null);}}}
           onClose={()=>setPwPrompt(null)}/>
+      )}
+      {pinEdit && canEditPin && customer && (
+        <PinChangeModal customer={customer}
+          onSave={newPin=>{ update({...customer, pin:newPin}); setPinEdit(false); }}
+          onClose={()=>setPinEdit(false)}/>
       )}
       {pwPrompt==="addCustomer" && (
         <AddCustomerModal
@@ -1837,6 +1872,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
     setEditingStaff(null);
   };
   const delStaff = (id) => { if(window.confirm("削除しますか？")) saveStaffAccounts(staffAccounts.filter(a=>a.id!==id)); };
+  const toggleChief = (id) => saveStaffAccounts(staffAccounts.map(a=>({...a, isChief: a.id===id ? !a.isChief : false})));
 
   const openNewMgr  = () => { setForm({id:`mg_${Date.now()}`,name:"",password:"",linkedCustomerId:null}); setEditingMgr("new"); };
   const openEditMgr = (acc) => { setForm({...acc}); setEditingMgr(acc.id); };
@@ -1959,6 +1995,20 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
         <AccCard key={acc.id} acc={acc} isManager={false} onEdit={openEditStaff} onDel={delStaff}
           ltId={linkTarget} setLtId={setLinkTarget} onLink={linkStaff} onUnlink={unlinkStaff}/>
       ))}
+      {/* 店長の指名（店長はお客さんのPINを変更できる） */}
+      <div style={{background:"#0e0e0e",border:"1px solid #d4a85333",borderRadius:12,padding:"12px 14px",marginTop:4,marginBottom:8}}>
+        <div style={{fontWeight:700,color:"#d4a853",fontSize:"0.9rem",marginBottom:4}}>⭐ 店長の指名</div>
+        <div style={{color:"#888",fontSize:"0.72rem",marginBottom:10}}>店長に選ばれたスタッフは、お客さんの暗証番号（PIN）を変更できます。店長は1人までです。</div>
+        {staffAccounts.length===0
+          ? <div style={{color:"#666",fontSize:"0.8rem"}}>スタッフがいません</div>
+          : staffAccounts.map(a=>(
+            <button key={a.id} onClick={()=>toggleChief(a.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",boxSizing:"border-box",background:a.isChief?"#2a2000":"#161616",border:`1px solid ${a.isChief?"#d4a853":"#262626"}`,borderRadius:10,padding:"10px 12px",marginBottom:6,cursor:"pointer"}}>
+              <span style={{color:a.isChief?"#d4a853":"#e8e0d0",fontWeight:a.isChief?700:500,fontSize:"0.9rem"}}>{a.isChief?"⭐ ":""}{a.name}</span>
+              <span style={{color:a.isChief?"#d4a853":"#666",fontSize:"0.78rem"}}>{a.isChief?"店長":"店長にする"}</span>
+            </button>
+          ))
+        }
+      </div>
       {staffAccounts.length===0&&<div style={{textAlign:"center",color:"#333",padding:"20px",background:"#0f0f0f",borderRadius:12}}>スタッフアカウントがありません</div>}
 
       {/* マネージャー編集モーダル */}
