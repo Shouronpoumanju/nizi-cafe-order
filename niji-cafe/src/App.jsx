@@ -13,6 +13,10 @@
 //     （全件取得は起動時のみ。履歴は欠けない。他端末での完了・キャンセル・新規注文も反映される）
 //     1端末あたりの通信量の目安：68MB/日 → 27MB/日
 //  ※ こちらもデータベースへの書き込み方は一切変えていません。
+//
+// ── 2026/08/10 改修③ 完了注文のアーカイブ対応 ──────────────
+//  8. 会計履歴の画面で `cafe_v4_orders_archive`（過去の完了注文の置き場）も読むようにした。
+//     アーカイブがまだ無くても動く。移行中に同じ注文が両方にあっても重複表示しない。
 import { useState, useEffect, useRef } from "react";
 
 // ══════════════════════════════════════════
@@ -2160,6 +2164,28 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
 }
 
 function SalesHistoryPanel({ customers, orders }) {
+  // 会計履歴の画面を開いたときだけ、アーカイブ済みの過去注文を読み込む。
+  // 普段の同期では読みに行かないので、通信量は増えない。
+  // アーカイブがまだ無い場合も、何も表示が変わらないだけで問題なく動く。
+  const [archive, setArchive] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    dbGet("cafe_v4_orders_archive").then(a => {
+      if (alive) setArchive(Array.isArray(a) ? a.filter(Boolean) : []);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  // 今の注文とアーカイブを合わせる。移し替えの途中で両方に同じ注文があっても、
+  // orderId で重複を取り除くので二重に数えることはない。
+  const seenOrderIds = new Set();
+  const mergedOrders = [];
+  [...(orders || []), ...(archive || [])].forEach(o => {
+    if (!o || !o.orderId || seenOrderIds.has(o.orderId)) return;
+    seenOrderIds.add(o.orderId);
+    mergedOrders.push(o);
+  });
+
   // 全会員のhistoryからtype:"use"を集めて日付でグループ化
   const allEntries = [];
   customers.forEach(c => {
@@ -2170,7 +2196,7 @@ function SalesHistoryPanel({ customers, orders }) {
     });
   });
   // 完了した現金注文も会計履歴に含める
-  (orders || []).forEach(o => {
+  mergedOrders.forEach(o => {
     if (o.isCash && o.status === "completed") {
       allEntries.push({
         type: "use",
