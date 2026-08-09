@@ -7,6 +7,12 @@
 //     （画面に戻った瞬間に必ず取り直すので、古いデータのまま操作されることはない）
 //  6. 会員が0人のときの新規登録で会員番号がおかしくなる不具合を修正
 //  ※ データを消す・作り変える変更は一切していません。
+//
+// ── 2026/08/10 改修② 通信量の追加削減 ──────────────────
+//  7. 定期同期で注文を「新しい方から60件」だけ取得し、手元の全件に差分反映する方式に変更
+//     （全件取得は起動時のみ。履歴は欠けない。他端末での完了・キャンセル・新規注文も反映される）
+//     1端末あたりの通信量の目安：68MB/日 → 27MB/日
+//  ※ こちらもデータベースへの書き込み方は一切変えていません。
 import { useState, useEffect, useRef } from "react";
 
 // ══════════════════════════════════════════
@@ -74,16 +80,77 @@ const dbSet = async (key, val) => {
   }
 };
 
-const dbGet = async (key) => {
+const dbGet = async (key, query) => {
   try {
     const token = await getAuthToken();
-    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
+    const params = [];
+    if (token) params.push(`auth=${token}`);
+    if (query) params.push(query);
+    const url = `${DB_BASE}/${key}.json${params.length ? `?${params.join("&")}` : ""}`;
     const r = await fetch(url);
     return await r.json();
   } catch {
     return null;
   }
 };
+
+// ══════════════════════════════════════════
+//  注文の「新しい方だけ」を取りに行うための仕組み（通信量の削減）
+// ══════════════════════════════════════════
+// 注文は配列の先頭が最新。定期同期のたびに全件（gzipで約10KB）を取りに行くと
+// 1端末あたり月2GB前後になるため、定期同期では新しい方から ORDER_WINDOW 件だけを取得し、
+// 手元の全件リストに差分として反映する。窓の外にある過去の注文は手元のものを残すので、
+// 履歴が欠けることはない。全件は起動時の読み込みで取得している。
+const ORDER_WINDOW = 60;
+const ORDER_WINDOW_QUERY = `orderBy=%22%24key%22&limitToFirst=${ORDER_WINDOW}`;
+
+// Firebase は配列として保存していても、途中のキーが欠けるとオブジェクトで返すことがある。
+// どちらで返ってきても「新しい順の配列」に揃える。
+function toOrderArray(v) {
+  if (Array.isArray(v)) return v.filter(o => o && o.orderId);
+  if (v && typeof v === "object") {
+    return Object.keys(v)
+      .sort((a, b) => Number(a) - Number(b))
+      .map(k => v[k])
+      .filter(o => o && o.orderId);
+  }
+  return null;
+}
+
+// 手元の全件（prevFull）に、サーバから来た新しい方 ORDER_WINDOW 件（win）を反映する。
+//  ・両方にある注文  → サーバ側の内容で更新（他端末での完了・キャンセルが反映される）
+//  ・サーバにだけある → 他端末で作られた新しい注文なので先頭に追加
+//  ・窓の中にいたはずなのに手元にしか無い → 他端末で削除されたとみなして取り除く
+//    （窓に何件の新規が入ったかを差し引いて「窓が確実に届いている範囲」だけを対象にするので、
+//     新規注文で押し出された過去の注文を誤って消すことはない）
+// 何か想定外のことが起きても、必ず「手元のリストをそのまま返す」に倒れるようにしてある。
+// （この関数は setOrders の更新関数の中で動くため、ここで例外を投げると画面が落ちてしまう）
+function mergeOrderWindow(prevFull, win) {
+  try {
+    const winList = toOrderArray(win);
+    if (!winList) return prevFull;                 // 取得失敗時は手元をそのまま維持
+    const prevList = toOrderArray(prevFull) || [];
+    if (prevList.length === 0) return winList;
+
+    const prevIds = new Set(prevList.map(o => o.orderId));
+    const addedCount = winList.filter(o => !prevIds.has(o.orderId)).length;
+    const coverage = Math.max(0, winList.length - addedCount - 1);
+
+    const winById = new Map(winList.map(o => [o.orderId, o]));
+    const kept = [];
+    prevList.forEach((o, i) => {
+      const fresh = winById.get(o.orderId);
+      if (fresh) { kept.push(fresh); winById.delete(o.orderId); return; }
+      if (i < coverage) return;                    // 窓の中に無い＝他端末で削除された
+      kept.push(o);                                // 窓の外の過去分はそのまま残す
+    });
+    const added = winList.filter(o => winById.has(o.orderId));
+    return added.concat(kept);
+  } catch (e) {
+    console.error("注文の差分反映に失敗したため、手元のデータを維持します", e);
+    return prevFull;
+  }
+}
 // ══════════════════════════════════════════
 // 売上集計（その日の合計を加算。日付が変わったらリセット）
 const recordSale = async (amount, isCash) => {
@@ -364,15 +431,16 @@ export default function App() {
       if (!mounted) return;
       if (Date.now() - lastSaveAt.current < 5000) return;
       try {
-        const [cust, ord] = await Promise.all([
+        const [cust, ordWin] = await Promise.all([
           dbGet("cafe_v4_customers"),
-          dbGet("cafe_v4_orders"),
+          // 注文は新しい方から ORDER_WINDOW 件だけ取得する（全件取得より通信量が小さい）
+          dbGet("cafe_v4_orders", ORDER_WINDOW_QUERY),
         ]);
         if (!mounted) return;
         // 取得中に保存が走っていたら、その結果は古い可能性があるので捨てる
         if (Date.now() - lastSaveAt.current < 5000) return;
         if (cust) setCustomers(cust.map(checkYearRollover));
-        if (ord)  setOrders(ord);
+        if (ordWin) setOrders(prev => mergeOrderWindow(prev, ordWin));
       } catch {}
     };
 
