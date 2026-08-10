@@ -2212,6 +2212,38 @@ function SalesHistoryPanel({ customers, orders }) {
     }
   });
 
+  // 会員の注文のうち、会員データ側の履歴に対応する記録が無いものを補う。
+  // 過去のデータ消失で会員の履歴だけが失われた分が、注文データには残っているため、
+  // それを会計履歴に復活させる。
+  // 注文を完了したとき、履歴の date と注文の completedAt にはまったく同じ文字列を書いている。
+  // そこで「会員名＋日時」が一致する履歴があるものは重複とみなして足さない。
+  // （実データで確認済み：同じ会員・同じ日時の記録が2つ以上ある例は履歴側・注文側とも0件）
+  const historyKeys = new Set();
+  customers.forEach(c => {
+    (c.history || []).forEach(h => {
+      if (h.type === "use") historyKeys.add(`${c.name}\u0000${h.date}`);
+    });
+  });
+  mergedOrders.forEach(o => {
+    if (!o || o.isCash || o.status !== "completed") return;
+    if (historyKeys.has(`${o.customerName}\u0000${o.completedAt}`)) return;
+    allEntries.push({
+      type: "use",
+      amount: o.total || 0,
+      subtotal: o.subtotal || 0,
+      discount: o.discount || 0,
+      items: [
+        ...(o.items || []).map(i=>`${i.name}×${i.qty}`),
+        ...(o.benefitItems || []).map(i=>`${i.name}(特典)`),
+        ...(o.makaiItem ? [`${o.makaiItem.name}(賄い)`] : []),
+      ].join(", "),
+      performer: o.completedBy || "スタッフ",
+      date: o.completedAt || o.createdAt,
+      customerName: o.customerName,
+      fromOrder: true,
+    });
+  });
+
   // 日付文字列のパース（"2026/5/6 12:34:56" → "2026/5/6"）
   const getDay = (dateStr) => dateStr ? dateStr.split(" ")[0] : "不明";
 
@@ -2307,6 +2339,12 @@ function SalesHistoryPanel({ customers, orders }) {
                         }}>
                           {h.performer==="マネージャー" ? "👑" : "👤"} {h.performer || "スタッフ"}
                         </span>
+                        )}
+                        {h.fromOrder && (
+                          <span style={{color:"#8a7a4a",background:"#14120a",border:"1px solid #8a7a4a33",
+                            borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>
+                            📋 注文記録から
+                          </span>
                         )}
                         {h.subtotal && h.subtotal !== h.amount && (
                           <span style={{color:"#3a3a3a",fontSize:"0.7rem"}}>小計 ¥{h.subtotal.toLocaleString()}</span>
