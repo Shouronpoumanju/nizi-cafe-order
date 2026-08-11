@@ -63,6 +63,31 @@ export default async function handler(req, res) {
         return send(res, 200, { value: found });
       }
 
+      // ── お客様：チケット画面に必要なものを一度にまとめて返す ──────
+      // 他の会員のデータ・暗証番号・スタッフのパスワードは一切含めない。
+      // スタッフ割引は「その人に紐づいた割引率」だけを返す（スタッフ一覧は渡さない）。
+      case "bootstrap": {
+        if (me.r !== "customer") return send(res, 403, { error: "お客様専用の操作です" });
+        const [customers, orders, menu, dd, vip, staff, mgrs] = await Promise.all([
+          fbGet("cafe_v4_customers"), fbGet("cafe_v4_orders"), fbGet("cafe_v4_menu"),
+          fbGet("cafe_v4_designated_drink"), fbGet("cafe_v4_vip_gift_drink"),
+          fbGet("cafe_v4_staff_accounts"), fbGet("cafe_v4_manager_accounts"),
+        ]);
+        const mine = arr(customers).find((c) => String(c.id) === String(me.id));
+        if (!mine) return send(res, 404, { error: "会員が見つかりません" });
+        const linked = [...arr(staff), ...arr(mgrs)]
+          .find((s) => s.linkedCustomerId && String(s.linkedCustomerId) === String(me.id));
+        return send(res, 200, { value: {
+          customer: mine,
+          myOrders: arr(orders).filter((o) => String(o.customerId) === String(me.id)),
+          menu: menu || null,
+          designatedDrink: dd || null,
+          vipGiftDrink: vip || null,
+          staffDiscountRate: linked ? (linked.discountRate ?? 10) : null,
+          staffLinkedName: linked ? linked.name : null,
+        }});
+      }
+
       // ── お客様：自分の注文だけ ────────────────────
       case "myOrders": {
         const list = arr(await fbGet("cafe_v4_orders"));
