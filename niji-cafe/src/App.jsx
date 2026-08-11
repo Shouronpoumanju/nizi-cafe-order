@@ -72,8 +72,10 @@ getAuthToken();
 // パスワードの照合を、ブラウザではなくサーバーの中で行う。
 // ここが動くようになると、スタッフのパスワードをブラウザに配る必要がなくなる。
 // 発行されたログイン証（トークン）は、この後の段階で読み書きにも使う。
+// スタッフ／マネージャーのログイン証。ここに入っていると dbGet/dbSet がサーバー経由になる。
+// お客様のログイン証はここには入れない（お客様は自分専用の窓口だけを使うため）。
 let _apiToken = null;
-const getApiToken = () => _apiToken;   // 段階3b以降、読み書きの認証に使う
+const setApiToken = (t) => { _apiToken = t; };
 
 const apiLogin = async (role, body) => {
   const res = await fetch("/api/login", {
@@ -89,17 +91,16 @@ const apiLogin = async (role, body) => {
     err.rejected = res.status === 401 || res.status === 400;
     throw err;
   }
-  _apiToken = json.token;
-  return json;
+  return json;   // ログイン証をどこに保持するかは、呼び出し側が決める
 };
 
 // サーバー経由でデータを読み書きする。
-// ログイン証を持っているとき（＝スタッフ／マネージャーがログイン済みのとき）だけ使う。
 // サーバー側で「その人が触ってよい範囲か」を確認してから Firebase に届く。
-const apiData = async (op, payload) => {
+// token を省略するとスタッフのログイン証を使う。お客様は自分の証を明示的に渡す。
+const apiData = async (op, payload, token) => {
   const res = await fetch("/api/data", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${_apiToken}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token || _apiToken}` },
     body: JSON.stringify({ op, ...payload }),
   });
   let json = {};
@@ -707,7 +708,10 @@ function Home({ setScreen }) {
 // ══════════════════════════════════════════
 //  CUSTOMER VIEW
 // ══════════════════════════════════════════
-function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDrink, staffAccounts, managerAccounts, vipGiftDrink, setScreen }) {
+function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrders,
+                        saveOrders: saveOrdersProp, saveC: saveCProp, designatedDrink: ddProp,
+                        staffAccounts: staffProp, managerAccounts: mgrProp,
+                        vipGiftDrink: vipProp, setScreen }) {
   const [input,        setInput]        = useState("");
   const [found,        setFound]        = useState(null);
   const [err,          setErr]          = useState("");
@@ -716,13 +720,119 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
   const [ordered,      setOrdered]      = useState(false);
   const [benefitItems, setBenefitItems] = useState([]); // 無料特典アイテム
   const [benefitUsed,  setBenefitUsed]  = useState(false); // この注文で特典使用
+  const [busy,         setBusy]         = useState(false);
 
-  const search = () => {
-    setErr("");
-    const c = customers.find(c => c.pin === input.trim());
-    if (c) { setFound(c); setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); }
+  // ── サーバーから受け取った「自分の分だけ」のデータ ──────────────
+  // これがあるときは、他の会員のデータを一切持たずに画面が動く。
+  // サーバーが不調なときは null のままになり、今までどおりの動作に戻る。
+  const [boot, setBoot] = useState(null);
+  const custToken = useRef(null);   // お客様のログイン証
+
+  const reset = () => { setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); };
+
+  const search = async () => {
+    if (busy) return;
+    setErr(""); setBusy(true);
+    const v = input.trim();
+    try {
+      // 暗証番号の照合はサーバーの中で行う（全会員の暗証番号をブラウザに配らない）
+      const r = await apiLogin("customer", { pin: v });
+      custToken.current = r.token;
+      const b = (await apiData("bootstrap", {}, r.token)).value;
+      setBoot(b); setFound(b.customer); reset();
+      setBusy(false);
+      return;
+    } catch (e) {
+      if (e.rejected) { setErr("暗証番号が一致しませんでした"); setBusy(false); return; }
+      // サーバーに繋がらないときは、お店が止まらないよう今までの方法で探す
+      console.warn("サーバーに繋がらないため、従来の方法で確認します", e);
+    }
+    const c = (allCustomers || []).find(c => c && c.pin === v);
+    if (c) { setBoot(null); custToken.current = null; setFound(c); reset(); }
     else setErr("暗証番号が一致しませんでした");
+    setBusy(false);
   };
+
+  // ── サーバー経由の書き込み（自分の分だけ） ────────────────────
+  const refresh = async () => {
+    if (!custToken.current) return;
+    try {
+      const b = (await apiData("bootstrap", {}, custToken.current)).value;
+      setBoot(b); setFound(b.customer);
+    } catch (e) { console.warn("最新の取得に失敗しました", e); }
+  };
+
+  // 特典の使用状況だけを更新する（残高や暗証番号はサーバー側で弾かれる）
+  const saveMyBenefit = async (list) => {
+    const me = (list || []).find(c => c && boot && c.id === boot.customer.id);
+    if (!me) return;
+    const value = {};
+    ["benefitUsedMonth","toppingRemaining","toppingRemainingMonth","vipGiftUsedMonth"]
+      .forEach(f => { if (f in me) value[f] = me[f] ?? null; });
+    try {
+      const r = await apiData("setMyBenefit", { value }, custToken.current);
+      setBoot(b => b ? { ...b, customer: r.value } : b);
+      setFound(r.value);
+    } catch (e) {
+      console.error("特典の更新に失敗しました", e);
+      alert("更新に失敗しました。もう一度お試しください。");
+      refresh();
+    }
+  };
+
+  // 注文の作成・取り消し。増えていれば作成、減っていれば取り消しとして扱う。
+  const saveMyOrders = async (list) => {
+    const prev = (boot && boot.myOrders) || [];
+    const prevIds = new Set(prev.map(o => o && o.orderId));
+    const listIds = new Set((list || []).map(o => o && o.orderId));
+    const added   = (list || []).filter(o => o && o.orderId && !prevIds.has(o.orderId));
+    const removed = prev.filter(o => o && o.orderId && !listIds.has(o.orderId));
+    try {
+      if (added.length > 0) {
+        // 新しい注文を出す。同じ種類の未処理注文はサーバー側で置き換わる。
+        for (const o of added) await apiData("placeMyOrder", { value: o }, custToken.current);
+      } else {
+        for (const o of removed) await apiData("cancelMyOrder", { value: { orderId: o.orderId } }, custToken.current);
+      }
+      await refresh();
+    } catch (e) {
+      console.error("注文の保存に失敗しました", e);
+      alert("注文の保存に失敗しました。通信状況を確認して、もう一度お試しください。");
+      refresh();
+    }
+  };
+
+  // 画面を開いている間は定期的に最新の状態を取り直す（注文の完了や残高の変化を反映）
+  useEffect(() => {
+    if (!boot) return;
+    let alive = true;
+    const tick = () => { if (!document.hidden && alive) refresh(); };
+    const timer = setInterval(tick, 8000);
+    const onVisible = () => tick();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      alive = false; clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [boot ? boot.customer.id : null]);
+
+  // ── boot があれば「自分の分だけ」を、無ければ今までどおりの全体を使う ──
+  const customers       = boot ? [boot.customer] : allCustomers;
+  const orders          = boot ? (boot.myOrders || []) : allOrders;
+  const menu            = boot ? (boot.menu || menuProp) : menuProp;
+  const designatedDrink = boot ? boot.designatedDrink : ddProp;
+  const vipGiftDrink    = boot ? boot.vipGiftDrink : vipProp;
+  // スタッフ割引は「自分に紐づいた分」だけをサーバーから受け取る（スタッフ一覧は受け取らない）
+  const staffAccounts   = boot
+    ? (boot.staffDiscountRate != null
+        ? [{ id:"_linked", name: boot.staffLinkedName, discountRate: boot.staffDiscountRate, linkedCustomerId: boot.customer.id }]
+        : [])
+    : staffProp;
+  const managerAccounts = boot ? [] : mgrProp;
+  const saveC           = boot ? saveMyBenefit : saveCProp;
+  const saveOrders      = boot ? saveMyOrders  : saveOrdersProp;
 
   const rank         = found ? getEffectiveRank(found) : null;
   const next         = found ? nextRank(found.currentYearPurchases ?? 0) : null;
@@ -1481,7 +1591,8 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
     setBusy(true); setErr("");
     try {
       // パスワードの照合はサーバーの中で行う（ブラウザでは照合しない）
-      await apiLogin(isMgr ? "manager" : "staff", { name: selected.name, password: pw });
+      const r = await apiLogin(isMgr ? "manager" : "staff", { name: selected.name, password: pw });
+      setApiToken(r.token);   // 以降の読み書きはこの証を使ってサーバー経由になる
       enter(isMgr);
     } catch (e) {
       if (e.rejected) {
