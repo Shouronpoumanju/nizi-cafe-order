@@ -178,7 +178,12 @@ const dbGet = async (key, query) => {
     if (query) params.push(query);
     const url = `${DB_BASE}/${key}.json${params.length ? `?${params.join("&")}` : ""}`;
     const r = await fetch(url);
-    return await r.json();
+    // 失敗した応答（例：権限なしのときの {"error":"Permission denied"}）を
+    // データとして受け取ってしまわないよう、必ず null にする。
+    if (!r.ok) return null;
+    const v = await r.json();
+    if (v && typeof v === "object" && !Array.isArray(v) && typeof v.error === "string") return null;
+    return v;
   } catch {
     return null;
   }
@@ -497,16 +502,17 @@ export default function App() {
         const migrated = raw.map(checkYearRollover);
         setCustomers(migrated);
         // 読み込み失敗時（cust が無い）は DB に一切書き込まない（見本データでの上書き事故を防止）
-        if (cust) {
+        if (Array.isArray(cust)) {
           const changed = migrated.some((c,i)=>raw[i]&&c.dataYear!==raw[i].dataYear);
           if (changed) dbSet("cafe_v4_customers", migrated);
         }
-        if (menu_)  setMenu(menu_);
-        if (ord)    setOrders(ord);
-        if (dd)     setDesignatedDrink(dd);
-        if (vip)    setVipGiftDrink(vip);
-        if (staff)  setStaffAccounts(staff);
-        if (mga)    setManagerAccounts(mga);
+        // 配列で来たときだけ差し替える。おかしな値が入ると画面が壊れるため。
+        if (Array.isArray(menu_) && menu_.length) setMenu(menu_);
+        if (Array.isArray(ord))   setOrders(ord);
+        if (dd  && typeof dd  === "object") setDesignatedDrink(dd);
+        if (vip && typeof vip === "object") setVipGiftDrink(vip);
+        if (Array.isArray(staff) && staff.length) setStaffAccounts(staff);
+        if (Array.isArray(mga)   && mga.length)   setManagerAccounts(mga);
       } catch (e) { console.warn("初回の読み込みに失敗しました", e); }
       if (mounted) setLoaded(true);
     };
