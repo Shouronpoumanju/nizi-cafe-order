@@ -21,8 +21,28 @@ function tooManyTries(ip) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return send(res, 405, { error: "POST のみ受け付けます" });
   if (!envReady()) return send(res, 503, { error: "サーバーの設定が未完了です" });
+
+  // ── ログイン画面に出す「アカウント名の一覧」 ──────────────────
+  // パスワードは絶対に返さない。名前と役割だけ。
+  // これがないとスタッフがログイン画面でアカウントを選べないため、
+  // ログイン前でも取得できるようにしてある。
+  if (req.method === "GET") {
+    try {
+      const [staff, mgrs] = await Promise.all([
+        fbGet("cafe_v4_staff_accounts"), fbGet("cafe_v4_manager_accounts"),
+      ]);
+      const pick = (list, role) => (Array.isArray(list) ? list : [])
+        .filter(Boolean)
+        .map(a => ({ id: a.id, name: a.name, isChief: !!a.isChief, _role: role }));
+      return send(res, 200, { accounts: [...pick(mgrs, "manager"), ...pick(staff, "staff")] });
+    } catch (e) {
+      console.error("account list failed", e);
+      return send(res, 500, { error: "アカウント一覧の取得に失敗しました" });
+    }
+  }
+
+  if (req.method !== "POST") return send(res, 405, { error: "POST のみ受け付けます" });
 
   const ip = (req.headers["x-forwarded-for"] || "").split(",")[0] || "unknown";
   if (tooManyTries(ip)) return send(res, 429, { error: "しばらく時間をおいてからお試しください" });
