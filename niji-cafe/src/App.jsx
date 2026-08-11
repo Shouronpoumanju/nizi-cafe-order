@@ -694,11 +694,12 @@ function Home({ setScreen }) {
         </div>
 
         {/* ブランド名 */}
+        {/* 一文字ずつ揺らすのはやめた。動きが多いと落ち着かず、可愛さより騒がしさが出る。 */}
         <div style={{position:"relative",marginTop:6}}>
           <h1 style={S.brandRainbow}>
             {"虹カフェ".split("").map((ch, i) => (
-              <span key={i} style={{color:["#ff6b9d","#ff9f43","#ffd700","#7bed9f","#70a1ff","#a29bfe"][i % 6],
-                display:"inline-block", animation:`letterFloat ${0.6+i*0.15}s ease-in-out infinite alternate`}}>
+              <span key={i} style={{color:["#ff8fb3","#ffb877","#ffdd82","#9fdcae","#8fc2ee","#b8ace0"][i % 6],
+                display:"inline-block"}}>
                 {ch}
               </span>
             ))}
@@ -706,7 +707,7 @@ function Home({ setScreen }) {
           <div style={S.brandUnderline}/>
         </div>
 
-        <p style={S.taglineRainbow}>✨ デジタルチケット & メンバーシップ ✨</p>
+        <p style={S.taglineRainbow}>きょうも、いつもの一杯を</p>
 
         {/* ボタン */}
         <div style={S.homeBtns}>
@@ -720,10 +721,10 @@ function Home({ setScreen }) {
           </button>
         </div>
 
-        {/* デコ */}
+        {/* 虹の点。絵文字を5つ並べるより、色だけのほうが静かでブランドが伝わる。 */}
         <div style={S.decoRow}>
-          {["🌟","💎","🌺","✨","🌸"].map((e,i)=>(
-            <span key={i} style={{fontSize:"1.1rem",opacity:0.7,animation:`floatDeco ${1.2+i*0.3}s ease-in-out infinite alternate`}}>{e}</span>
+          {["#ff8fb3","#ffb877","#ffdd82","#9fdcae","#8fc2ee","#b8ace0"].map((c,i)=>(
+            <span key={i} style={{width:9,height:9,borderRadius:"50%",background:c,display:"inline-block"}}/>
           ))}
         </div>
       </div>
@@ -3574,7 +3575,9 @@ function AddCustomerModal({ onSave, onClose, nextId, customers }) {
 //  STYLES
 // ══════════════════════════════════════════
 const S = {
-  root:          { fontFamily:"'Noto Serif JP',Georgia,serif", background:"#0a0a0a", minHeight:"100vh", color:"#e8e0d0" },
+  // 書体は丸ゴシック。明朝は「格式」を語る書体で、カフェの空気に合わなかった。
+  // 丸みのある書体にするだけで、画面全体の印象がやわらかくなる。
+  root:          { fontFamily:"'Zen Maru Gothic','Hiragino Maru Gothic ProN','ヒラギノ丸ゴ ProN',sans-serif", background:"#0a0a0a", minHeight:"100vh", color:"#e8e0d0" },
   loading:       { color:"#aaa", textAlign:"center", padding:40 },
   page:          { maxWidth:480, margin:"0 auto", padding:"24px 16px" },
 
@@ -3589,9 +3592,10 @@ const S = {
   rainbowGlow:   { position:"absolute", inset:-3, borderRadius:"50%", background:"linear-gradient(135deg,#ff6b9d,#ff9f43,#ffd700,#7bed9f,#70a1ff,#a29bfe,#ff6b9d)", zIndex:0, filter:"blur(2px)", opacity:0.85 },
   brandRainbow:  { margin:0, fontSize:"2.6rem", fontWeight:800, letterSpacing:"0.08em", lineHeight:1 },
   brandUnderline:{ height:3, borderRadius:2, background:"linear-gradient(90deg,#ff6b9d,#ff9f43,#ffd700,#7bed9f,#70a1ff,#a29bfe)", marginTop:6, width:"100%" },
-  taglineRainbow:{ color:"#a0a0b8", fontSize:"0.82rem", letterSpacing:"0.04em", margin:"0" },
-  homeBtns:      { display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:300 },
-  decoRow:       { display:"flex", gap:14, marginTop:4 },
+  // 小さすぎる文字は読みにくいので、本文まわりは大きめに。
+  taglineRainbow:{ color:"#b6b0c2", fontSize:"0.95rem", letterSpacing:"0.04em", margin:"2px 0 4px" },
+  homeBtns:      { display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 },
+  decoRow:       { display:"flex", gap:10, marginTop:10, alignItems:"center" },
   title:         { fontSize:"1.15rem", color:"#d4a853", letterSpacing:"0.08em", marginBottom:18, fontWeight:700 },
   hint:          { color:"#777", fontSize:"0.85rem", lineHeight:1.7, marginBottom:4 },
   input:         { background:"#141414", border:"1px solid #2a2a2a", borderRadius:8, padding:"12px 14px", color:"#e8e0d0", fontSize:"1rem", width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
@@ -3622,7 +3626,7 @@ const S = {
 };
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
 * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; }
 input:focus { border-color:#d4a853 !important; outline:none; }
 
@@ -3631,8 +3635,8 @@ input:focus { border-color:#d4a853 !important; outline:none; }
 
 .btn-rainbow {
   display:flex; align-items:center; justify-content:center; gap:10px;
-  width:100%; border:none; border-radius:16px; padding:15px 20px;
-  font-size:1rem; font-weight:800; cursor:pointer; font-family:inherit;
+  width:100%; border:none; border-radius:999px; padding:17px 20px;
+  font-size:1.05rem; font-weight:700; cursor:pointer; font-family:inherit;
   letter-spacing:0.04em; color:#fff; position:relative; overflow:hidden;
   background:linear-gradient(135deg,#ff6b9d,#ff9f43,#ffd700,#7bed9f,#70a1ff,#a29bfe);
   background-size:200% 200%; animation:rainbowShift 4s ease infinite;
@@ -3644,8 +3648,8 @@ input:focus { border-color:#d4a853 !important; outline:none; }
 
 .btn-crystal {
   display:flex; align-items:center; justify-content:center; gap:10px;
-  width:100%; border-radius:16px; padding:14px 20px;
-  font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit;
+  width:100%; border-radius:999px; padding:16px 20px;
+  font-size:1rem; font-weight:500; cursor:pointer; font-family:inherit;
   letter-spacing:0.04em; color:#c8d8f8;
   background:linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02));
   border:1px solid rgba(255,255,255,0.15);
