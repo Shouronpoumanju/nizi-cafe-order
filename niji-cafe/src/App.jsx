@@ -113,12 +113,25 @@ const apiData = async (op, payload, token) => {
   return json;
 };
 
+// ログイン証は12時間で切れる。切れたまま操作を続けると、
+// 「保存に失敗しました」とだけ出て理由が分からないので、はっきり伝えて入り直してもらう。
+let _expiredNotified = false;
+const notifyExpired = () => {
+  _apiToken = null;
+  if (_expiredNotified) return;
+  _expiredNotified = true;
+  try { alert("ログインの有効期限が切れました。\n「← ホームへ」から、もう一度ログインしてください。"); } catch {}
+  setTimeout(() => { _expiredNotified = false; }, 10000);
+};
+
 const dbSet = async (key, val) => {
   // スタッフがログイン済みならサーバー経由で保存する。
-  // サーバーが不調なときは、お店が止まらないよう今までどおり直接保存に切り替える。
   if (_apiToken) {
     try { await apiData("set", { key, value: val }); return true; }
-    catch (e) { console.warn("サーバー経由の保存に失敗したため、直接保存に切り替えます", key, e); }
+    catch (e) {
+      if (e.status === 401) { notifyExpired(); return false; }
+      console.warn("サーバー経由の保存に失敗したため、直接保存に切り替えます", key, e);
+    }
   }
   // 保存は最大3回まで自動リトライ。最後まで失敗したら画面に通知する。
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -169,7 +182,10 @@ const dbGet = async (key, query) => {
   // スタッフがログイン済みならサーバー経由で取得する（不調なら直接取得に切り替える）
   if (_apiToken) {
     try { return (await apiData("get", { key, query })).value; }
-    catch (e) { console.warn("サーバー経由の取得に失敗したため、直接取得に切り替えます", key, e); }
+    catch (e) {
+      if (e.status === 401) { notifyExpired(); return null; }
+      console.warn("サーバー経由の取得に失敗したため、直接取得に切り替えます", key, e);
+    }
   }
   try {
     const token = await getAuthToken();
@@ -769,7 +785,15 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     try {
       const b = (await apiData("bootstrap", {}, custToken.current)).value;
       setBoot(b); setFound(b.customer);
-    } catch (e) { console.warn("最新の取得に失敗しました", e); }
+    } catch (e) {
+      // ログイン証が切れたら、暗証番号の入力からやり直してもらう
+      if (e.status === 401) {
+        custToken.current = null; setBoot(null); setFound(null);
+        setErr("時間が経ったため、もう一度暗証番号を入力してください");
+        return;
+      }
+      console.warn("最新の取得に失敗しました", e);
+    }
   };
 
   // 特典の使用状況だけを更新する（残高や暗証番号はサーバー側で弾かれる）
