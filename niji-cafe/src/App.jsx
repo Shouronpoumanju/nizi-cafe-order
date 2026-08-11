@@ -66,40 +66,6 @@ async function getAuthToken() {
 // アプリ起動時に先にトークンを取りに行っておく（書き込み時に待たないように）
 getAuthToken();
 
-const dbSet = async (key, val) => {
-  // 保存は最大3回まで自動リトライ。最後まで失敗したら画面に通知する。
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const token = await getAuthToken();
-      const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
-      const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return true;
-    } catch (e) {
-      if (attempt < 2) { await new Promise(r => setTimeout(r, 600)); continue; }
-      console.error("保存に失敗しました", key, e);
-      try { alert("保存に失敗しました。通信状況を確認して、もう一度お試しください。"); } catch {}
-      return false;
-    }
-  }
-};
-
-// お金の出入りを、消えない別の場所に記録しておくための書き込み。
-// 会員データの history は60件で古いものが切り捨てられるため、
-// チャージ・チャージ取消・残高の手修正だけは、こちらにも1件ずつ積んでおく。
-// POST を使うと Firebase が勝手にキーを振ってくれるので、
-// 既存の全件を読み書きする必要がなく、通信量もほとんど増えない。
-const dbPush = async (key, val) => {
-  try {
-    const token = await getAuthToken();
-    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
-    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
-  } catch (e) {
-    // ここが失敗しても、本来の残高の記録（history）は別途保存されるので、画面は止めない
-    console.error("入出金ログの記録に失敗しました", e);
-  }
-};
-
 // ══════════════════════════════════════════
 //  サーバー（/api）経由のログイン
 // ══════════════════════════════════════════
@@ -127,6 +93,70 @@ const apiLogin = async (role, body) => {
   return json;
 };
 
+// サーバー経由でデータを読み書きする。
+// ログイン証を持っているとき（＝スタッフ／マネージャーがログイン済みのとき）だけ使う。
+// サーバー側で「その人が触ってよい範囲か」を確認してから Firebase に届く。
+const apiData = async (op, payload) => {
+  const res = await fetch("/api/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${_apiToken}` },
+    body: JSON.stringify({ op, ...payload }),
+  });
+  let json = {};
+  try { json = await res.json(); } catch {}
+  if (!res.ok) {
+    const err = new Error(json.error || "通信に失敗しました");
+    err.status = res.status;
+    throw err;
+  }
+  return json;
+};
+
+const dbSet = async (key, val) => {
+  // スタッフがログイン済みならサーバー経由で保存する。
+  // サーバーが不調なときは、お店が止まらないよう今までどおり直接保存に切り替える。
+  if (_apiToken) {
+    try { await apiData("set", { key, value: val }); return true; }
+    catch (e) { console.warn("サーバー経由の保存に失敗したため、直接保存に切り替えます", key, e); }
+  }
+  // 保存は最大3回まで自動リトライ。最後まで失敗したら画面に通知する。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const token = await getAuthToken();
+      const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
+      const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return true;
+    } catch (e) {
+      if (attempt < 2) { await new Promise(r => setTimeout(r, 600)); continue; }
+      console.error("保存に失敗しました", key, e);
+      try { alert("保存に失敗しました。通信状況を確認して、もう一度お試しください。"); } catch {}
+      return false;
+    }
+  }
+};
+
+// お金の出入りを、消えない別の場所に記録しておくための書き込み。
+// 会員データの history は60件で古いものが切り捨てられるため、
+// チャージ・チャージ取消・残高の手修正だけは、こちらにも1件ずつ積んでおく。
+// POST を使うと Firebase が勝手にキーを振ってくれるので、
+// 既存の全件を読み書きする必要がなく、通信量もほとんど増えない。
+const dbPush = async (key, val) => {
+  // 入出金の台帳への追記も、ログイン済みならサーバー経由（誰が記録したかも残る）
+  if (_apiToken) {
+    try { await apiData("push", { key, value: val }); return; }
+    catch (e) { console.warn("サーバー経由の追記に失敗したため、直接追記に切り替えます", key, e); }
+  }
+  try {
+    const token = await getAuthToken();
+    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
+    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
+  } catch (e) {
+    // ここが失敗しても、本来の残高の記録（history）は別途保存されるので、画面は止めない
+    console.error("入出金ログの記録に失敗しました", e);
+  }
+};
+
 // チャージ・取消・残高手修正を、消えない台帳に残す
 const logMoney = (entry) => dbPush("cafe_v4_money_log", {
   ...entry,
@@ -135,6 +165,11 @@ const logMoney = (entry) => dbPush("cafe_v4_money_log", {
 });
 
 const dbGet = async (key, query) => {
+  // スタッフがログイン済みならサーバー経由で取得する（不調なら直接取得に切り替える）
+  if (_apiToken) {
+    try { return (await apiData("get", { key, query })).value; }
+    catch (e) { console.warn("サーバー経由の取得に失敗したため、直接取得に切り替えます", key, e); }
+  }
   try {
     const token = await getAuthToken();
     const params = [];
