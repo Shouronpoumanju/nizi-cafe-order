@@ -1630,10 +1630,10 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
     return () => { alive = false; };
   }, []);
 
-  const allAccounts = serverAccounts || [
-    ...(managerAccounts||[]).map(a=>({...a, _role:"manager"})),
-    ...(staffAccounts||[]).map(a=>({...a, _role:"staff"})),
-  ];
+  // サーバーから届くまでは何も出さない。
+  // 手元の初期値（見本の「山田花子」など）を一瞬でも見せると、
+  // 存在しないアカウントを選んでしまうため。
+  const allAccounts = serverAccounts || [];
 
   return (
     <div style={S.page}>
@@ -1644,7 +1644,11 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
 
       {!selected ? (
         <div>
-          <p style={S.hint}>アカウントを選択してください</p>
+          <p style={S.hint}>
+            {serverAccounts === null ? "読み込み中..." :
+             allAccounts.length === 0 ? "アカウントを取得できませんでした。通信状況を確認して、画面を開き直してください。" :
+             "アカウントを選択してください"}
+          </p>
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
             {allAccounts.map(acc=>(
               <button key={acc.id} className={`staff-select-btn${acc._role==="manager"?" manager":""}`}
