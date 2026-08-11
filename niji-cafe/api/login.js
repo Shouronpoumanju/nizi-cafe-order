@@ -55,8 +55,10 @@ export default async function handler(req, res) {
   try {
     // ── お客様：暗証番号でログイン ──────────────────
     if (role === "customer") {
-      if (!/^\d{4}$/.test(String(pin || ""))) {
-        return send(res, 400, { error: "暗証番号は4桁の数字です" });
+      // 桁数は決め打ちにしない。実際の会員データには4桁以外の暗証番号も存在するため、
+      // ここで長さを制限すると、その人がログインできなくなる。
+      if (!/^\d{1,8}$/.test(String(pin || ""))) {
+        return send(res, 400, { error: "暗証番号は数字で入力してください" });
       }
       const list = (await fbGet("cafe_v4_customers")) || [];
       const matches = list.filter((c) => c && sameSecret(c.pin, pin));
