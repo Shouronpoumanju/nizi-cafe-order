@@ -309,15 +309,15 @@ function PinChangeModal({ customer, customers, onSave, onClose }) {
     onSave(v);
   };
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
-      <div style={{background:"#141414",border:"1px solid #d4a85355",borderRadius:16,padding:"20px",width:"100%",maxWidth:340}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontWeight:700,color:"#d4a853",fontSize:"1rem",marginBottom:4}}>🔑 暗証番号の変更</div>
-        <div style={{color:"#aaa",fontSize:"0.8rem",marginBottom:14}}>{customer.name} さんの新しい暗証番号（4桁）を入力してください。</div>
-        <input value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} inputMode="numeric" maxLength={4} placeholder="0000" autoFocus style={{width:"100%",boxSizing:"border-box",background:"#0d0d0d",border:"1px solid #333",borderRadius:10,color:"#fff",fontSize:"1.4rem",letterSpacing:"0.3em",textAlign:"center",padding:"12px"}}/>
-        {err && <div style={{color:"#ff6b6b",fontSize:"0.78rem",marginTop:8}}>{err}</div>}
+    <div style={{position:"fixed",inset:0,background:"rgba(61,54,48,0.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
+      <div style={{background:"#ffffff",border:"1px solid #d3a94f55",borderRadius:16,padding:"20px",width:"100%",maxWidth:340}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,color:"#b07c1e",fontSize:"1rem",marginBottom:4}}>🔑 暗証番号の変更</div>
+        <div style={{color:"#8a7f76",fontSize:"0.8rem",marginBottom:14}}>{customer.name} さんの新しい暗証番号（4桁）を入力してください。</div>
+        <input value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} inputMode="numeric" maxLength={4} placeholder="0000" autoFocus style={{width:"100%",boxSizing:"border-box",background:"#ffffff",border:"1px solid #ddd3c6",borderRadius:10,color:"#3d3630",fontSize:"1.4rem",letterSpacing:"0.3em",textAlign:"center",padding:"12px"}}/>
+        {err && <div style={{color:"#c94a45",fontSize:"0.78rem",marginTop:8}}>{err}</div>}
         <div style={{display:"flex",gap:10,marginTop:16}}>
-          <button onClick={onClose} style={{flex:1,background:"#222",border:"none",borderRadius:10,color:"#ccc",padding:"12px",fontWeight:600,cursor:"pointer"}}>キャンセル</button>
-          <button onClick={submit} style={{flex:1,background:"linear-gradient(135deg,#d4a853,#b8860b)",border:"none",borderRadius:10,color:"#1a1a1a",padding:"12px",fontWeight:700,cursor:"pointer"}}>変更する</button>
+          <button onClick={onClose} style={{flex:1,background:"#f6f1ea",border:"none",borderRadius:10,color:"#8a7f76",padding:"12px",fontWeight:600,cursor:"pointer"}}>キャンセル</button>
+          <button onClick={submit} style={{flex:1,background:"linear-gradient(135deg,#e8b96a,#d9a441)",border:"none",borderRadius:10,color:"#3d3630",padding:"12px",fontWeight:700,cursor:"pointer"}}>変更する</button>
         </div>
       </div>
     </div>
@@ -328,29 +328,29 @@ function PinChangeModal({ customer, customers, onSave, onClose }) {
 //   "monthly"   → 毎月1回リセット、スタッフが「使用」ボタンで消費
 //   "always_discount" → 毎回自動割引（amount: 固定額 or "half"）
 const RANKS = [
-  { name:"ブロンズ",    min:2,  color:"#cd7f32", gem:"🟫", bg:"linear-gradient(135deg,#3b1f0a,#6b3a1f)", glow:"#cd7f32",
+  { name:"ブロンズ",    min:2,  color:"#a2622a", gem:"🟫", bg:"linear-gradient(135deg,#f6e6d8,#eed3bb)", glow:"#cd7f32",
     benefit:{ type:"monthly",          desc:"トッピング1回無料",       icon:"🧁" } },
-  { name:"シルバー",    min:5,  color:"#c0c0c0", gem:"⬜", bg:"linear-gradient(135deg,#1a1a2e,#3a3a5c)", glow:"#c0c0c0",
+  { name:"シルバー",    min:5,  color:"#8a8a8a", gem:"⬜", bg:"linear-gradient(135deg,#eeeeee,#dcdce4)", glow:"#c0c0c0",
     benefit:{ type:"monthly",          desc:"トッピング2回無料",       icon:"🧁🧁" } },
-  { name:"ゴールド",    min:7,  color:"#ffd700", gem:"🟨", bg:"linear-gradient(135deg,#2a1f00,#5a4500)", glow:"#ffd700",
+  { name:"ゴールド",    min:7,  color:"#a9791a", gem:"🟨", bg:"linear-gradient(135deg,#fbf0d6,#f5e2b0)", glow:"#ffd700",
     benefit:{ type:"monthly",          desc:"トッピング3回無料",       icon:"🧁🧁🧁" } },
-  { name:"プラチナ",    min:10, color:"#e0dcd8", gem:"🔘", bg:"linear-gradient(135deg,#1a1a1a,#3a3a3a)", glow:"#e0dcd8",
+  { name:"プラチナ",    min:10, color:"#7a736c", gem:"🔘", bg:"linear-gradient(135deg,#f6f1ea,#eee7dd)", glow:"#e0dcd8",
     benefit:{ type:"monthly",          desc:"コーヒー1杯無料",         icon:"☕" } },
-  { name:"チタン",      min:13, color:"#9da8b0", gem:"🩶", bg:"linear-gradient(135deg,#0e1418,#1e2a32)", glow:"#9da8b0",
+  { name:"チタン",      min:13, color:"#8a7f76", gem:"🩶", bg:"linear-gradient(135deg,#e9eef2,#d7e0e7)", glow:"#9da8b0",
     benefit:{ type:"monthly",          desc:"指定ドリンク1杯無料",     icon:"🥤" } },
-  { name:"サファイア",  min:16, color:"#4fa3e8", gem:"🔷", bg:"linear-gradient(135deg,#001030,#002060)", glow:"#4fa3e8",
+  { name:"サファイア",  min:16, color:"#3b7fb8", gem:"🔷", bg:"linear-gradient(135deg,#e4eefb,#cddff5)", glow:"#4fa3e8",
     benefit:{ type:"monthly",          desc:"好きなドリンク1杯無料",   icon:"🍹" } },
-  { name:"ルビー",      min:20, color:"#e0115f", gem:"🟥", bg:"linear-gradient(135deg,#1a0010,#4a0030)", glow:"#e0115f",
+  { name:"ルビー",      min:20, color:"#c21354", gem:"🟥", bg:"linear-gradient(135deg,#fbecf2,#f7dbe6)", glow:"#e0115f",
     benefit:{ type:"always_discount",  desc:"毎回50円引き",            icon:"💸", amount:50 } },
-  { name:"エメラルド",  min:35, color:"#50c878", gem:"🟩", bg:"linear-gradient(135deg,#001a08,#003a14)", glow:"#50c878",
+  { name:"エメラルド",  min:35, color:"#3e9a5c", gem:"🟩", bg:"linear-gradient(135deg,#e3f3e8,#c9e7d3)", glow:"#50c878",
     benefit:{ type:"always_discount",  desc:"毎回100円引き",           icon:"💸", amount:100 } },
-  { name:"ダイヤモンド",min:50, color:"#b9f2ff", gem:"💎", bg:"linear-gradient(135deg,#001020,#002040)", glow:"#b9f2ff",
+  { name:"ダイヤモンド",min:50, color:"#3b8fa8", gem:"💎", bg:"linear-gradient(135deg,#e6f3f7,#cfe8f0)", glow:"#b9f2ff",
     benefit:{ type:"always_discount",  desc:"毎回半額",                icon:"⭐", amount:"half" } },
 ];
 
 const NO_RANK = {
-  name:"ランクなし", min:0, color:"#555", gem:"−",
-  bg:"linear-gradient(135deg,#111111,#1a1a1a)", glow:"#444",
+  name:"ランクなし", min:0, color:"#9a8f85", gem:"−",
+  bg:"linear-gradient(135deg,#f4f1ec,#e8e2da)", glow:"#444",
   benefit:{ type:"none", desc:"ランクなし", icon:"−" },
 };
 
@@ -698,7 +698,7 @@ function Home({ setScreen }) {
         <div style={{position:"relative",marginTop:6}}>
           <h1 style={S.brandRainbow}>
             {"虹カフェ".split("").map((ch, i) => (
-              <span key={i} style={{color:["#ff8fb3","#ffb877","#ffdd82","#9fdcae","#8fc2ee","#b8ace0"][i % 6],
+              <span key={i} style={{color:["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4"][i % 6],
                 display:"inline-block"}}>
                 {ch}
               </span>
@@ -723,7 +723,7 @@ function Home({ setScreen }) {
 
         {/* 虹の点。絵文字を5つ並べるより、色だけのほうが静かでブランドが伝わる。 */}
         <div style={S.decoRow}>
-          {["#ff8fb3","#ffb877","#ffdd82","#9fdcae","#8fc2ee","#b8ace0"].map((c,i)=>(
+          {["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4"].map((c,i)=>(
             <span key={i} style={{width:9,height:9,borderRadius:"50%",background:c,display:"inline-block"}}/>
           ))}
         </div>
@@ -985,7 +985,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
         </div>
       ) : (
         <div>
-          <div style={{display:"flex",background:"#0d0d0d",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
+          <div style={{display:"flex",background:"#ffffff",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
             {[
               ["ticket","🎫 チケット"],
               ["order","🛒 注文する"],
@@ -995,7 +995,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 style={{position:"relative"}}>
                 {l}
                 {k==="order" && myPendingOrder && (
-                  <span style={{position:"absolute",top:4,right:6,background:"#e0115f",borderRadius:"50%",width:7,height:7,display:"block"}}/>
+                  <span style={{position:"absolute",top:4,right:6,background:"#e8467f",borderRadius:"50%",width:7,height:7,display:"block"}}/>
                 )}
               </button>
             ))}
@@ -1007,10 +1007,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
                   <div>
                     <div style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"88"}}>{rank.gem} {rank.name}会員</div>
-                    <div style={{fontSize:"1.05rem",fontWeight:700,color:"#f0ece0"}}>{found.name}</div>
+                    <div style={{fontSize:"1.05rem",fontWeight:700,color:"#3d3630"}}>{found.name}</div>
                   </div>
                   <div style={{textAlign:"right"}}>
-                    <div style={{color:"#aaa",fontSize:"0.72rem",marginBottom:2}}>残高</div>
+                    <div style={{color:"#8a7f76",fontSize:"0.72rem",marginBottom:2}}>残高</div>
                     <div style={{color:rank.color,fontSize:"1.7rem",fontWeight:800,letterSpacing:"-0.02em"}}>¥{found.balance.toLocaleString()}</div>
                   </div>
                 </div>
@@ -1020,34 +1020,34 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       <div style={{color:rank.color,fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:4}}>
                         {isAlways?"✨ 自動特典":"🎁 今月の特典"}
                       </div>
-                      <div style={{color:"#f0ece0",fontWeight:700,fontSize:"0.95rem"}}>{rank.benefit.icon} {rank.benefit.desc}</div>
+                      <div style={{color:"#3d3630",fontWeight:700,fontSize:"0.95rem"}}>{rank.benefit.icon} {rank.benefit.desc}</div>
                     </div>
                     {isAlways?<div style={S.benefitTagAlways}>毎回適用</div>
                       :used?<div style={S.benefitTagUsed}>使用済み</div>
                       :<div style={{...S.benefitTagAvail,borderColor:rank.color,color:rank.color}}>未使用</div>}
                   </div>
-                  {!isAlways&&<div style={{color:"#555",fontSize:"0.72rem",marginTop:8}}>
+                  {!isAlways&&<div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:8}}>
                     {used?"来月またご利用いただけます":"スタッフにお申し付けください"}
                   </div>}
                 </div>
                 <div style={S.divider}/>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{color:"#aaa",fontSize:"0.8rem"}}>今年の購入回数</span>
+                  <span style={{color:"#8a7f76",fontSize:"0.8rem"}}>今年の購入回数</span>
                   <span style={{color:rank.color,fontWeight:700}}>{cyp}回</span>
                 </div>
                 <div style={{background:"#ffffff0a",borderRadius:8,padding:"7px 10px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:next?4:0}}>
-                    <span style={{color:"#777",fontSize:"0.72rem"}}>来年のランク予測</span>
+                    <span style={{color:"#8a7f76",fontSize:"0.72rem"}}>来年のランク予測</span>
                     <span style={{color:nextYearRank.color,fontWeight:700,fontSize:"0.8rem"}}>{nextYearRank.gem} {nextYearRank.name}</span>
                   </div>
-                  {next&&<><div style={{marginBottom:4}}><span style={{color:"#555",fontSize:"0.7rem"}}>あと{next.min-cyp}回で {next.gem}{next.name}</span></div>
+                  {next&&<><div style={{marginBottom:4}}><span style={{color:"#9a8f85",fontSize:"0.7rem"}}>あと{next.min-cyp}回で {next.gem}{next.name}</span></div>
                   <div style={S.bar}><div className="bar-fill" style={{width:`${pct}%`,background:nextYearRank.color}}/></div></>}
                   {!next&&<div style={{color:nextYearRank.color,fontSize:"0.72rem",marginTop:2}}>✨ 最高ランク達成！</div>}
                 </div>
                 <div style={{textAlign:"right",fontSize:"0.68rem",color:"#ffffff22",marginTop:10,letterSpacing:"0.15em"}}>虹カフェ</div>
               </div>
-              <div style={{marginTop:14,background:"#0f0f0f",borderRadius:14,padding:"14px 16px"}}>
-                <div style={{color:"#444",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:10}}>ランク一覧</div>
+              <div style={{marginTop:14,background:"#ffffff",borderRadius:14,padding:"14px 16px"}}>
+                <div style={{color:"#a79b90",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:10}}>ランク一覧</div>
                 {RANKS.map(r=>{
                   const unlocked=found.rankBasis>=r.min, isCur=r.name===rank.name;
                   return (
@@ -1056,11 +1056,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                         <span style={{fontSize:"0.9rem"}}>{r.gem}</span>
                         <div>
                           <span style={{color:r.color,fontWeight:700,fontSize:"0.85rem"}}>{r.name}</span>
-                          <span style={{color:"#555",fontSize:"0.7rem",marginLeft:6}}>{r.min}回〜</span>
+                          <span style={{color:"#9a8f85",fontSize:"0.7rem",marginLeft:6}}>{r.min}回〜</span>
                         </div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <span style={{color:"#aaa",fontSize:"0.78rem"}}>{r.benefit.icon} {r.benefit.desc}</span>
+                        <span style={{color:"#8a7f76",fontSize:"0.78rem"}}>{r.benefit.icon} {r.benefit.desc}</span>
                         {r.benefit.type==="always_discount"&&<span style={{color:r.color,fontSize:"0.68rem",marginLeft:4,fontWeight:700}}>毎回</span>}
                       </div>
                       {isCur&&<div style={{...S.curDot,background:rank.color}}/>}
@@ -1086,54 +1086,54 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           {cvTab==="order" && (
             <div>
               {myPendingOrder ? (
-                <div style={{background:"#0f1a0f",border:"1px solid #2a5a2a",borderRadius:14,padding:16}}>
-                  <div style={{color:"#5ecf7f",fontWeight:700,fontSize:"0.95rem",marginBottom:10}}>✅ 注文受付済み — スタッフが準備中です</div>
+                <div style={{background:"#e9f5ec",border:"1px solid #c9e2ce",borderRadius:14,padding:16}}>
+                  <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.95rem",marginBottom:10}}>✅ 注文受付済み — スタッフが準備中です</div>
                   {myPendingOrder.items.map((item,i)=>(
                     <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
-                      <span style={{color:"#ccc"}}>{item.emoji} {item.name} × {item.qty}</span>
-                      <span style={{color:"#d4a853"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                      <span style={{color:"#8a7f76"}}>{item.emoji} {item.name} × {item.qty}</span>
+                      <span style={{color:"#b07c1e"}}>¥{(item.price*item.qty).toLocaleString()}</span>
                     </div>
                   ))}
                   {(myPendingOrder.benefitItems||[]).map((item,i)=>(
                     <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
-                      <span style={{color:"#aaa"}}>{item.emoji} {item.name}</span>
-                      <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>🎁 無料</span>
+                      <span style={{color:"#8a7f76"}}>{item.emoji} {item.name}</span>
+                      <span style={{color:"#3e9a5c",fontSize:"0.8rem"}}>🎁 無料</span>
                     </div>
                   ))}
-                  <div style={{borderTop:"1px solid #2a5a2a",paddingTop:8,marginTop:6,display:"flex",justifyContent:"space-between"}}>
-                    <span style={{color:"#888",fontSize:"0.85rem"}}>合計</span>
-                    <span style={{color:"#5ecf7f",fontWeight:800}}>¥{myPendingOrder.total.toLocaleString()}</span>
+                  <div style={{borderTop:"1px solid #c9e2ce",paddingTop:8,marginTop:6,display:"flex",justifyContent:"space-between"}}>
+                    <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</span>
+                    <span style={{color:"#3e9a5c",fontWeight:800}}>¥{myPendingOrder.total.toLocaleString()}</span>
                   </div>
-                  <div style={{color:"#555",fontSize:"0.72rem",marginTop:6}}>{myPendingOrder.createdAt} に注文</div>
+                  <div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:6}}>{myPendingOrder.createdAt} に注文</div>
                   <button className="btn-danger" style={{marginTop:12,padding:"9px"}} onClick={cancelOrder}>注文をキャンセル</button>
                 </div>
               ) : ordered ? (
                 <div style={{textAlign:"center",padding:"32px 16px"}}>
                   <div style={{fontSize:"3rem",marginBottom:12}}>✅</div>
-                  <div style={{color:"#5ecf7f",fontWeight:700,fontSize:"1.05rem",marginBottom:6}}>注文を受け付けました！</div>
-                  <div style={{color:"#666",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
+                  <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.05rem",marginBottom:6}}>注文を受け付けました！</div>
+                  <div style={{color:"#8a7f76",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
                   <button className="btn-ghost" style={{marginTop:20}} onClick={()=>setOrdered(false)}>続けて注文する</button>
                 </div>
               ) : (
                 <div>
                   {/* ── スペシャル無料バナー ── */}
                   {isSpecial && (
-                    <div style={{background:"linear-gradient(135deg,#1a0a1a,#2a1030)",border:"1px solid #e040fb55",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{background:"linear-gradient(135deg,#f5eafa,#eddcf5)",border:"1px solid #c98ada55",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontSize:"1.1rem"}}>💜</span>
                       <div>
-                        <div style={{color:"#e040fb",fontWeight:800,fontSize:"0.9rem"}}>スペシャル — 全品無料</div>
-                        <div style={{color:"#888",fontSize:"0.72rem"}}>全ての注文が¥0になります</div>
+                        <div style={{color:"#9c3fb5",fontWeight:800,fontSize:"0.9rem"}}>スペシャル — 全品無料</div>
+                        <div style={{color:"#8a7f76",fontSize:"0.72rem"}}>全ての注文が¥0になります</div>
                       </div>
                     </div>
                   )}
 
                   {/* ── スタッフ割引バナー ── */}
                   {isStaffAccount && (
-                    <div style={{background:"#0a1a10",border:"1px solid #5ecf7f44",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{background:"#e9f5ec",border:"1px solid #7cc39444",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontSize:"1rem"}}>🟢</span>
                       <div>
-                        <div style={{color:"#5ecf7f",fontWeight:700,fontSize:"0.88rem"}}>スタッフ割引 {discountRate}%OFF</div>
-                        <div style={{color:"#555",fontSize:"0.72rem"}}>スタッフ紐付きアカウントは全商品10%オフ</div>
+                        <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.88rem"}}>スタッフ割引 {discountRate}%OFF</div>
+                        <div style={{color:"#9a8f85",fontSize:"0.72rem"}}>スタッフ紐付きアカウントは全商品10%オフ</div>
                       </div>
                     </div>
                   )}
@@ -1162,15 +1162,15 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
 
                   {/* ── カート ── */}
                   {(cart.length>0 || benefitItems.length>0) &&(
-                    <div style={{background:"#0e0e0e",border:"1px solid #1e1e1e",borderRadius:14,padding:"12px 14px",marginTop:4}}>
+                    <div style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:14,padding:"12px 14px",marginTop:4}}>
                       {cart.map(item=>(
                         <div key={item.id} style={S.cartRow}>
-                          <span style={{color:"#ccc",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
+                          <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                            <span style={{color:"#e8e0d0",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
+                            <span style={{color:"#3d3630",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
                             <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                            <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                            <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
                           </div>
                         </div>
                       ))}
@@ -1180,14 +1180,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                           <span style={{color:rank.color,fontWeight:700,fontSize:"0.85rem"}}>🎁 無料</span>
                         </div>
                       ))}
-                      <div style={{paddingTop:8,borderTop:"1px solid #222",marginTop:6}}>
+                      <div style={{paddingTop:8,borderTop:"1px solid #e7ded3",marginTop:6}}>
                         {isSpecial&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                          <span style={{color:"#e040fb",fontSize:"0.8rem"}}>💜 スペシャル割引</span>
-                          <span style={{color:"#e040fb",fontSize:"0.8rem"}}>全品無料</span>
+                          <span style={{color:"#9c3fb5",fontSize:"0.8rem"}}>💜 スペシャル割引</span>
+                          <span style={{color:"#9c3fb5",fontSize:"0.8rem"}}>全品無料</span>
                         </div>}
                         {!isSpecial&&staffDiscount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                          <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>🟢 スタッフ割引 {discountRate}%</span>
-                          <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>－¥{staffDiscount.toLocaleString()}</span>
+                          <span style={{color:"#3e9a5c",fontSize:"0.8rem"}}>🟢 スタッフ割引 {discountRate}%</span>
+                          <span style={{color:"#3e9a5c",fontSize:"0.8rem"}}>－¥{staffDiscount.toLocaleString()}</span>
                         </div>}
                         {!isSpecial&&discount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
                           <span style={{color:rank.color,fontSize:"0.8rem"}}>{rank.benefit.icon} ランク割引</span>
@@ -1198,8 +1198,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                           <span style={{color:rank.color,fontSize:"0.8rem"}}>無料</span>
                         </div>}
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                          <span style={{color:"#aaa",fontSize:"0.85rem"}}>合計</span>
-                          <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"1.3rem"}}>¥{total.toLocaleString()}</span>
+                          <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</span>
+                          <span style={{color:"#3d3630",fontWeight:800,fontSize:"1.3rem"}}>¥{total.toLocaleString()}</span>
                         </div>
                         <div style={{display:"flex",gap:8}}>
                           <button className="btn-clear" onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false);}}>クリア</button>
@@ -1263,32 +1263,32 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
       {/* VIPバッジ */}
       <div style={{textAlign:"center",marginBottom:20,paddingTop:8}}>
         <div style={{fontSize:"2.5rem",marginBottom:8}}>⭐</div>
-        <div style={{color:"#ffd700",fontWeight:800,fontSize:"1.1rem",letterSpacing:"0.08em"}}>VIP会員</div>
-        <div style={{color:"#888",fontSize:"0.8rem",marginTop:4}}>{found.name} さん専用</div>
+        <div style={{color:"#a9791a",fontWeight:800,fontSize:"1.1rem",letterSpacing:"0.08em"}}>VIP会員</div>
+        <div style={{color:"#8a7f76",fontSize:"0.8rem",marginTop:4}}>{found.name} さん専用</div>
       </div>
 
       {/* 今月のプレゼント */}
-      <div style={{background:"linear-gradient(135deg,#1a1400,#2a2000)",border:"1px solid #ffd70055",borderRadius:16,padding:"20px",marginBottom:16}}>
-        <div style={{color:"#ffd700",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.08em",marginBottom:8}}>🎁 今月のプレゼント</div>
+      <div style={{background:"linear-gradient(135deg,#faf0dc,#f7e7c4)",border:"1px solid #e8c14a55",borderRadius:16,padding:"20px",marginBottom:16}}>
+        <div style={{color:"#a9791a",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.08em",marginBottom:8}}>🎁 今月のプレゼント</div>
 
         {!vipGiftDrink ? (
-          <div style={{textAlign:"center",color:"#555",fontSize:"0.88rem",padding:"16px 0"}}>
+          <div style={{textAlign:"center",color:"#9a8f85",fontSize:"0.88rem",padding:"16px 0"}}>
             今月のプレゼントは設定中です<br/>
-            <span style={{fontSize:"0.75rem",color:"#444"}}>しばらくお待ちください</span>
+            <span style={{fontSize:"0.75rem",color:"#a79b90"}}>しばらくお待ちください</span>
           </div>
         ) : (
           <div>
             <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
               <span style={{fontSize:"2.5rem"}}>{vipGiftDrink.emoji}</span>
               <div>
-                <div style={{color:"#e8e0d0",fontWeight:700,fontSize:"1.05rem"}}>{vipGiftDrink.name}</div>
-                <div style={{color:"#ffd700",fontSize:"0.82rem",marginTop:2}}>無料プレゼント ✨</div>
+                <div style={{color:"#3d3630",fontWeight:700,fontSize:"1.05rem"}}>{vipGiftDrink.name}</div>
+                <div style={{color:"#a9791a",fontSize:"0.82rem",marginTop:2}}>無料プレゼント ✨</div>
               </div>
             </div>
 
             {pendingGift ? (
               <div>
-                <div style={{background:"#0f2a0f",border:"1px solid #5ecf7f44",borderRadius:10,padding:"10px 14px",marginBottom:10,color:"#5ecf7f",fontWeight:700,fontSize:"0.88rem"}}>
+                <div style={{background:"#dcefe1",border:"1px solid #7cc39444",borderRadius:10,padding:"10px 14px",marginBottom:10,color:"#3e9a5c",fontWeight:700,fontSize:"0.88rem"}}>
                   ✅ スタッフが準備中です
                 </div>
                 <button className="btn-danger" style={{padding:"9px",fontSize:"0.82rem"}} onClick={cancelGift}>
@@ -1296,13 +1296,13 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
                 </button>
               </div>
             ) : vipGiftUsed ? (
-              <div style={{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
-                <div style={{color:"#555",fontSize:"0.85rem"}}>今月は受け取り済みです</div>
-                <div style={{color:"#444",fontSize:"0.75rem",marginTop:4}}>来月また受け取れます</div>
+              <div style={{background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+                <div style={{color:"#9a8f85",fontSize:"0.85rem"}}>今月は受け取り済みです</div>
+                <div style={{color:"#a79b90",fontSize:"0.75rem",marginTop:4}}>来月また受け取れます</div>
               </div>
             ) : (
               <button
-                style={{width:"100%",background:"linear-gradient(135deg,#b8860b,#ffd700)",color:"#0a0a0a",
+                style={{width:"100%",background:"linear-gradient(135deg,#d9a441,#ffd98a)",color:"#3d3630",
                   border:"none",borderRadius:12,padding:"15px",fontSize:"1rem",fontWeight:800,
                   cursor:"pointer",fontFamily:"inherit",letterSpacing:"0.04em",
                   boxShadow:"0 4px 20px #ffd70044",transition:"transform 0.1s"}}
@@ -1314,7 +1314,7 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
         )}
       </div>
 
-      <div style={{color:"#444",fontSize:"0.75rem",textAlign:"center"}}>
+      <div style={{color:"#a79b90",fontSize:"0.75rem",textAlign:"center"}}>
         プレゼントは月に1回受け取れます
       </div>
     </div>
@@ -1372,7 +1372,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:(open||benefitUsed)?10:0}}>
         <div>
           <div style={{color:rank.color,fontSize:"0.7rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:2}}>🎁 今月の特典</div>
-          <div style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.88rem"}}>{benefitIcon} {benefitName}
+          <div style={{color:"#3d3630",fontWeight:700,fontSize:"0.88rem"}}>{benefitIcon} {benefitName}
             {subText && <span style={{color:rank.color,fontSize:"0.75rem",marginLeft:6,fontWeight:400}}>{subText}</span>}
           </div>
         </div>
@@ -1399,7 +1399,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
             </span>
           ))}
           {isToppingBenefit && benefitItems.length < selectable && (
-            <span style={{color:"#555",fontSize:"0.75rem",alignSelf:"center"}}>
+            <span style={{color:"#9a8f85",fontSize:"0.75rem",alignSelf:"center"}}>
               あと{selectable-benefitItems.length}つ選べます
             </span>
           )}
@@ -1408,7 +1408,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
 
       {open && isToppingBenefit && (
         <div>
-          <div style={{color:"#777",fontSize:"0.75rem",marginBottom:8}}>
+          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>
             トッピングを選択（あと{selectable - benefitItems.length}つ選べます）
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1418,10 +1418,10 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
               return (
                 <button key={item.id}
                   disabled={disabled}
-                  style={{background:sel?rank.color+"33":"#1a1a1a",
-                    border:`1px solid ${sel?rank.color:"#2a2a2a"}`,
+                  style={{background:sel?rank.color+"33":"#f6f1ea",
+                    border:`1px solid ${sel?rank.color:"#e7ded3"}`,
                     borderRadius:10,padding:"12px 18px",cursor:disabled?"default":"pointer",
-                    fontFamily:"inherit",color:sel?rank.color:disabled?"#444":"#aaa",
+                    fontFamily:"inherit",color:sel?rank.color:disabled?"#a79b90":"#8a7f76",
                     fontWeight:sel?700:400,fontSize:"0.9rem",transition:"all 0.15s",opacity:disabled?0.4:1}}
                   onClick={()=>!disabled&&toggleTopping(item)}>
                   {item.emoji} {item.name}{sel&&" ✓"}
@@ -1429,7 +1429,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
               );
             })}
           </div>
-          <div style={{color:"#555",fontSize:"0.72rem",marginTop:6}}>
+          <div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:6}}>
             {benefitItems.length}/{selectable} 選択中
             {selectable < toppingMax && ` （今月の残り使用回数: ${selectable}回）`}
           </div>
@@ -1439,16 +1439,16 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       {/* コーヒー選択（プラチナ） */}
       {open && isCoffeeBenefit && (
         <div>
-          <div style={{color:"#777",fontSize:"0.75rem",marginBottom:8}}>アイスコーヒー / ホットコーヒーから1杯選択</div>
+          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>アイスコーヒー / ホットコーヒーから1杯選択</div>
           <div style={{display:"flex",gap:8}}>
             {coffeeItems.length===0
-              ? <div style={{color:"#555",fontSize:"0.82rem"}}>メニューにアイスコーヒー・ホットコーヒーがありません</div>
+              ? <div style={{color:"#9a8f85",fontSize:"0.82rem"}}>メニューにアイスコーヒー・ホットコーヒーがありません</div>
               : coffeeItems.map(item=>(
                 <button key={item.id} className="menu-item"
                   style={{flex:1,border:`1px solid ${rank.color}44`,background:rank.color+"0a"}}
                   onClick={()=>selectDrink(item)}>
                   <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                  <span style={{fontSize:"0.78rem",fontWeight:600,color:"#ddd",lineHeight:1.2,marginTop:2}}>{item.name}</span>
+                  <span style={{fontSize:"0.78rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2}}>{item.name}</span>
                   <span style={{color:rank.color,fontWeight:700,fontSize:"0.75rem"}}>🎁 無料</span>
                 </button>
               ))
@@ -1460,16 +1460,16 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       {/* 指定ドリンク選択（チタン） */}
       {open && isSpecificDrink && (
         <div>
-          <div style={{color:"#777",fontSize:"0.75rem",marginBottom:8}}>今月の指定ドリンク（1杯無料）</div>
+          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>今月の指定ドリンク（1杯無料）</div>
           {!designatedDrink
-            ? <div style={{color:"#555",fontSize:"0.85rem",background:"#111",borderRadius:8,padding:"10px 12px"}}>
+            ? <div style={{color:"#9a8f85",fontSize:"0.85rem",background:"#ffffff",borderRadius:8,padding:"10px 12px"}}>
                 今月の指定ドリンクはスタッフが設定中です
               </div>
             : (
               <button className="menu-item" style={{width:"100%",border:`1px solid ${rank.color}55`,background:rank.color+"0a"}}
                 onClick={()=>selectDrink(designatedDrink)}>
                 <span style={{fontSize:"1.6rem"}}>{designatedDrink.emoji}</span>
-                <span style={{fontSize:"0.85rem",fontWeight:700,color:"#ddd",marginTop:2}}>{designatedDrink.name}</span>
+                <span style={{fontSize:"0.85rem",fontWeight:700,color:"#8a7f76",marginTop:2}}>{designatedDrink.name}</span>
                 <span style={{color:rank.color,fontWeight:700,fontSize:"0.78rem"}}>🎁 今月の指定ドリンク</span>
               </button>
             )
@@ -1480,14 +1480,14 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       {/* 好きなドリンク選択（サファイア） */}
       {open && isAnyDrink && (
         <div>
-          <div style={{color:"#777",fontSize:"0.75rem",marginBottom:8}}>好きなドリンクを1杯選択（全て対象）</div>
+          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>好きなドリンクを1杯選択（全て対象）</div>
           <div style={S.menuGrid}>
             {anyDrinkItems.map(item=>(
               <button key={item.id} className="menu-item"
                 style={{border:`1px solid ${rank.color}44`,background:rank.color+"0a"}}
                 onClick={()=>selectDrink(item)}>
                 <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                <span style={{fontSize:"0.78rem",fontWeight:600,color:"#ddd",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                <span style={{fontSize:"0.78rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:rank.color,fontWeight:700,fontSize:"0.75rem"}}>🎁 無料</span>
               </button>
             ))}
@@ -1506,12 +1506,12 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
   return (
     <div>
       {/* カテゴリタブ */}
-      <div style={{display:"flex",gap:0,overflowX:"auto",background:"#0d0d0d",borderRadius:"10px 10px 0 0",marginBottom:0}}>
+      <div style={{display:"flex",gap:0,overflowX:"auto",background:"#ffffff",borderRadius:"10px 10px 0 0",marginBottom:0}}>
         {categories.map(cat=>(
           <button key={cat}
             style={{flexShrink:0,background:"transparent",border:"none",
-              borderBottom:`2px solid ${activeTab===cat?"#d4a853":"transparent"}`,
-              color:activeTab===cat?"#d4a853":"#555",padding:"9px 14px",fontSize:"0.8rem",
+              borderBottom:`2px solid ${activeTab===cat?"#d3a94f":"transparent"}`,
+              color:activeTab===cat?"#b07c1e":"#9a8f85",padding:"9px 14px",fontSize:"0.8rem",
               fontWeight:activeTab===cat?700:400,cursor:"pointer",fontFamily:"inherit",
               transition:"all 0.15s",whiteSpace:"nowrap"}}
             onClick={()=>setActiveTab(cat)}>
@@ -1520,15 +1520,15 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
         ))}
       </div>
       {/* 選択カテゴリのメニュー */}
-      <div style={{background:"#0d0d0d",borderRadius:"0 0 10px 10px",padding:"10px 8px",marginBottom:8}}>
+      <div style={{background:"#ffffff",borderRadius:"0 0 10px 10px",padding:"10px 8px",marginBottom:8}}>
         <div style={S.menuGrid}>
           {menu.filter(m=>m.category===activeTab).map(item=>{
             const inCart=cart.find(c=>c.id===item.id);
             return (
               <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                 <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                <span style={{fontSize:"0.78rem",fontWeight:600,color:"#ddd",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
-                <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                <span style={{fontSize:"0.78rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                 {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
               </button>
             );
@@ -1556,9 +1556,9 @@ function RankingBoard({ customers, myId }) {
   return (
     <div style={{marginTop:20,marginBottom:8}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-        <div style={{flex:1,height:1,background:"linear-gradient(90deg,transparent,#333)"}}/>
-        <span style={{color:"#666",fontSize:"0.72rem",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>🏆 メンバーズランキング</span>
-        <div style={{flex:1,height:1,background:"linear-gradient(90deg,#333,transparent)"}}/>
+        <div style={{flex:1,height:1,background:"linear-gradient(90deg,transparent,#f6f1ea)"}}/>
+        <span style={{color:"#8a7f76",fontSize:"0.72rem",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>🏆 メンバーズランキング</span>
+        <div style={{flex:1,height:1,background:"linear-gradient(90deg,#f6f1ea,transparent)"}}/>
       </div>
 
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -1568,19 +1568,19 @@ function RankingBoard({ customers, myId }) {
           return (
             <div key={c.id} style={{
               display:"flex", alignItems:"center", gap:10,
-              background: isMe ? r.color+"18" : "#0f0f0f",
-              border: `1px solid ${isMe ? r.color+"55" : "#1e1e1e"}`,
+              background: isMe ? r.color+"18" : "#ffffff",
+              border: `1px solid ${isMe ? r.color+"55" : "#e7ded3"}`,
               borderRadius:10, padding:"9px 12px",
               boxShadow: isMe ? `0 0 12px ${r.color}22` : "none",
             }}>
               <span style={{fontSize:"1.1rem",flexShrink:0,minWidth:24,textAlign:"center"}}>
-                {i < 3 ? medals[i] : <span style={{color:"#444",fontSize:"0.85rem",fontWeight:700}}>{i+1}</span>}
+                {i < 3 ? medals[i] : <span style={{color:"#a79b90",fontSize:"0.85rem",fontWeight:700}}>{i+1}</span>}
               </span>
               <span style={{fontSize:"0.95rem",flexShrink:0}}>{r.gem}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{
-                    color: isMe ? r.color : "#e8e0d0",
+                    color: isMe ? r.color : "#3d3630",
                     fontWeight: isMe ? 800 : 600,
                     fontSize:"0.9rem",
                     overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
@@ -1589,11 +1589,11 @@ function RankingBoard({ customers, myId }) {
                   </span>
                   {isMe && <span style={{color:r.color,fontSize:"0.65rem",fontWeight:700,background:r.color+"22",border:`1px solid ${r.color}44`,borderRadius:20,padding:"1px 6px",flexShrink:0}}>あなた</span>}
                 </div>
-                <span style={{color:"#555",fontSize:"0.72rem"}}>{r.name}</span>
+                <span style={{color:"#9a8f85",fontSize:"0.72rem"}}>{r.name}</span>
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
-                <div style={{color: isMe ? r.color : "#888",fontWeight:700,fontSize:"0.88rem"}}>{c.currentYearPurchases??0}回</div>
-                <div style={{color:"#444",fontSize:"0.68rem"}}>今年</div>
+                <div style={{color: isMe ? r.color : "#8a7f76",fontWeight:700,fontSize:"0.88rem"}}>{c.currentYearPurchases??0}回</div>
+                <div style={{color:"#a79b90",fontSize:"0.68rem"}}>今年</div>
               </div>
             </div>
           );
@@ -1679,17 +1679,17 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
               <button key={acc.id} className={`staff-select-btn${acc._role==="manager"?" manager":""}`}
                 onClick={()=>{setSelected(acc);setPw("");setErr("");}}>
                 <span style={{fontSize:"1.1rem"}}>{acc._role==="manager"?"👑":"👤"}</span>
-                <span style={{fontWeight:700,color:acc._role==="manager"?"#d4a853":"#e8e0d0"}}>{acc.name}</span>
-                <span style={{color:"#555",fontSize:"0.8rem",marginLeft:"auto"}}>→</span>
+                <span style={{fontWeight:700,color:acc._role==="manager"?"#b07c1e":"#3d3630"}}>{acc.name}</span>
+                <span style={{color:"#9a8f85",fontSize:"0.8rem",marginLeft:"auto"}}>→</span>
               </button>
             ))}
           </div>
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
-            <div style={{color:"#666",fontSize:"0.72rem",marginBottom:2}}>ログイン中のアカウント</div>
-            <div style={{fontWeight:700,color:selected._role==="manager"?"#d4a853":"#e8e0d0",display:"flex",alignItems:"center",gap:6}}>
+          <div style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:10,padding:"12px 14px",marginBottom:4}}>
+            <div style={{color:"#8a7f76",fontSize:"0.72rem",marginBottom:2}}>ログイン中のアカウント</div>
+            <div style={{fontWeight:700,color:selected._role==="manager"?"#b07c1e":"#3d3630",display:"flex",alignItems:"center",gap:6}}>
               <span>{selected._role==="manager"?"👑":"👤"}</span>
               <span>{selected.name}</span>
             </div>
@@ -1856,7 +1856,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
       {/* TOP BAR */}
       <div style={S.topbar}>
         {customer ? (
-          <button className="back-btn" style={{margin:0,fontSize:"0.85rem",color:"#d4a853",fontWeight:700}}
+          <button className="back-btn" style={{margin:0,fontSize:"0.85rem",color:"#b07c1e",fontWeight:700}}
             onClick={()=>{ setCustomer(null); setCart([]); }}>
             ← 客を変える
           </button>
@@ -1865,9 +1865,9 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
         )}
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {customer && (
-            <button className="back-btn" style={{margin:0,fontSize:"0.75rem",color:"#555"}} onClick={()=>setScreen("home")}>退出</button>
+            <button className="back-btn" style={{margin:0,fontSize:"0.75rem",color:"#9a8f85"}} onClick={()=>setScreen("home")}>退出</button>
           )}
-          <span style={{fontSize:"0.75rem",color:isManager?"#d4a853":"#7ab8e8",background:"#181818",padding:"4px 12px",borderRadius:20}}>
+          <span style={{fontSize:"0.75rem",color:isManager?"#b07c1e":"#3b7fb8",background:"#ffffff",padding:"4px 12px",borderRadius:20}}>
             {isManager?"👑":"👤"} {staffName}
           </span>
         </div>
@@ -1875,7 +1875,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
 
       {/* TAB NAV（客未選択時のみ） */}
       {!customer && (
-        <div style={{display:"flex",background:"#0d0d0d",borderBottom:"1px solid #1a1a1a",overflowX:"auto"}}>
+        <div style={{display:"flex",background:"#ffffff",borderBottom:"1px solid #e7ded3",overflowX:"auto"}}>
           {[["order","👥 会員"],["menu","🍽 メニュー"],["cash","💵 現金注文"],["orders","📋 注文"],["history","🗂 履歴"],
             ...(isManager?[["staffmgmt","🔐 スタッフ"]]:[])
           ].map(([k,l])=>(
@@ -1883,7 +1883,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
               onClick={()=>setPosTab(k)} style={{position:"relative",flexShrink:0}}>
               {l}
               {k==="orders" && orders.filter(o=>o.status==="pending").length>0 && (
-                <span style={{position:"absolute",top:6,right:4,background:"#e0115f",color:"#fff",
+                <span style={{position:"absolute",top:6,right:4,background:"#e8467f",color:"#fff",
                   borderRadius:10,padding:"1px 5px",fontSize:"0.6rem",fontWeight:700,lineHeight:1.4}}>
                   {orders.filter(o=>o.status==="pending").length}
                 </span>
@@ -1916,10 +1916,10 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                   <div key={c.id} className="c-row" onClick={()=>setCustomer(c)}>
                     <div style={{width:10,height:10,borderRadius:"50%",background:r.color,flexShrink:0}}/>
                     <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:"0.95rem"}}>{c.name} {c.isVIP&&<span style={{color:"#ffd700",fontSize:"0.8rem"}}>⭐</span>}{c.isSpecial&&<span style={{color:"#e040fb",fontSize:"0.8rem"}}>💜</span>}</div>
+                      <div style={{fontWeight:700,fontSize:"0.95rem"}}>{c.name} {c.isVIP&&<span style={{color:"#a9791a",fontSize:"0.8rem"}}>⭐</span>}{c.isSpecial&&<span style={{color:"#9c3fb5",fontSize:"0.8rem"}}>💜</span>}</div>
                       {isManager
-                        ? <div style={{color:"#555",fontSize:"0.75rem"}}>暗証: {c.pin} · {r.gem}{r.name}</div>
-                        : <div style={{color:"#555",fontSize:"0.75rem"}}>{r.gem}{r.name}</div>
+                        ? <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>暗証: {c.pin} · {r.gem}{r.name}</div>
+                        : <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>{r.gem}{r.name}</div>
                       }
                     </div>
                     <div style={{textAlign:"right",display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
@@ -1976,7 +1976,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                   <span style={{color:rank.color,fontSize:"0.82rem",fontWeight:700}}>{rank.gem} {rank.name}</span>
-                  <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"1rem"}}>{customer.name}</span>
+                  <span style={{color:"#3d3630",fontWeight:700,fontSize:"1rem"}}>{customer.name}</span>
                 </div>
                 {/* 特典ステータス */}
                 <div style={{...S.benefitStripBox, borderColor:rank.color+"44"}}>
@@ -2022,8 +2022,8 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                     return (
                       <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                         <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                        <span style={{fontSize:"0.78rem",fontWeight:600,color:"#ddd",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
-                        <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                        <span style={{fontSize:"0.78rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                        <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                         {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
                       </button>
                     );
@@ -2036,18 +2036,18 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
           {/* カート */}
           <div style={S.cartPanel}>
             {cart.length===0 ? (
-              <div style={{color:"#333",textAlign:"center",fontSize:"0.85rem",padding:"8px 0"}}>商品を選んでください</div>
+              <div style={{color:"#a79b90",textAlign:"center",fontSize:"0.85rem",padding:"8px 0"}}>商品を選んでください</div>
             ) : (
               <>
                 <div style={{maxHeight:100,overflowY:"auto",marginBottom:6}}>
                   {cart.map(item=>(
                     <div key={item.id} style={S.cartRow}>
-                      <span style={{color:"#ccc",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
+                      <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                        <span style={{color:"#e8e0d0",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
+                        <span style={{color:"#3d3630",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
                         <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                        <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>
+                        <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>
                           ¥{(item.price*item.qty).toLocaleString()}
                         </span>
                       </div>
@@ -2056,10 +2056,10 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                 </div>
 
                 {/* 割引・合計 */}
-                <div style={{paddingTop:8,borderTop:"1px solid #222"}}>
+                <div style={{paddingTop:8,borderTop:"1px solid #e7ded3"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                    <span style={{color:"#666",fontSize:"0.8rem"}}>小計</span>
-                    <span style={{color:"#888",fontSize:"0.8rem"}}>¥{subtotal.toLocaleString()}</span>
+                    <span style={{color:"#8a7f76",fontSize:"0.8rem"}}>小計</span>
+                    <span style={{color:"#8a7f76",fontSize:"0.8rem"}}>¥{subtotal.toLocaleString()}</span>
                   </div>
                   {!isSpecialCustomer && discount>0 && (
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
@@ -2069,19 +2069,19 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                   )}
                   {!isSpecialCustomer && posStaffDiscount>0 && (
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                      <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>🟢 スタッフ割引 {posLinkedStaff.discountRate ?? 10}%</span>
-                      <span style={{color:"#5ecf7f",fontWeight:700,fontSize:"0.8rem"}}>－¥{posStaffDiscount.toLocaleString()}</span>
+                      <span style={{color:"#3e9a5c",fontSize:"0.8rem"}}>🟢 スタッフ割引 {posLinkedStaff.discountRate ?? 10}%</span>
+                      <span style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.8rem"}}>－¥{posStaffDiscount.toLocaleString()}</span>
                     </div>
                   )}
                   {isSpecialCustomer && (
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                      <span style={{color:"#e040fb",fontSize:"0.8rem"}}>💜 スペシャル（全品無料）</span>
-                      <span style={{color:"#e040fb",fontWeight:700,fontSize:"0.8rem"}}>－¥{subtotal.toLocaleString()}</span>
+                      <span style={{color:"#9c3fb5",fontSize:"0.8rem"}}>💜 スペシャル（全品無料）</span>
+                      <span style={{color:"#9c3fb5",fontWeight:700,fontSize:"0.8rem"}}>－¥{subtotal.toLocaleString()}</span>
                     </div>
                   )}
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                    <span style={{color:"#aaa",fontSize:"0.85rem"}}>合計</span>
-                    <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"1.3rem"}}>¥{total.toLocaleString()}</span>
+                    <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</span>
+                    <span style={{color:"#3d3630",fontWeight:800,fontSize:"1.3rem"}}>¥{total.toLocaleString()}</span>
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     <button className="btn-clear" onClick={()=>setCart([])}>クリア</button>
@@ -2210,38 +2210,38 @@ function BackupPanel({ customers }) {
   };
 
   return (
-    <div style={{background:"#0d1a20",border:"1px solid #4fa3e844",borderRadius:12,padding:"14px",marginBottom:14}}>
-      <div style={{color:"#4fa3e8",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:10}}>
+    <div style={{background:"#e9f1fa",border:"1px solid #7bafdb44",borderRadius:12,padding:"14px",marginBottom:14}}>
+      <div style={{color:"#3b7fb8",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:10}}>
         💾 バックアップ & リストア
       </div>
 
       {/* バックアップ */}
       <div style={{marginBottom:12}}>
-        <div style={{color:"#888",fontSize:"0.78rem",marginBottom:8}}>
+        <div style={{color:"#8a7f76",fontSize:"0.78rem",marginBottom:8}}>
           全会員データをテキストとして表示→コピーして保存できます
         </div>
         <button onClick={openBackup}
-          style={{width:"100%",background:"linear-gradient(135deg,#1a3a4a,#1e5070)",
-            border:"1px solid #4fa3e855",borderRadius:10,padding:"13px",
-            color:"#4fa3e8",fontWeight:700,fontSize:"0.92rem",cursor:"pointer",
+          style={{width:"100%",background:"linear-gradient(135deg,#dceaf5,#cfe0f0)",
+            border:"1px solid #7bafdb55",borderRadius:10,padding:"13px",
+            color:"#3b7fb8",fontWeight:700,fontSize:"0.92rem",cursor:"pointer",
             fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <span>📋</span> バックアップデータを表示
         </button>
-        <div style={{color:"#444",fontSize:"0.7rem",marginTop:6,textAlign:"center"}}>
+        <div style={{color:"#a79b90",fontSize:"0.7rem",marginTop:6,textAlign:"center"}}>
           表示されたテキストをコピーしてメモ帳やメールに保存してください
         </div>
       </div>
 
       {/* リストア */}
-      <div style={{borderTop:"1px solid #1e2e38",paddingTop:12}}>
+      <div style={{borderTop:"1px solid #dbe4ec",paddingTop:12}}>
         <button onClick={()=>setRestoreMode(p=>!p)}
-          style={{background:"transparent",border:"1px solid #2a3a44",borderRadius:8,padding:"8px 14px",
-            color:"#666",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+          style={{background:"transparent",border:"1px solid #dbe4ec",borderRadius:8,padding:"8px 14px",
+            color:"#8a7f76",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
           {restoreMode?"▲ リストアを閉じる":"▼ バックアップから復元する"}
         </button>
         {restoreMode && (
           <div style={{marginTop:10}}>
-            <div style={{color:"#888",fontSize:"0.78rem",marginBottom:6}}>
+            <div style={{color:"#8a7f76",fontSize:"0.78rem",marginBottom:6}}>
               保存済みのJSONテキストを貼り付けてください
             </div>
             <textarea
@@ -2250,7 +2250,7 @@ function BackupPanel({ customers }) {
               value={restoreText}
               onChange={e=>setRestoreText(e.target.value)}/>
             {restoreMsg && (
-              <div style={{color:restoreMsg.startsWith("✅")?"#5ecf7f":"#e06655",
+              <div style={{color:restoreMsg.startsWith("✅")?"#3e9a5c":"#c94a45",
                 fontSize:"0.82rem",fontWeight:600,margin:"6px 0"}}>
                 {restoreMsg}
               </div>
@@ -2268,8 +2268,8 @@ function BackupPanel({ customers }) {
           <div style={{...S.modal,maxHeight:"88vh"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
               <div>
-                <h3 style={{color:"#4fa3e8",margin:0,fontSize:"1rem"}}>📋 バックアップデータ</h3>
-                <div style={{color:"#555",fontSize:"0.72rem",marginTop:2}}>
+                <h3 style={{color:"#3b7fb8",margin:0,fontSize:"1rem"}}>📋 バックアップデータ</h3>
+                <div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:2}}>
                   全文をコピーしてメモ帳・メール等に保存
                 </div>
               </div>
@@ -2284,13 +2284,13 @@ function BackupPanel({ customers }) {
                 fontFamily:"monospace",lineHeight:1.4,overflowY:"auto"}}/>
 
             <button onClick={copyToClipboard}
-              style={{width:"100%",marginTop:10,background:copied?"#1a3a1a":"linear-gradient(135deg,#1a3a4a,#1e5070)",
-                border:`1px solid ${copied?"#5ecf7f55":"#4fa3e855"}`,borderRadius:10,padding:"13px",
-                color:copied?"#5ecf7f":"#4fa3e8",fontWeight:700,fontSize:"0.95rem",
+              style={{width:"100%",marginTop:10,background:copied?"#dcefe1":"linear-gradient(135deg,#dceaf5,#cfe0f0)",
+                border:`1px solid ${copied?"#7cc39455":"#7bafdb55"}`,borderRadius:10,padding:"13px",
+                color:copied?"#3e9a5c":"#3b7fb8",fontWeight:700,fontSize:"0.95rem",
                 cursor:"pointer",fontFamily:"inherit",transition:"all 0.3s"}}>
               {copied ? "✅ コピーしました！" : "📋 全てコピーする"}
             </button>
-            <div style={{color:"#444",fontSize:"0.7rem",marginTop:8,textAlign:"center"}}>
+            <div style={{color:"#a79b90",fontSize:"0.7rem",marginTop:8,textAlign:"center"}}>
               コピー後、メモ帳・メール・Googleドキュメント等に貼り付けて保存してください
             </div>
           </div>
@@ -2341,21 +2341,21 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
   const AccCard = ({acc, isManager, onEdit, onDel, ltId, setLtId, onLink, onUnlink}) => {
     const linked = acc.linkedCustomerId ? customers.find(c=>c.id===acc.linkedCustomerId) : null;
     return (
-      <div style={{background:"#111",border:`1px solid ${isManager?"#d4a85333":"#1e1e1e"}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+      <div style={{background:"#ffffff",border:`1px solid ${isManager?"#d3a94f33":"#e7ded3"}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
           <span style={{fontSize:"1.2rem"}}>{isManager?"👑":"👤"}</span>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:"0.95rem",color:isManager?"#d4a853":"#e8e0d0"}}>{acc.name}</div>
-            <div style={{color:"#888",fontSize:"0.75rem",marginTop:2}}>PW: {acc.password}</div>
+            <div style={{fontWeight:700,fontSize:"0.95rem",color:isManager?"#b07c1e":"#3d3630"}}>{acc.name}</div>
+            <div style={{color:"#8a7f76",fontSize:"0.75rem",marginTop:2}}>PW: {acc.password}</div>
           </div>
           <button className="btn-tiny-edit" onClick={()=>onEdit(acc)}>✏️</button>
           <button className="btn-tiny-del"  onClick={()=>onDel(acc.id)}>🗑</button>
         </div>
-        <div style={{borderTop:"1px solid #1a1a1a",paddingTop:8}}>
+        <div style={{borderTop:"1px solid #e7ded3",paddingTop:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <div style={{color:"#555",fontSize:"0.72rem"}}>🔗 客アカウントリンク</div>
+            <div style={{color:"#9a8f85",fontSize:"0.72rem"}}>🔗 客アカウントリンク</div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <span style={{color:"#555",fontSize:"0.72rem"}}>割引率:</span>
+              <span style={{color:"#9a8f85",fontSize:"0.72rem"}}>割引率:</span>
               <input
                 type="number" min="0" max="100"
                 value={acc.discountRate ?? 10}
@@ -2364,31 +2364,31 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
                   if (isManager) saveManagerAccounts(managerAccounts.map(a=>a.id===acc.id?{...a,discountRate:rate}:a));
                   else saveStaffAccounts(staffAccounts.map(a=>a.id===acc.id?{...a,discountRate:rate}:a));
                 }}
-                style={{width:52,background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:6,padding:"3px 6px",color:"#5ecf7f",fontSize:"0.82rem",fontWeight:700,fontFamily:"inherit",textAlign:"center"}}
+                style={{width:52,background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:6,padding:"3px 6px",color:"#3e9a5c",fontSize:"0.82rem",fontWeight:700,fontFamily:"inherit",textAlign:"center"}}
               />
-              <span style={{color:"#5ecf7f",fontSize:"0.72rem"}}>%</span>
+              <span style={{color:"#3e9a5c",fontSize:"0.72rem"}}>%</span>
             </div>
           </div>
           {linked ? (
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{color:"#7be8c8",fontSize:"0.82rem",fontWeight:600}}>{linked.name}</span>
+              <span style={{color:"#2f9b85",fontSize:"0.82rem",fontWeight:600}}>{linked.name}</span>
               <div style={{display:"flex",gap:6}}>
-                <button style={{background:"transparent",border:"1px solid #2a2a2a",borderRadius:20,padding:"3px 10px",color:"#888",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>変更</button>
-                <button style={{background:"transparent",border:"1px solid #3a2020",borderRadius:20,padding:"3px 10px",color:"#e06655",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>onUnlink(acc.id)}>解除</button>
+                <button style={{background:"transparent",border:"1px solid #e7ded3",borderRadius:20,padding:"3px 10px",color:"#8a7f76",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>変更</button>
+                <button style={{background:"transparent",border:"1px solid #f0d6d4",borderRadius:20,padding:"3px 10px",color:"#c94a45",fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>onUnlink(acc.id)}>解除</button>
               </div>
             </div>
           ) : (
-            <button style={{background:"#111820",border:"1px solid #7be8c833",borderRadius:20,padding:"4px 12px",color:"#7be8c8",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>
+            <button style={{background:"#e9f1fa",border:"1px solid #7fcdbd33",borderRadius:20,padding:"4px 12px",color:"#2f9b85",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>
               {ltId===acc.id?"閉じる ↑":"客アカウントを紐付ける"}
             </button>
           )}
           {ltId===acc.id && (
             <div style={{marginTop:8,maxHeight:160,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
               {customers.map(c=>(
-                <button key={c.id} style={{background:acc.linkedCustomerId===c.id?"#1a2a20":"#141414",border:`1px solid ${acc.linkedCustomerId===c.id?"#7be8c855":"#222"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontFamily:"inherit",display:"flex",justifyContent:"space-between"}}
+                <button key={c.id} style={{background:acc.linkedCustomerId===c.id?"#e9f5ec":"#ffffff",border:`1px solid ${acc.linkedCustomerId===c.id?"#7fcdbd55":"#e7ded3"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontFamily:"inherit",display:"flex",justifyContent:"space-between"}}
                   onClick={()=>onLink(acc.id, c.id)}>
-                  <span style={{color:"#e8e0d0",fontSize:"0.85rem"}}>{c.name}</span>
-                  <span style={{color:"#555",fontSize:"0.72rem"}}>No.{c.id}</span>
+                  <span style={{color:"#3d3630",fontSize:"0.85rem"}}>{c.name}</span>
+                  <span style={{color:"#9a8f85",fontSize:"0.72rem"}}>No.{c.id}</span>
                 </button>
               ))}
             </div>
@@ -2404,7 +2404,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
 
       {/* マネージャーアカウント */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <h2 style={{...S.title,margin:0,color:"#d4a853"}}>👑 マネージャー</h2>
+        <h2 style={{...S.title,margin:0,color:"#b07c1e"}}>👑 マネージャー</h2>
         <button className="btn-sm-gold" onClick={openNewMgr}>＋ 追加</button>
       </div>
       {(managerAccounts||[]).map(acc=>(
@@ -2413,18 +2413,18 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
       ))}
 
       {/* VIPプレゼントドリンク設定 */}
-      <div style={{background:"linear-gradient(135deg,#1a1400,#2a2000)",border:"1px solid #ffd70044",borderRadius:12,padding:"14px",marginBottom:14,marginTop:10}}>
-        <div style={{color:"#ffd700",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>⭐ VIPプレゼント — 今月のドリンク</div>
+      <div style={{background:"linear-gradient(135deg,#faf0dc,#f7e7c4)",border:"1px solid #e8c14a44",borderRadius:12,padding:"14px",marginBottom:14,marginTop:10}}>
+        <div style={{color:"#a9791a",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>⭐ VIPプレゼント — 今月のドリンク</div>
         {vipGiftDrink ? (
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <span style={{color:"#e8e0d0",fontWeight:700}}>{vipGiftDrink.emoji} {vipGiftDrink.name}</span>
-            <button style={{background:"transparent",border:"1px solid #3a3a3a",borderRadius:20,padding:"3px 10px",color:"#666",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveVipGiftDrink(null)}>解除</button>
+            <span style={{color:"#3d3630",fontWeight:700}}>{vipGiftDrink.emoji} {vipGiftDrink.name}</span>
+            <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:20,padding:"3px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveVipGiftDrink(null)}>解除</button>
           </div>
-        ) : <div style={{color:"#555",fontSize:"0.82rem",marginBottom:10}}>未設定</div>}
+        ) : <div style={{color:"#9a8f85",fontSize:"0.82rem",marginBottom:10}}>未設定</div>}
         <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
           {menu.map(item=>(
             <button key={item.id}
-              style={{background:vipGiftDrink?.id===item.id?"#2a2000":"#141414",border:`1px solid ${vipGiftDrink?.id===item.id?"#ffd700":"#2a2a2a"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",color:vipGiftDrink?.id===item.id?"#ffd700":"#888",fontSize:"0.8rem",fontWeight:vipGiftDrink?.id===item.id?700:400,transition:"all 0.15s"}}
+              style={{background:vipGiftDrink?.id===item.id?"#f7e7c4":"#ffffff",border:`1px solid ${vipGiftDrink?.id===item.id?"#e8c14a":"#e7ded3"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",color:vipGiftDrink?.id===item.id?"#a9791a":"#8a7f76",fontSize:"0.8rem",fontWeight:vipGiftDrink?.id===item.id?700:400,transition:"all 0.15s"}}
               onClick={()=>saveVipGiftDrink(item)}>
               {item.emoji} {item.name}
             </button>
@@ -2442,27 +2442,27 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
           ltId={linkTarget} setLtId={setLinkTarget} onLink={linkStaff} onUnlink={unlinkStaff}/>
       ))}
       {/* 店長の指名（店長はお客さんのPINを変更できる） */}
-      <div style={{background:"#0e0e0e",border:"1px solid #d4a85333",borderRadius:12,padding:"12px 14px",marginTop:4,marginBottom:8}}>
-        <div style={{fontWeight:700,color:"#d4a853",fontSize:"0.9rem",marginBottom:4}}>⭐ 店長の指名</div>
-        <div style={{color:"#888",fontSize:"0.72rem",marginBottom:10}}>店長に選ばれたスタッフは、お客さんの暗証番号（PIN）を変更できます。店長は1人までです。</div>
+      <div style={{background:"#ffffff",border:"1px solid #d3a94f33",borderRadius:12,padding:"12px 14px",marginTop:4,marginBottom:8}}>
+        <div style={{fontWeight:700,color:"#b07c1e",fontSize:"0.9rem",marginBottom:4}}>⭐ 店長の指名</div>
+        <div style={{color:"#8a7f76",fontSize:"0.72rem",marginBottom:10}}>店長に選ばれたスタッフは、お客さんの暗証番号（PIN）を変更できます。店長は1人までです。</div>
         {staffAccounts.length===0
-          ? <div style={{color:"#666",fontSize:"0.8rem"}}>スタッフがいません</div>
+          ? <div style={{color:"#8a7f76",fontSize:"0.8rem"}}>スタッフがいません</div>
           : staffAccounts.map(a=>(
-            <button key={a.id} onClick={()=>toggleChief(a.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",boxSizing:"border-box",background:a.isChief?"#2a2000":"#161616",border:`1px solid ${a.isChief?"#d4a853":"#262626"}`,borderRadius:10,padding:"10px 12px",marginBottom:6,cursor:"pointer"}}>
-              <span style={{color:a.isChief?"#d4a853":"#e8e0d0",fontWeight:a.isChief?700:500,fontSize:"0.9rem"}}>{a.isChief?"⭐ ":""}{a.name}</span>
-              <span style={{color:a.isChief?"#d4a853":"#666",fontSize:"0.78rem"}}>{a.isChief?"店長":"店長にする"}</span>
+            <button key={a.id} onClick={()=>toggleChief(a.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",boxSizing:"border-box",background:a.isChief?"#f7e7c4":"#ffffff",border:`1px solid ${a.isChief?"#d3a94f":"#e7ded3"}`,borderRadius:10,padding:"10px 12px",marginBottom:6,cursor:"pointer"}}>
+              <span style={{color:a.isChief?"#b07c1e":"#3d3630",fontWeight:a.isChief?700:500,fontSize:"0.9rem"}}>{a.isChief?"⭐ ":""}{a.name}</span>
+              <span style={{color:a.isChief?"#b07c1e":"#8a7f76",fontSize:"0.78rem"}}>{a.isChief?"店長":"店長にする"}</span>
             </button>
           ))
         }
       </div>
-      {staffAccounts.length===0&&<div style={{textAlign:"center",color:"#333",padding:"20px",background:"#0f0f0f",borderRadius:12}}>スタッフアカウントがありません</div>}
+      {staffAccounts.length===0&&<div style={{textAlign:"center",color:"#8a7f76",padding:"20px",background:"#ffffff",borderRadius:12}}>スタッフアカウントがありません</div>}
 
       {/* マネージャー編集モーダル */}
       {editingMgr && (
         <div style={S.overlay}>
           <div style={{...S.modal,paddingBottom:28}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{color:"#d4a853",margin:0}}>{editingMgr==="new"?"マネージャー追加":"マネージャー編集"}</h3>
+              <h3 style={{color:"#b07c1e",margin:0}}>{editingMgr==="new"?"マネージャー追加":"マネージャー編集"}</h3>
               <button className="close-btn" onClick={()=>setEditingMgr(null)}>✕</button>
             </div>
             <div style={{marginBottom:12}}><label style={S.label}>名前 *</label><input style={S.input} placeholder="例: 田中 店長" value={form.name||""} onChange={e=>upd("name",e.target.value)}/></div>
@@ -2477,7 +2477,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
         <div style={S.overlay}>
           <div style={{...S.modal,paddingBottom:28}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{color:"#d4a853",margin:0}}>{editingStaff==="new"?"スタッフ追加":"スタッフ編集"}</h3>
+              <h3 style={{color:"#b07c1e",margin:0}}>{editingStaff==="new"?"スタッフ追加":"スタッフ編集"}</h3>
               <button className="close-btn" onClick={()=>setEditingStaff(null)}>✕</button>
             </div>
             <div style={{marginBottom:12}}><label style={S.label}>名前 *</label><input style={S.input} placeholder="例: 山田 花子" value={form.name||""} onChange={e=>upd("name",e.target.value)}/></div>
@@ -2598,8 +2598,8 @@ function SalesHistoryPanel({ customers, orders }) {
       <h2 style={{...S.title, margin:"0 0 14px"}}>会計履歴</h2>
 
       {days.length === 0 ? (
-        <div style={{textAlign:"center",color:"#333",padding:"40px 0",fontSize:"0.88rem",
-          background:"#0f0f0f",borderRadius:12}}>
+        <div style={{textAlign:"center",color:"#a79b90",padding:"40px 0",fontSize:"0.88rem",
+          background:"#ffffff",borderRadius:12}}>
           まだ会計履歴がありません
         </div>
       ) : days.map(day => {
@@ -2612,18 +2612,18 @@ function SalesHistoryPanel({ customers, orders }) {
             {/* 日付ヘッダー */}
             <div style={{
               display:"flex", justifyContent:"space-between", alignItems:"center",
-              background:"#141414", border:"1px solid #222", borderRadius:10,
+              background:"#ffffff", border:"1px solid #e7ded3", borderRadius:10,
               padding:"10px 14px", marginBottom:8,
               position:"sticky", top:0, zIndex:2,
             }}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{color:"#d4a853",fontSize:"0.9rem"}}>📅</span>
-                <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.92rem"}}>{day}</span>
-                <span style={{color:"#555",fontSize:"0.75rem"}}>({dayCount}件)</span>
+                <span style={{color:"#b07c1e",fontSize:"0.9rem"}}>📅</span>
+                <span style={{color:"#3d3630",fontWeight:700,fontSize:"0.92rem"}}>{day}</span>
+                <span style={{color:"#9a8f85",fontSize:"0.75rem"}}>({dayCount}件)</span>
               </div>
               <div style={{textAlign:"right"}}>
-                <span style={{color:"#555",fontSize:"0.72rem",marginRight:4}}>合計</span>
-                <span style={{color:"#d4a853",fontWeight:800,fontSize:"1.05rem"}}>¥{dayTotal.toLocaleString()}</span>
+                <span style={{color:"#9a8f85",fontSize:"0.72rem",marginRight:4}}>合計</span>
+                <span style={{color:"#b07c1e",fontWeight:800,fontSize:"1.05rem"}}>¥{dayTotal.toLocaleString()}</span>
               </div>
             </div>
 
@@ -2633,55 +2633,55 @@ function SalesHistoryPanel({ customers, orders }) {
                 const time = h.date ? h.date.split(" ")[1] : "";
                 return (
                   <div key={i} style={{
-                    background:"#0f0f0f", border:"1px solid #1a1a1a",
+                    background:"#ffffff", border:"1px solid #e7ded3",
                     borderRadius:10, padding:"10px 14px",
                     display:"flex", gap:10, alignItems:"flex-start",
                   }}>
                     <div style={{flexShrink:0,marginTop:2}}>
-                      <div style={{color:"#444",fontSize:"0.7rem"}}>{time}</div>
+                      <div style={{color:"#a79b90",fontSize:"0.7rem"}}>{time}</div>
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                        <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"0.88rem"}}>
-                          {h.isCash && <span style={{color:"#5ecf7f",marginRight:4}}>💵</span>}
+                        <span style={{color:"#3d3630",fontWeight:700,fontSize:"0.88rem"}}>
+                          {h.isCash && <span style={{color:"#3e9a5c",marginRight:4}}>💵</span>}
                           {h.customerName}
                         </span>
                         <div style={{textAlign:"right",flexShrink:0}}>
-                          <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"0.95rem"}}>¥{(h.amount||0).toLocaleString()}</span>
+                          <span style={{color:"#3d3630",fontWeight:800,fontSize:"0.95rem"}}>¥{(h.amount||0).toLocaleString()}</span>
                           {h.discount>0 && (
-                            <div style={{color:"#888",fontSize:"0.7rem"}}>割引 -¥{h.discount.toLocaleString()}</div>
+                            <div style={{color:"#8a7f76",fontSize:"0.7rem"}}>割引 -¥{h.discount.toLocaleString()}</div>
                           )}
                         </div>
                       </div>
                       {h.items && (
-                        <div style={{color:"#555",fontSize:"0.75rem",marginTop:3,
+                        <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:3,
                           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {h.items}
                         </div>
                       )}
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                         {h.isCash ? (
-                          <span style={{color:"#5ecf7f",background:"#0a1a10",border:"1px solid #5ecf7f33",borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>
+                          <span style={{color:"#3e9a5c",background:"#e9f5ec",border:"1px solid #7cc39433",borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>
                             🧾 現金 · 👤 {h.performer || "スタッフ"}
                           </span>
                         ) : (
                         <span style={{
-                          color: h.performer==="マネージャー" ? "#d4a853" : "#7ab8e8",
-                          background: h.performer==="マネージャー" ? "#1a1400" : "#111820",
-                          border: `1px solid ${h.performer==="マネージャー"?"#d4a85333":"#7ab8e833"}`,
+                          color: h.performer==="マネージャー" ? "#b07c1e" : "#3b7fb8",
+                          background: h.performer==="マネージャー" ? "#faf0dc" : "#e9f1fa",
+                          border: `1px solid ${h.performer==="マネージャー"?"#d3a94f33":"#8fbde033"}`,
                           borderRadius:20, padding:"1px 7px", fontSize:"0.68rem",
                         }}>
                           {h.performer==="マネージャー" ? "👑" : "👤"} {h.performer || "スタッフ"}
                         </span>
                         )}
                         {h.fromOrder && (
-                          <span style={{color:"#8a7a4a",background:"#14120a",border:"1px solid #8a7a4a33",
+                          <span style={{color:"#8f7a3a",background:"#faf0dc",border:"1px solid #c4b48a33",
                             borderRadius:20,padding:"1px 7px",fontSize:"0.68rem"}}>
                             📋 注文記録から
                           </span>
                         )}
                         {h.subtotal && h.subtotal !== h.amount && (
-                          <span style={{color:"#3a3a3a",fontSize:"0.7rem"}}>小計 ¥{h.subtotal.toLocaleString()}</span>
+                          <span style={{color:"#a79b90",fontSize:"0.7rem"}}>小計 ¥{h.subtotal.toLocaleString()}</span>
                         )}
                       </div>
                     </div>
@@ -2773,20 +2773,20 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       <h2 style={{...S.title,margin:"0 0 14px"}}>注文管理</h2>
 
       {/* 受付中 */}
-      <div style={{color:"#555",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:8}}>
-        受付中 {pending.length>0&&<span style={{color:"#e0115f",fontWeight:700}}>({pending.length}件)</span>}
+      <div style={{color:"#9a8f85",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:8}}>
+        受付中 {pending.length>0&&<span style={{color:"#c21354",fontWeight:700}}>({pending.length}件)</span>}
       </div>
 
       {pending.length===0 ? (
-        <div style={{textAlign:"center",color:"#333",padding:"24px 0",fontSize:"0.85rem",
-          background:"#0f0f0f",borderRadius:12,marginBottom:20}}>
+        <div style={{textAlign:"center",color:"#a79b90",padding:"24px 0",fontSize:"0.85rem",
+          background:"#ffffff",borderRadius:12,marginBottom:20}}>
           現在注文はありません
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
           {pending.map(order=>(
             <div key={order.orderId} style={{
-              background:"#0f1808",border:`1px solid ${order.rankColor}55`,
+              background:"#eef3df",border:`1px solid ${order.rankColor}55`,
               borderRadius:14,padding:"12px 14px",
               boxShadow:`0 0 12px ${order.rankColor}18`,
             }}>
@@ -2794,34 +2794,34 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                     <span style={{fontSize:"0.9rem"}}>{order.rankGem}</span>
-                    <span style={{color:"#e8e0d0",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
+                    <span style={{color:"#3d3630",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
                     {order.isVipGift
-                      ? <span style={{color:"#ffd700",fontSize:"0.72rem",border:"1px solid #ffd70055",borderRadius:20,padding:"1px 8px",fontWeight:700}}>⭐ VIPギフト</span>
+                      ? <span style={{color:"#a9791a",fontSize:"0.72rem",border:"1px solid #e8c14a55",borderRadius:20,padding:"1px 8px",fontWeight:700}}>⭐ VIPギフト</span>
                       : order.isCash
-                        ? <span style={{color:"#5ecf7f",fontSize:"0.72rem",border:"1px solid #5ecf7f55",borderRadius:20,padding:"1px 8px",fontWeight:700}}>💵 現金</span>
+                        ? <span style={{color:"#3e9a5c",fontSize:"0.72rem",border:"1px solid #7cc39455",borderRadius:20,padding:"1px 8px",fontWeight:700}}>💵 現金</span>
                         : order.isSpecial
-                          ? <span style={{color:"#e040fb",fontSize:"0.72rem",border:"1px solid #e040fb55",borderRadius:20,padding:"1px 8px",fontWeight:700}}>💜 スペシャル</span>
+                          ? <span style={{color:"#9c3fb5",fontSize:"0.72rem",border:"1px solid #c98ada55",borderRadius:20,padding:"1px 8px",fontWeight:700}}>💜 スペシャル</span>
                           : <span style={{color:order.rankColor,fontSize:"0.72rem",border:`1px solid ${order.rankColor}55`,borderRadius:20,padding:"1px 7px"}}>{order.rankName}</span>
                     }
                   </div>
-                  <div style={{color:"#555",fontSize:"0.72rem"}}>{order.createdAt}</div>
+                  <div style={{color:"#9a8f85",fontSize:"0.72rem"}}>{order.createdAt}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{color:"#e8e0d0",fontWeight:800,fontSize:"1.15rem"}}>¥{order.total.toLocaleString()}</div>
+                  <div style={{color:"#3d3630",fontWeight:800,fontSize:"1.15rem"}}>¥{order.total.toLocaleString()}</div>
                   {order.discount>0&&<div style={{color:order.rankColor,fontSize:"0.72rem"}}>割引 -¥{order.discount.toLocaleString()}</div>}
                 </div>
               </div>
-              <div style={{borderTop:"1px solid #1e2a10",paddingTop:8,marginBottom:10}}>
+              <div style={{borderTop:"1px solid #dfe7cd",paddingTop:8,marginBottom:10}}>
                 {(order.items||[]).map((item,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.82rem",marginBottom:3}}>
-                    <span style={{color:"#aaa"}}>{item.emoji} {item.name} × {item.qty}</span>
-                    <span style={{color:"#888"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                    <span style={{color:"#8a7f76"}}>{item.emoji} {item.name} × {item.qty}</span>
+                    <span style={{color:"#8a7f76"}}>¥{(item.price*item.qty).toLocaleString()}</span>
                   </div>
                 ))}
                 {(order.benefitItems||[]).map((item,i)=>(
                   <div key={"b"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.82rem",marginBottom:3}}>
-                    <span style={{color:order.rankColor||"#e0b84a"}}>🎁 {item.emoji} {item.name} × {item.qty}（特典）</span>
-                    <span style={{color:"#5ecf7f"}}>無料</span>
+                    <span style={{color:order.rankColor||"#a9791a"}}>🎁 {item.emoji} {item.name} × {item.qty}（特典）</span>
+                    <span style={{color:"#3e9a5c"}}>無料</span>
                   </div>
                 ))}
               </div>
@@ -2829,8 +2829,8 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                 <button className="btn-danger" style={{padding:"8px",fontSize:"0.8rem"}}
                   onClick={()=>deleteOrder(order)}>キャンセル</button>
                 {order.staffLinked && order.staffLinked===staffName ? (
-                  <div style={{flex:1,background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:10,padding:"10px",
-                    color:"#555",fontSize:"0.82rem",textAlign:"center"}}>
+                  <div style={{flex:1,background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:10,padding:"10px",
+                    color:"#9a8f85",fontSize:"0.82rem",textAlign:"center"}}>
                     🔒 自分の注文は完了できません
                   </div>
                 ) : (
@@ -2847,19 +2847,19 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       {/* 完了済み */}
       {completed.length>0&&(
         <>
-          <div style={{color:"#555",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:8}}>完了済み（直近10件）</div>
+          <div style={{color:"#9a8f85",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:8}}>完了済み（直近10件）</div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {completed.map(order=>(
-              <div key={order.orderId} style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:10,padding:"10px 12px",opacity:0.7}}>
+              <div key={order.orderId} style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:10,padding:"10px 12px",opacity:0.7}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
-                    <span style={{color:"#888",fontSize:"0.88rem"}}>{order.customerName}</span>
-                    <span style={{color:"#444",fontSize:"0.72rem",marginLeft:8}}>{order.completedAt}</span>
+                    <span style={{color:"#8a7f76",fontSize:"0.88rem"}}>{order.customerName}</span>
+                    <span style={{color:"#a79b90",fontSize:"0.72rem",marginLeft:8}}>{order.completedAt}</span>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{color:"#5ecf7f",fontSize:"0.85rem",fontWeight:700}}>¥{order.total.toLocaleString()}</span>
-                    <span style={{color:"#555",fontSize:"0.72rem"}}>{order.completedBy || "スタッフ"}</span>
-                    <span style={{color:"#5ecf7f",fontSize:"0.72rem"}}>✓ 完了</span>
+                    <span style={{color:"#3e9a5c",fontSize:"0.85rem",fontWeight:700}}>¥{order.total.toLocaleString()}</span>
+                    <span style={{color:"#9a8f85",fontSize:"0.72rem"}}>{order.completedBy || "スタッフ"}</span>
+                    <span style={{color:"#3e9a5c",fontSize:"0.72rem"}}>✓ 完了</span>
                   </div>
                 </div>
               </div>
@@ -2911,27 +2911,27 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
       </div>
 
       {/* ── 今月の指定ドリンク設定（チタン特典用） ── */}
-      <div style={{background:"#0e1a1e",border:"1px solid #9da8b044",borderRadius:12,padding:"12px 14px",marginBottom:18}}>
-        <div style={{color:"#9da8b0",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>
+      <div style={{background:"#e9f1fa",border:"1px solid #c3bab044",borderRadius:12,padding:"12px 14px",marginBottom:18}}>
+        <div style={{color:"#8a7f76",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>
           🩶 チタン特典 — 今月の指定ドリンク
         </div>
         {designatedDrink ? (
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{color:"#e8e0d0",fontWeight:700}}>{designatedDrink.emoji} {designatedDrink.name}</span>
-            <button style={{background:"transparent",border:"1px solid #3a3a3a",borderRadius:20,
-              padding:"4px 10px",color:"#666",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}
+            <span style={{color:"#3d3630",fontWeight:700}}>{designatedDrink.emoji} {designatedDrink.name}</span>
+            <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:20,
+              padding:"4px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}
               onClick={()=>saveDesignatedDrink(null)}>解除</button>
           </div>
         ) : (
-          <div style={{color:"#555",fontSize:"0.82rem"}}>未設定 — 下のドリンクから選んで設定してください</div>
+          <div style={{color:"#9a8f85",fontSize:"0.82rem"}}>未設定 — 下のドリンクから選んで設定してください</div>
         )}
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
           {menu.map(item=>(
             <button key={item.id}
-              style={{background:designatedDrink?.id===item.id?"#1e2a30":"#141414",
-                border:`1px solid ${designatedDrink?.id===item.id?"#9da8b0":"#2a2a2a"}`,
+              style={{background:designatedDrink?.id===item.id?"#dceaf5":"#ffffff",
+                border:`1px solid ${designatedDrink?.id===item.id?"#c3bab0":"#e7ded3"}`,
                 borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",
-                color:designatedDrink?.id===item.id?"#9da8b0":"#888",fontSize:"0.8rem",
+                color:designatedDrink?.id===item.id?"#8a7f76":"#8a7f76",fontSize:"0.8rem",
                 transition:"all 0.15s"}}
               onClick={()=>saveDesignatedDrink(item)}>
               {item.emoji} {item.name}
@@ -2945,12 +2945,12 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
           <div style={S.catLabel}>{cat}</div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {menu.filter(m=>m.category===cat).map(item=>(
-              <div key={item.id} style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:10,
+              <div key={item.id} style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:10,
                 padding:"10px 12px",display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:"1.4rem",flexShrink:0}}>{item.emoji}</span>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:700,fontSize:"0.95rem"}}>{item.name}</div>
-                  <div style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price.toLocaleString()}</div>
+                  <div style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price.toLocaleString()}</div>
                 </div>
                 <button className="btn-tiny-edit" onClick={()=>openEdit(item)}>✏️</button>
                 <button className="btn-tiny-del"  onClick={()=>del(item.id)}>🗑</button>
@@ -2965,24 +2965,24 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
         <div style={S.overlay}>
           <div style={{...S.modal,paddingBottom:28}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{color:"#d4a853",margin:0}}>{editing==="new"?"メニュー追加":"メニュー編集"}</h3>
+              <h3 style={{color:"#b07c1e",margin:0}}>{editing==="new"?"メニュー追加":"メニュー編集"}</h3>
               <button className="close-btn" onClick={()=>setEditing(null)}>✕</button>
             </div>
 
             {/* 絵文字ピッカー */}
             <div style={{marginBottom:14}}>
               <label style={S.label}>絵文字</label>
-              <button style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:8,
+              <button style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:8,
                 padding:"10px 16px",fontSize:"1.6rem",cursor:"pointer",display:"block"}}
                 onClick={()=>setEmojiPick(p=>!p)}>
                 {form.emoji || "☕"}
               </button>
               {emojiPick && (
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,background:"#0e0e0e",
-                  border:"1px solid #2a2a2a",borderRadius:10,padding:10}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,background:"#ffffff",
+                  border:"1px solid #e7ded3",borderRadius:10,padding:10}}>
                   {EMOJIS.map(e=>(
-                    <button key={e} style={{background:form.emoji===e?"#2a2a1a":"#1a1a1a",
-                      border:`1px solid ${form.emoji===e?"#d4a853":"#2a2a2a"}`,borderRadius:6,
+                    <button key={e} style={{background:form.emoji===e?"#faf0dc":"#f6f1ea",
+                      border:`1px solid ${form.emoji===e?"#d3a94f":"#e7ded3"}`,borderRadius:6,
                       padding:"6px 8px",fontSize:"1.2rem",cursor:"pointer"}}
                       onClick={()=>{ upd("emoji",e); setEmojiPick(false); }}>
                       {e}
@@ -3057,8 +3057,8 @@ function YearHistoryModal({ customer, rank, onClose }) {
         {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
           <div>
-            <h3 style={{color:"#d4a853",margin:0,fontSize:"1rem"}}>📅 年度別履歴</h3>
-            <div style={{color:"#555",fontSize:"0.75rem",marginTop:2}}>
+            <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>📅 年度別履歴</h3>
+            <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:2}}>
               <span style={{color:rank.color}}>{rank.gem} {rank.name}</span> · {customer.name}
             </div>
           </div>
@@ -3069,13 +3069,13 @@ function YearHistoryModal({ customer, rank, onClose }) {
         <div style={{background:`${nextYearRankObj.color}18`, border:`1px solid ${nextYearRankObj.color}44`,
           borderRadius:10, padding:"10px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
           <div>
-            <div style={{color:"#666",fontSize:"0.7rem",marginBottom:2}}>来年のランク予測（今年の購入回数ベース）</div>
+            <div style={{color:"#8a7f76",fontSize:"0.7rem",marginBottom:2}}>来年のランク予測（今年の購入回数ベース）</div>
             <div style={{color:nextYearRankObj.color,fontWeight:700,fontSize:"0.9rem"}}>
               {nextYearRankObj.gem} {nextYearRankObj.name}
             </div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{color:"#666",fontSize:"0.7rem",marginBottom:2}}>今年の購入</div>
+            <div style={{color:"#8a7f76",fontSize:"0.7rem",marginBottom:2}}>今年の購入</div>
             <div style={{color:nextYearRankObj.color,fontWeight:800,fontSize:"1.2rem"}}>{customer.currentYearPurchases ?? 0}回</div>
           </div>
         </div>
@@ -3083,14 +3083,14 @@ function YearHistoryModal({ customer, rank, onClose }) {
         {/* 年度別カード一覧 */}
         <div style={{overflowY:"auto",maxHeight:"calc(90vh - 200px)",display:"flex",flexDirection:"column",gap:10}}>
           {allStats.length === 0 ? (
-            <div style={{textAlign:"center",color:"#333",padding:"32px 0",fontSize:"0.88rem"}}>履歴がありません</div>
+            <div style={{textAlign:"center",color:"#a79b90",padding:"32px 0",fontSize:"0.88rem"}}>履歴がありません</div>
           ) : allStats.map((s, i) => {
             const barPct = Math.round((s.purchases / maxPurchases) * 100);
             const isCur  = s.isCurrent;
             return (
               <div key={s.year} style={{
-                background: isCur ? "#161620" : "#111",
-                border: `1px solid ${isCur ? s.rankColor+"55" : "#1e1e1e"}`,
+                background: isCur ? "#f6f1ea" : "#ffffff",
+                border: `1px solid ${isCur ? s.rankColor+"55" : "#e7ded3"}`,
                 borderRadius:12, padding:"14px 16px",
                 boxShadow: isCur ? `0 0 16px ${s.rankColor}22` : "none",
               }}>
@@ -3098,10 +3098,10 @@ function YearHistoryModal({ customer, rank, onClose }) {
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{
-                      background: isCur ? s.rankColor+"22" : "#1a1a1a",
+                      background: isCur ? s.rankColor+"22" : "#f6f1ea",
                       border:`1px solid ${s.rankColor}55`,
                       borderRadius:8, padding:"4px 10px",
-                      color:"#888", fontSize:"0.78rem", fontWeight:700,
+                      color:"#8a7f76", fontSize:"0.78rem", fontWeight:700,
                     }}>
                       {s.year}年
                       {isCur && <span style={{color:s.rankColor,marginLeft:4,fontSize:"0.68rem"}}>（今年）</span>}
@@ -3113,12 +3113,12 @@ function YearHistoryModal({ customer, rank, onClose }) {
                   </div>
                   <div style={{textAlign:"right"}}>
                     <span style={{color:s.rankColor,fontWeight:800,fontSize:"1.3rem"}}>{s.purchases}</span>
-                    <span style={{color:"#555",fontSize:"0.75rem",marginLeft:3}}>回</span>
+                    <span style={{color:"#9a8f85",fontSize:"0.75rem",marginLeft:3}}>回</span>
                   </div>
                 </div>
 
                 {/* 棒グラフ */}
-                <div style={{background:"#1a1a1a",borderRadius:6,height:8,overflow:"hidden",marginBottom:8}}>
+                <div style={{background:"#f6f1ea",borderRadius:6,height:8,overflow:"hidden",marginBottom:8}}>
                   <div style={{
                     height:"100%", borderRadius:6,
                     width:`${barPct}%`,
@@ -3132,9 +3132,9 @@ function YearHistoryModal({ customer, rank, onClose }) {
                 {(() => {
                   const r = RANKS.find(r=>r.name===s.rankName) || RANKS[0];
                   return (
-                    <div style={{color:"#555",fontSize:"0.75rem"}}>
+                    <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>
                       {r.benefit.icon} {r.benefit.desc}
-                      <span style={{marginLeft:6,color:r.benefit.type==="always_discount"?"#7ab8e8":"#888",fontSize:"0.68rem"}}>
+                      <span style={{marginLeft:6,color:r.benefit.type==="always_discount"?"#3b7fb8":"#8a7f76",fontSize:"0.68rem"}}>
                         {r.benefit.type==="always_discount"?"毎回自動":"月1回"}
                       </span>
                     </div>
@@ -3153,14 +3153,14 @@ function YearHistoryModal({ customer, rank, onClose }) {
 
 // ── HISTORY MODAL ────────────────────────
 const HIST_CONFIG = {
-  use:            { icon:"💳", label:"決済",          color:"#e06655" },
-  charge:         { icon:"🎫", label:"チャージ",       color:"#5ecf7f" },
-  charge_undo:    { icon:"↩️", label:"チャージ取消",   color:"#e06655" },
-  benefit:        { icon:"🎁", label:"特典使用",       color:"#d4a853" },
-  edit_balance:   { icon:"✏️", label:"残高編集",       color:"#7ab8e8" },
-  edit_purchases: { icon:"✏️", label:"購入回数変更",   color:"#7ab8e8" },
-  benefit_reset:  { icon:"🔄", label:"特典リセット",   color:"#9da8b0" },
-  year_reset:     { icon:"🎉", label:"年次リセット",   color:"#a29bfe" },
+  use:            { icon:"💳", label:"決済",          color:"#c94a45" },
+  charge:         { icon:"🎫", label:"チャージ",       color:"#3e9a5c" },
+  charge_undo:    { icon:"↩️", label:"チャージ取消",   color:"#c94a45" },
+  benefit:        { icon:"🎁", label:"特典使用",       color:"#b07c1e" },
+  edit_balance:   { icon:"✏️", label:"残高編集",       color:"#3b7fb8" },
+  edit_purchases: { icon:"✏️", label:"購入回数変更",   color:"#3b7fb8" },
+  benefit_reset:  { icon:"🔄", label:"特典リセット",   color:"#8a7f76" },
+  year_reset:     { icon:"🎉", label:"年次リセット",   color:"#7a6fd4" },
 };
 
 function HistoryModal({ customer, rank, onClose }) {
@@ -3195,8 +3195,8 @@ function HistoryModal({ customer, rank, onClose }) {
       <div style={{...S.modal, maxHeight:"88vh"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
           <div>
-            <h3 style={{color:"#d4a853",margin:0,fontSize:"1rem"}}>📋 操作履歴</h3>
-            <div style={{color:"#555",fontSize:"0.75rem",marginTop:2}}>
+            <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>📋 操作履歴</h3>
+            <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:2}}>
               <span style={{color:rank.color}}>{rank.gem} {rank.name}</span> · {customer.name}
             </div>
           </div>
@@ -3204,19 +3204,19 @@ function HistoryModal({ customer, rank, onClose }) {
         </div>
 
         {history.length === 0 ? (
-          <div style={{textAlign:"center",color:"#333",padding:"32px 0",fontSize:"0.88rem"}}>
+          <div style={{textAlign:"center",color:"#a79b90",padding:"32px 0",fontSize:"0.88rem"}}>
             履歴がありません
           </div>
         ) : (
           <div style={{marginTop:14,overflowY:"auto",maxHeight:"calc(88vh - 100px)"}}>
             {Object.entries(groups).map(([day, entries]) => (
               <div key={day} style={{marginBottom:18}}>
-                <div style={{color:"#555",fontSize:"0.72rem",letterSpacing:"0.08em",
-                  borderBottom:"1px solid #1e1e1e",paddingBottom:4,marginBottom:8}}>
+                <div style={{color:"#9a8f85",fontSize:"0.72rem",letterSpacing:"0.08em",
+                  borderBottom:"1px solid #e7ded3",paddingBottom:4,marginBottom:8}}>
                   📅 {day}
                 </div>
                 {entries.map((h, i) => {
-                  const cfg = HIST_CONFIG[h.type] || {icon:"•",label:h.type,color:"#888"};
+                  const cfg = HIST_CONFIG[h.type] || {icon:"•",label:h.type,color:"#8a7f76"};
                   const time = h.date?.split(" ")[1] || "";
                   return (
                     <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
@@ -3227,17 +3227,17 @@ function HistoryModal({ customer, rank, onClose }) {
                           <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
                             <span style={{
                               fontSize:"0.68rem",
-                              color: h.performer==="マネージャー" ? "#d4a853" : "#666",
-                              background: h.performer==="マネージャー" ? "#1a1400" : "#1a1a1a",
-                              border: `1px solid ${h.performer==="マネージャー"?"#d4a85344":"#2a2a2a"}`,
+                              color: h.performer==="マネージャー" ? "#b07c1e" : "#8a7f76",
+                              background: h.performer==="マネージャー" ? "#faf0dc" : "#f6f1ea",
+                              border: `1px solid ${h.performer==="マネージャー"?"#d3a94f44":"#e7ded3"}`,
                               borderRadius:20, padding:"1px 7px",
                             }}>
                               {h.performer==="マネージャー" ? "👑 MG" : "👤 ST"}
                             </span>
-                            <span style={{color:"#444",fontSize:"0.72rem"}}>{time}</span>
+                            <span style={{color:"#a79b90",fontSize:"0.72rem"}}>{time}</span>
                           </div>
                         </div>
-                        <div style={{color:"#777",fontSize:"0.78rem",marginTop:2,wordBreak:"break-all"}}>
+                        <div style={{color:"#8a7f76",fontSize:"0.78rem",marginTop:2,wordBreak:"break-all"}}>
                           {formatDetail(h)}
                         </div>
                       </div>
@@ -3259,19 +3259,19 @@ function CodeModal({ customer, rank, onClose }) {
     <div style={S.overlay}>
       <div style={{...S.modal,paddingBottom:28}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <h3 style={{color:"#d4a853",margin:0,fontSize:"1rem"}}>🔑 お客様確認コード</h3>
+          <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>🔑 お客様確認コード</h3>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         <div style={{textAlign:"center",marginBottom:16}}>
           <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>{rank.gem} {rank.name}会員</span>
-          <div style={{color:"#e8e0d0",fontWeight:700,fontSize:"1.05rem",marginTop:4}}>{customer.name}</div>
+          <div style={{color:"#3d3630",fontWeight:700,fontSize:"1.05rem",marginTop:4}}>{customer.name}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {[["会員番号",customer.id,"会員番号欄に入力"],["暗証番号",customer.pin,"暗証番号欄に入力"]].map(([l,v,h])=>(
-            <div key={l} style={{background:"#0e0e0e",border:"1px solid #2a2a2a",borderRadius:12,padding:"14px 18px",textAlign:"center"}}>
-              <div style={{color:"#555",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:6}}>{l}</div>
-              <div style={{color:"#e8e0d0",fontSize:"2.2rem",fontWeight:800,letterSpacing:"0.25em"}}>{v}</div>
-              <div style={{color:"#3a3a3a",fontSize:"0.7rem",marginTop:6}}>{h}</div>
+            <div key={l} style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,padding:"14px 18px",textAlign:"center"}}>
+              <div style={{color:"#9a8f85",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:6}}>{l}</div>
+              <div style={{color:"#3d3630",fontSize:"2.2rem",fontWeight:800,letterSpacing:"0.25em"}}>{v}</div>
+              <div style={{color:"#a79b90",fontSize:"0.7rem",marginTop:6}}>{h}</div>
             </div>
           ))}
         </div>
@@ -3287,10 +3287,10 @@ function ManagerPwModal({ onConfirm, onClose, pwInput, setPwInput, err }) {
     <div style={S.overlay}>
       <div style={{...S.modal,paddingBottom:28}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <h3 style={{color:"#d4a853",margin:0,fontSize:"1rem"}}>🔒 マネージャー認証</h3>
+          <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>🔒 マネージャー認証</h3>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
-        <p style={{color:"#555",fontSize:"0.82rem",marginBottom:12}}>この操作にはマネージャーパスワードが必要です</p>
+        <p style={{color:"#9a8f85",fontSize:"0.82rem",marginBottom:12}}>この操作にはマネージャーパスワードが必要です</p>
         <input style={{...S.input,marginBottom:8}} type="password" placeholder="マネージャーパスワード"
           value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onConfirm()} autoFocus/>
         {err && <p style={S.err}>{err}</p>}
@@ -3349,15 +3349,15 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
     <div style={S.overlay}>
       <div style={S.modal}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{color:"#d4a853",margin:0}}>会員情報の編集</h3>
+          <h3 style={{color:"#b07c1e",margin:0}}>会員情報の編集</h3>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         <div style={{marginBottom:14}}>
           <label style={S.label}>暗証番号（お客様ログイン用）</label>
           <input style={S.input} value={pin} onChange={e=>setPin(e.target.value)} placeholder="例: 1234"/>
           {pinOwner
-            ? <div style={{color:"#e05555",fontSize:"0.75rem",marginTop:4,fontWeight:700}}>⚠️ この番号は「{pinOwner.name}」さんが使用中です</div>
-            : <div style={{color:"#555",fontSize:"0.72rem",marginTop:4}}>お客様が確認画面でこの番号を使用します</div>}
+            ? <div style={{color:"#c94a45",fontSize:"0.75rem",marginTop:4,fontWeight:700}}>⚠️ この番号は「{pinOwner.name}」さんが使用中です</div>
+            : <div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:4}}>お客様が確認画面でこの番号を使用します</div>}
         </div>
         <div style={{marginBottom:14}}>
           <label style={S.label}>残高 (¥)</label>
@@ -3366,17 +3366,17 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
             {[2200,4400,6600].map(v=>(
               <button key={v} className="preset-btn" onClick={()=>setBal(String((parseInt(bal)||0)+v))}>+¥{(v/1000).toFixed(1)}k</button>
             ))}
-            <button className="preset-btn" style={{color:"#e06655"}} onClick={()=>setBal("0")}>リセット</button>
+            <button className="preset-btn" style={{color:"#c94a45"}} onClick={()=>setBal("0")}>リセット</button>
           </div>
         </div>
         <div style={{marginBottom:14}}>
           <label style={S.label}>今年の購入回数（来年のランク判定に使用）</label>
           <input style={S.input} type="number" value={cyp} onChange={e=>setCyp(e.target.value)}/>
-          <div style={{color:"#555",fontSize:"0.72rem",marginTop:4}}>
+          <div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:4}}>
             来年のランク予測: <span style={{color:getRank(parseInt(cyp)||0).color,fontWeight:700}}>{getRank(parseInt(cyp)||0).gem} {getRank(parseInt(cyp)||0).name}</span>
           </div>
         </div>
-        <div style={{marginBottom:14,background:"#0e0e0e",border:"1px solid #2a2a2a",borderRadius:10,padding:"12px 14px"}}>
+        <div style={{marginBottom:14,background:"#ffffff",border:"1px solid #e7ded3",borderRadius:10,padding:"12px 14px"}}>
           <label style={S.label}>現在のランク基準値（前年の購入回数）</label>
           <input style={S.input} type="number" value={rb} onChange={e=>setRb(e.target.value)}/>
           <div style={{color:rankPreview.color,fontSize:"0.75rem",marginTop:4,fontWeight:700}}>
@@ -3385,13 +3385,13 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
         </div>
         {/* 月次特典リセット */}
         {rankPreview.benefit.type === "monthly" && (
-          <div style={{marginBottom:14,background:"#0e0e0e",border:"1px solid #2a2a2a",borderRadius:10,padding:"12px 14px"}}>
+          <div style={{marginBottom:14,background:"#ffffff",border:"1px solid #e7ded3",borderRadius:10,padding:"12px 14px"}}>
             <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
               <input type="checkbox" checked={resetBenefit} onChange={e=>setResetBenefit(e.target.checked)}
                 style={{width:16,height:16,accentColor:"#d4a853"}}/>
               <div>
-                <div style={{color:"#e8e0d0",fontSize:"0.85rem",fontWeight:600}}>今月の特典をリセット</div>
-                <div style={{color:"#555",fontSize:"0.75rem"}}>
+                <div style={{color:"#3d3630",fontSize:"0.85rem",fontWeight:600}}>今月の特典をリセット</div>
+                <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>
                   {isBenefitUsed(customer) ? "現在: 使用済み → 未使用に戻す" : "現在: 未使用（変更不要）"}
                 </div>
               </div>
@@ -3399,28 +3399,28 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
           </div>
         )}
         {/* VIPステータス */}
-        <div style={{marginBottom:10,background:"#0e1218",border:`1px solid ${isVIP?"#ffd70055":"#2a2a2a"}`,borderRadius:10,padding:"12px 14px"}}>
+        <div style={{marginBottom:10,background:"#e9f1fa",border:`1px solid ${isVIP?"#e8c14a55":"#e7ded3"}`,borderRadius:10,padding:"12px 14px"}}>
           <label style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
-            <div style={{position:"relative",width:44,height:24,background:isVIP?"#b8860b":"#2a2a2a",borderRadius:12,transition:"background 0.2s",flexShrink:0}}
+            <div style={{position:"relative",width:44,height:24,background:isVIP?"#d9a441":"#eee7dd",borderRadius:12,transition:"background 0.2s",flexShrink:0}}
               onClick={()=>setIsVIP(p=>!p)}>
               <div style={{position:"absolute",top:3,left:isVIP?22:3,width:18,height:18,background:"#fff",borderRadius:"50%",transition:"left 0.2s"}}/>
             </div>
             <div>
-              <div style={{color:isVIP?"#ffd700":"#888",fontWeight:700,fontSize:"0.88rem"}}>⭐ VIP会員</div>
-              <div style={{color:"#555",fontSize:"0.72rem",marginTop:2}}>毎月プレゼントドリンクが受け取れます</div>
+              <div style={{color:isVIP?"#a9791a":"#8a7f76",fontWeight:700,fontSize:"0.88rem"}}>⭐ VIP会員</div>
+              <div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:2}}>毎月プレゼントドリンクが受け取れます</div>
             </div>
           </label>
         </div>
         {/* スペシャルステータス */}
-        <div style={{marginBottom:14,background:`${isSpecial?"#1a0a1a":"#0e0e0e"}`,border:`1px solid ${isSpecial?"#e040fb55":"#2a2a2a"}`,borderRadius:10,padding:"12px 14px"}}>
+        <div style={{marginBottom:14,background:`${isSpecial?"#f5eafa":"#ffffff"}`,border:`1px solid ${isSpecial?"#c98ada55":"#e7ded3"}`,borderRadius:10,padding:"12px 14px"}}>
           <label style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
-            <div style={{position:"relative",width:44,height:24,background:isSpecial?"#9c27b0":"#2a2a2a",borderRadius:12,transition:"background 0.2s",flexShrink:0}}
+            <div style={{position:"relative",width:44,height:24,background:isSpecial?"#9c27b0":"#eee7dd",borderRadius:12,transition:"background 0.2s",flexShrink:0}}
               onClick={()=>setIsSpecial(p=>!p)}>
               <div style={{position:"absolute",top:3,left:isSpecial?22:3,width:18,height:18,background:"#fff",borderRadius:"50%",transition:"left 0.2s"}}/>
             </div>
             <div>
-              <div style={{color:isSpecial?"#e040fb":"#888",fontWeight:700,fontSize:"0.88rem"}}>💜 スペシャル</div>
-              <div style={{color:"#555",fontSize:"0.72rem",marginTop:2}}>全ての注文が常に無料になります</div>
+              <div style={{color:isSpecial?"#9c3fb5":"#8a7f76",fontWeight:700,fontSize:"0.88rem"}}>💜 スペシャル</div>
+              <div style={{color:"#9a8f85",fontSize:"0.72rem",marginTop:2}}>全ての注文が常に無料になります</div>
             </div>
           </label>
         </div>
@@ -3472,12 +3472,12 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
   return (
     <div style={{...S.page, paddingTop:14, paddingBottom:40}}>
       <h2 style={{...S.title,margin:"0 0 6px"}}>💵 現金注文</h2>
-      <p style={{color:"#777",fontSize:"0.8rem",lineHeight:1.6,marginBottom:14}}>
+      <p style={{color:"#8a7f76",fontSize:"0.8rem",lineHeight:1.6,marginBottom:14}}>
         会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。確定すると「📋 注文」に届き、完了すると会計履歴にも残ります。会員の残高・購入回数には影響しません。
       </p>
 
       {done && (
-        <div style={{background:"#0f1a0f",border:"1px solid #2a5a2a",borderRadius:10,padding:"12px 14px",marginBottom:14,color:"#5ecf7f",fontWeight:700,fontSize:"0.9rem"}}>
+        <div style={{background:"#e9f5ec",border:"1px solid #c9e2ce",borderRadius:10,padding:"12px 14px",marginBottom:14,color:"#3e9a5c",fontWeight:700,fontSize:"0.9rem"}}>
           ✅ 現金注文を「📋 注文」に送りました（担当: {staffName}）
         </div>
       )}
@@ -3497,8 +3497,8 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
               return (
                 <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                   <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                  <span style={{fontSize:"0.78rem",fontWeight:600,color:"#ddd",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
-                  <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                  <span style={{fontSize:"0.78rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                  <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                   {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
                 </button>
               );
@@ -3508,22 +3508,22 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
       ))}
 
       {cart.length>0 && (
-        <div style={{background:"#0e0e0e",border:"1px solid #1e1e1e",borderRadius:14,padding:"12px 14px",marginTop:8}}>
+        <div style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:14,padding:"12px 14px",marginTop:8}}>
           {cart.map(item=>(
             <div key={item.id} style={S.cartRow}>
-              <span style={{color:"#ccc",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
+              <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                <span style={{color:"#e8e0d0",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
+                <span style={{color:"#3d3630",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
                 <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                <span style={{color:"#d4a853",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
               </div>
             </div>
           ))}
-          <div style={{paddingTop:8,borderTop:"1px solid #222",marginTop:6}}>
+          <div style={{paddingTop:8,borderTop:"1px solid #e7ded3",marginTop:6}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{color:"#aaa",fontSize:"0.85rem"}}>現金で受け取る金額</span>
-              <span style={{color:"#e8e0d0",fontWeight:800,fontSize:"1.3rem"}}>¥{subtotal.toLocaleString()}</span>
+              <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>現金で受け取る金額</span>
+              <span style={{color:"#3d3630",fontWeight:800,fontSize:"1.3rem"}}>¥{subtotal.toLocaleString()}</span>
             </div>
             <div style={{display:"flex",gap:8}}>
               <button className="btn-clear" onClick={()=>{setCart([]);setCustName("");}}>クリア</button>
@@ -3547,7 +3547,7 @@ function AddCustomerModal({ onSave, onClose, nextId, customers }) {
     <div style={S.overlay}>
       <div style={S.modal}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{color:"#ffd700",margin:0}}>新規会員登録</h3>
+          <h3 style={{color:"#a9791a",margin:0}}>新規会員登録</h3>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         {[["name","お名前（ひらがな）*","例: たなか みさき"],["pin","暗証番号 *","数字4桁など（例: 1234）"]].map(([f,l,p])=>(
@@ -3577,60 +3577,60 @@ function AddCustomerModal({ onSave, onClose, nextId, customers }) {
 const S = {
   // 書体は丸ゴシック。明朝は「格式」を語る書体で、カフェの空気に合わなかった。
   // 丸みのある書体にするだけで、画面全体の印象がやわらかくなる。
-  root:          { fontFamily:"'Zen Maru Gothic','Hiragino Maru Gothic ProN','ヒラギノ丸ゴ ProN',sans-serif", background:"#0a0a0a", minHeight:"100vh", color:"#e8e0d0" },
-  loading:       { color:"#aaa", textAlign:"center", padding:40 },
+  root:          { fontFamily:"'Zen Maru Gothic','Hiragino Maru Gothic ProN','ヒラギノ丸ゴ ProN',sans-serif", background:"#fdf8f3", minHeight:"100vh", color:"#3d3630" },
+  loading:       { color:"#8a7f76", textAlign:"center", padding:40 },
   page:          { maxWidth:480, margin:"0 auto", padding:"24px 16px" },
 
   // HOME
   homeOuter:     { minHeight:"100vh", maxWidth:480, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden", padding:"24px 16px" },
-  homeBgCircle1: { position:"absolute", width:340, height:340, borderRadius:"50%", background:"radial-gradient(circle,#ff6b9d22,transparent 70%)", top:-80, right:-80, pointerEvents:"none" },
-  homeBgCircle2: { position:"absolute", width:280, height:280, borderRadius:"50%", background:"radial-gradient(circle,#70a1ff22,transparent 70%)", bottom:-60, left:-60, pointerEvents:"none" },
-  homeBgCircle3: { position:"absolute", width:200, height:200, borderRadius:"50%", background:"radial-gradient(circle,#ffd70018,transparent 70%)", top:"40%", left:"50%", transform:"translateX(-50%)", pointerEvents:"none" },
+  homeBgCircle1: { position:"absolute", width:340, height:340, borderRadius:"50%", background:"radial-gradient(circle,#ff8fb322,transparent 70%)", top:-80, right:-80, pointerEvents:"none" },
+  homeBgCircle2: { position:"absolute", width:280, height:280, borderRadius:"50%", background:"radial-gradient(circle,#8fc2ee22,transparent 70%)", bottom:-60, left:-60, pointerEvents:"none" },
+  homeBgCircle3: { position:"absolute", width:200, height:200, borderRadius:"50%", background:"radial-gradient(circle,#ffd98a18,transparent 70%)", top:"40%", left:"50%", transform:"translateX(-50%)", pointerEvents:"none" },
   homeWrap:      { display:"flex", flexDirection:"column", alignItems:"center", gap:14, textAlign:"center", position:"relative", zIndex:1, width:"100%" },
   rainbowLogoWrap:{ position:"relative", marginBottom:4 },
-  rainbowLogoInner:{ width:100, height:100, borderRadius:"50%", background:"linear-gradient(135deg,#1a1a2a,#0f0f1a)", border:"2px solid transparent", backgroundClip:"padding-box", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 0 2px transparent, 0 8px 32px rgba(0,0,0,0.5)", position:"relative", zIndex:1 },
-  rainbowGlow:   { position:"absolute", inset:-3, borderRadius:"50%", background:"linear-gradient(135deg,#ff6b9d,#ff9f43,#ffd700,#7bed9f,#70a1ff,#a29bfe,#ff6b9d)", zIndex:0, filter:"blur(2px)", opacity:0.85 },
+  rainbowLogoInner:{ width:100, height:100, borderRadius:"50%", background:"linear-gradient(135deg,#f6f1ea,#ffffff)", border:"2px solid transparent", backgroundClip:"padding-box", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 0 0 2px transparent, 0 8px 32px rgba(61,54,48,0.10)", position:"relative", zIndex:1 },
+  rainbowGlow:   { position:"absolute", inset:-3, borderRadius:"50%", background:"linear-gradient(135deg,#ff8fb3,#ffb877,#ffd98a,#9fdcae,#8fc2ee,#b8ace0,#ff8fb3)", zIndex:0, filter:"blur(2px)", opacity:0.85 },
   brandRainbow:  { margin:0, fontSize:"2.6rem", fontWeight:800, letterSpacing:"0.08em", lineHeight:1 },
-  brandUnderline:{ height:3, borderRadius:2, background:"linear-gradient(90deg,#ff6b9d,#ff9f43,#ffd700,#7bed9f,#70a1ff,#a29bfe)", marginTop:6, width:"100%" },
+  brandUnderline:{ height:3, borderRadius:2, background:"linear-gradient(90deg,#ff8fb3,#ffb877,#ffd98a,#9fdcae,#8fc2ee,#b8ace0)", marginTop:6, width:"100%" },
   // 小さすぎる文字は読みにくいので、本文まわりは大きめに。
-  taglineRainbow:{ color:"#b6b0c2", fontSize:"0.95rem", letterSpacing:"0.04em", margin:"2px 0 4px" },
+  taglineRainbow:{ color:"#8a7f76", fontSize:"0.95rem", letterSpacing:"0.04em", margin:"2px 0 4px" },
   homeBtns:      { display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 },
   decoRow:       { display:"flex", gap:10, marginTop:10, alignItems:"center" },
-  title:         { fontSize:"1.15rem", color:"#d4a853", letterSpacing:"0.08em", marginBottom:18, fontWeight:700 },
-  hint:          { color:"#777", fontSize:"0.85rem", lineHeight:1.7, marginBottom:4 },
-  input:         { background:"#141414", border:"1px solid #2a2a2a", borderRadius:8, padding:"12px 14px", color:"#e8e0d0", fontSize:"1rem", width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
-  err:           { color:"#e05555", fontSize:"0.85rem", margin:"4px 0 0" },
+  title:         { fontSize:"1.15rem", color:"#b07c1e", letterSpacing:"0.08em", marginBottom:18, fontWeight:700 },
+  hint:          { color:"#8a7f76", fontSize:"0.85rem", lineHeight:1.7, marginBottom:4 },
+  input:         { background:"#ffffff", border:"1px solid #e7ded3", borderRadius:8, padding:"12px 14px", color:"#3d3630", fontSize:"1rem", width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
+  err:           { color:"#c94a45", fontSize:"0.85rem", margin:"4px 0 0" },
   rankBadge:     { display:"inline-block", border:"1px solid", borderRadius:20, padding:"3px 10px", fontSize:"0.76rem", fontWeight:700, letterSpacing:"0.05em", marginBottom:7 },
   divider:       { borderTop:"1px dashed #ffffff22", margin:"12px 0" },
   bar:           { background:"#ffffff22", borderRadius:4, height:6, overflow:"hidden" },
   benefitBox:    { border:"1px solid", borderRadius:10, padding:"10px 12px", marginTop:12 },
-  benefitTagUsed:{ background:"#2a1a1a", color:"#e06655", border:"1px solid #e0665544", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", fontWeight:700, whiteSpace:"nowrap" },
+  benefitTagUsed:{ background:"#fbebea", color:"#c94a45", border:"1px solid #e0a09b44", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", fontWeight:700, whiteSpace:"nowrap" },
   benefitTagAvail:{ border:"1px solid", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", fontWeight:700, whiteSpace:"nowrap" },
-  benefitTagAlways:{ background:"#1a1a2a", color:"#7ab8e8", border:"1px solid #7ab8e844", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", fontWeight:700, whiteSpace:"nowrap" },
+  benefitTagAlways:{ background:"#eef2fb", color:"#3b7fb8", border:"1px solid #8fbde044", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", fontWeight:700, whiteSpace:"nowrap" },
   rankRow:       { display:"flex", alignItems:"center", padding:"7px 8px", marginBottom:2, position:"relative" },
   curDot:        { width:6, height:6, borderRadius:"50%", marginLeft:8, flexShrink:0 },
-  topbar:        { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", background:"#0e0e0e", borderBottom:"1px solid #1a1a1a", height:44 },
-  customerStrip: { padding:"10px 14px", background:"#0f0f0f", borderBottom:"2px solid", flexShrink:0 },
-  benefitStripBox:{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#0a0a0a", border:"1px solid", borderRadius:8, padding:"6px 10px", marginTop:6, gap:8 },
-  catLabel:      { color:"#555", fontSize:"0.75rem", letterSpacing:"0.08em", marginBottom:8, paddingLeft:2 },
+  topbar:        { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", background:"#ffffff", borderBottom:"1px solid #e7ded3", height:44 },
+  customerStrip: { padding:"10px 14px", background:"#ffffff", borderBottom:"2px solid", flexShrink:0 },
+  benefitStripBox:{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#ffffff", border:"1px solid", borderRadius:8, padding:"6px 10px", marginTop:6, gap:8 },
+  catLabel:      { color:"#9a8f85", fontSize:"0.75rem", letterSpacing:"0.08em", marginBottom:8, paddingLeft:2 },
   menuGrid:      { display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 },
-  cartPanel:     { background:"#0e0e0e", borderTop:"1px solid #1e1e1e", padding:"10px 14px", flexShrink:0 },
-  cartRow:       { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #181818" },
-  cartBadge:     { position:"absolute", top:4, right:4, background:"#d4a853", color:"#0a0a0a", borderRadius:"50%", width:18, height:18, fontSize:"0.7rem", fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" },
-  overlay:       { position:"fixed", inset:0, background:"#000000d8", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:100, backdropFilter:"blur(4px)" },
-  modal:         { background:"#111", borderRadius:"20px 20px 0 0", padding:20, width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto" },
-  label:         { display:"block", color:"#555", fontSize:"0.76rem", marginBottom:5, letterSpacing:"0.05em" },
-  tagUsed:       { background:"#2a1a1a", color:"#e06655", border:"1px solid #e0665533", borderRadius:20, padding:"2px 8px", fontSize:"0.7rem", fontWeight:700, whiteSpace:"nowrap" },
-  tagAvail:      { background:"#1a2a1a", color:"#5ecf7f", border:"1px solid #5ecf7f44", borderRadius:20, padding:"2px 8px", fontSize:"0.7rem", fontWeight:700, whiteSpace:"nowrap" },
-  tagAuto:       { background:"#111820", color:"#7ab8e8", border:"1px solid #7ab8e844", borderRadius:20, padding:"2px 8px", fontSize:"0.7rem", fontWeight:700, whiteSpace:"nowrap" },
+  cartPanel:     { background:"#ffffff", borderTop:"1px solid #e7ded3", padding:"10px 14px", flexShrink:0 },
+  cartRow:       { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #e7ded3" },
+  cartBadge:     { position:"absolute", top:4, right:4, background:"#e8b96a", color:"#3d3630", borderRadius:"50%", width:18, height:18, fontSize:"0.7rem", fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" },
+  overlay:       { position:"fixed", inset:0, background:"#3d3630a8", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:100, backdropFilter:"blur(4px)" },
+  modal:         { background:"#ffffff", borderRadius:"20px 20px 0 0", padding:20, width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto" },
+  label:         { display:"block", color:"#9a8f85", fontSize:"0.76rem", marginBottom:5, letterSpacing:"0.05em" },
+  tagUsed:       { background:"#fbebea", color:"#c94a45", border:"1px solid #e0a09b33", borderRadius:20, padding:"2px 8px", fontSize:"0.7rem", fontWeight:700, whiteSpace:"nowrap" },
+  tagAvail:      { background:"#e9f5ec", color:"#3e9a5c", border:"1px solid #7cc39444", borderRadius:20, padding:"2px 8px", fontSize:"0.7rem", fontWeight:700, whiteSpace:"nowrap" },
+  tagAuto:       { background:"#e9f1fa", color:"#3b7fb8", border:"1px solid #8fbde044", borderRadius:20, padding:"2px 8px", fontSize:"0.7rem", fontWeight:700, whiteSpace:"nowrap" },
 };
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
 * { -webkit-tap-highlight-color:transparent; box-sizing:border-box; }
-input:focus { border-color:#d4a853 !important; outline:none; }
+input:focus { border-color:#e86a8a !important; outline:none; }
 
-.btn-gold  { background:linear-gradient(135deg,#c8922a,#e8b840); color:#0a0a0a; border:none; border-radius:10px; padding:13px 20px; font-size:1rem; font-weight:700; cursor:pointer; width:100%; font-family:inherit; letter-spacing:0.05em; transition:opacity 0.15s,transform 0.1s; }
+.btn-gold  { background:linear-gradient(135deg,#e0a94a,#f2cd72); color:#4a3a12; border:none; border-radius:10px; padding:13px 20px; font-size:1rem; font-weight:700; cursor:pointer; width:100%; font-family:inherit; letter-spacing:0.05em; transition:opacity 0.15s,transform 0.1s; }
 .btn-gold:hover { opacity:.9; transform:translateY(-1px); }
 
 .btn-rainbow {
@@ -3638,25 +3638,25 @@ input:focus { border-color:#d4a853 !important; outline:none; }
   width:100%; border:none; border-radius:999px; padding:17px 20px;
   font-size:1.05rem; font-weight:700; cursor:pointer; font-family:inherit;
   letter-spacing:0.04em; color:#fff; position:relative; overflow:hidden;
-  background:linear-gradient(135deg,#ff6b9d,#ff9f43,#ffd700,#7bed9f,#70a1ff,#a29bfe);
+  background:linear-gradient(135deg,#ff8fb3,#ffb877,#ffdd82,#9fdcae,#8fc2ee,#b8ace0);
   background-size:200% 200%; animation:rainbowShift 4s ease infinite;
-  box-shadow:0 4px 24px rgba(255,107,157,0.35); transition:transform 0.15s,box-shadow 0.15s;
-  text-shadow:0 1px 4px rgba(0,0,0,0.25);
+  box-shadow:0 4px 24px rgba(212,83,126,0.25); transition:transform 0.15s,box-shadow 0.15s;
+  text-shadow:0 1px 4px rgba(61,54,48,0.08);
 }
-.btn-rainbow:hover { transform:translateY(-2px); box-shadow:0 8px 32px rgba(255,107,157,0.5); }
+.btn-rainbow:hover { transform:translateY(-2px); box-shadow:0 8px 32px rgba(212,83,126,0.30); }
 .btn-rainbow:active { transform:scale(0.97); }
 
 .btn-crystal {
   display:flex; align-items:center; justify-content:center; gap:10px;
   width:100%; border-radius:999px; padding:16px 20px;
   font-size:1rem; font-weight:500; cursor:pointer; font-family:inherit;
-  letter-spacing:0.04em; color:#c8d8f8;
-  background:linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02));
-  border:1px solid rgba(255,255,255,0.15);
-  box-shadow:0 2px 16px rgba(112,161,255,0.15),inset 0 1px 0 rgba(255,255,255,0.1);
+  letter-spacing:0.04em; color:#8a7f76;
+  background:linear-gradient(135deg,#ffffff,#ffffff);
+  border:1px solid #e7ded3;
+  box-shadow:0 2px 16px rgba(61,54,48,0.06),inset 0 1px 0 rgba(255,255,255,0.1);
   backdrop-filter:blur(8px); transition:all 0.2s;
 }
-.btn-crystal:hover { background:linear-gradient(135deg,rgba(255,255,255,0.1),rgba(255,255,255,0.04)); border-color:rgba(255,255,255,0.28); box-shadow:0 4px 24px rgba(112,161,255,0.28); }
+.btn-crystal:hover { background:linear-gradient(135deg,#fdf8f3,#fdf8f3); border-color:#d9cdbe; box-shadow:0 4px 24px rgba(61,54,48,0.10); }
 
 @keyframes rainbowShift {
   0%   { background-position:0% 50%; }
@@ -3672,64 +3672,64 @@ input:focus { border-color:#d4a853 !important; outline:none; }
   to   { transform:translateY(-6px) rotate(5deg); opacity:0.9; }
 }
 
-.btn-ghost { background:transparent; color:#666; border:1px solid #2a2a2a; border-radius:10px; padding:12px 20px; font-size:0.9rem; font-weight:600; cursor:pointer; width:100%; font-family:inherit; transition:border-color 0.2s,color 0.2s; }
-.btn-ghost:hover { border-color:#555; color:#bbb; }
+.btn-ghost { background:transparent; color:#8a7f76; border:1px solid #e7ded3; border-radius:10px; padding:12px 20px; font-size:0.9rem; font-weight:600; cursor:pointer; width:100%; font-family:inherit; transition:border-color 0.2s,color 0.2s; }
+.btn-ghost:hover { border-color:#555; color:#8a7f76; }
 
-.back-btn  { background:transparent; color:#555; border:none; padding:0; font-size:0.85rem; cursor:pointer; font-family:inherit; }
-.close-btn { background:#1e1e1e; color:#777; border:none; border-radius:50%; width:28px; height:28px; cursor:pointer; font-size:0.78rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.back-btn  { background:transparent; color:#9a8f85; border:none; padding:0; font-size:0.85rem; cursor:pointer; font-family:inherit; }
+.close-btn { background:#f6f1ea; color:#8a7f76; border:none; border-radius:50%; width:28px; height:28px; cursor:pointer; font-size:0.78rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 
 .ticket-card { border-radius:16px; padding:20px; margin-bottom:8px; }
 .bar-fill    { height:100%; border-radius:4px; transition:width 0.6s ease; }
 
-.c-row { background:#111; border:1px solid #1e1e1e; border-radius:12px; padding:12px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:background 0.15s; }
-.c-row:hover { background:#161616; }
+.c-row { background:#ffffff; border:1px solid #e7ded3; border-radius:12px; padding:12px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:background 0.15s; }
+.c-row:hover { background:#f6f1ea; }
 
-.pill-btn      { background:#1e1e1e; color:#888; border:1px solid #2a2a2a; border-radius:20px; padding:4px 10px; font-size:0.75rem; cursor:pointer; font-family:inherit; white-space:nowrap; }
-.pill-btn-gold { background:#1a1400; color:#d4a853; border:1px solid #d4a85344; border-radius:20px; padding:5px 12px; font-size:0.78rem; cursor:pointer; font-family:inherit; white-space:nowrap; }
-.pill-btn-gold:hover { background:#221b00; }
-.pill-btn-dim  { background:#1a1a1a; color:#666; border:1px solid #2a2a2a; border-radius:20px; padding:5px 12px; font-size:0.78rem; cursor:pointer; font-family:inherit; white-space:nowrap; }
-.pill-btn-code { background:#111820; color:#7ab8e8; border:1px solid #7ab8e844; border-radius:20px; padding:4px 10px; font-size:0.78rem; cursor:pointer; font-family:inherit; }
-.pill-btn-hist { background:#181218; color:#b87ab8; border:1px solid #b87ab844; border-radius:20px; padding:4px 10px; font-size:0.78rem; cursor:pointer; font-family:inherit; }
-.pill-btn-year { background:#121820; color:#7be8c8; border:1px solid #7be8c844; border-radius:20px; padding:4px 10px; font-size:0.78rem; cursor:pointer; font-family:inherit; }
+.pill-btn      { background:#f6f1ea; color:#8a7f76; border:1px solid #e7ded3; border-radius:20px; padding:4px 10px; font-size:0.75rem; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.pill-btn-gold { background:#faf0dc; color:#b07c1e; border:1px solid #d3a94f44; border-radius:20px; padding:5px 12px; font-size:0.78rem; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.pill-btn-gold:hover { background:#f7e7c4; }
+.pill-btn-dim  { background:#f6f1ea; color:#8a7f76; border:1px solid #e7ded3; border-radius:20px; padding:5px 12px; font-size:0.78rem; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.pill-btn-code { background:#e9f1fa; color:#3b7fb8; border:1px solid #8fbde044; border-radius:20px; padding:4px 10px; font-size:0.78rem; cursor:pointer; font-family:inherit; }
+.pill-btn-hist { background:#f5eafa; color:#9c3fb5; border:1px solid #c98ada44; border-radius:20px; padding:4px 10px; font-size:0.78rem; cursor:pointer; font-family:inherit; }
+.pill-btn-year { background:#e9f1fa; color:#2f9b85; border:1px solid #7fcdbd44; border-radius:20px; padding:4px 10px; font-size:0.78rem; cursor:pointer; font-family:inherit; }
 
 .tag-use-btn { border:1px solid; border-radius:20px; padding:3px 10px; font-size:0.72rem; font-weight:700; background:transparent; cursor:pointer; font-family:inherit; white-space:nowrap; transition:opacity 0.15s; }
 .tag-use-btn:hover { opacity:0.75; }
 
-.menu-item { background:#141414; border:1px solid #222; border-radius:12px; padding:10px 6px; display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; font-family:inherit; position:relative; transition:background 0.12s,border-color 0.12s,transform 0.08s; }
-.menu-item:hover { background:#1a1a1a; border-color:#333; }
+.menu-item { background:#ffffff; border:1px solid #e7ded3; border-radius:12px; padding:10px 6px; display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer; font-family:inherit; position:relative; transition:background 0.12s,border-color 0.12s,transform 0.08s; }
+.menu-item:hover { background:#f6f1ea; border-color:#ddd3c6; }
 .menu-item:active { transform:scale(0.94); }
-.menu-item-active { background:#1e1800 !important; border-color:#d4a85366 !important; }
+.menu-item-active { background:#faf0dc !important; border-color:#d3a94f66 !important; }
 
-.btn-pay   { flex:1; background:linear-gradient(135deg,#c8922a,#e8b840); color:#0a0a0a; border:none; border-radius:10px; padding:13px; font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit; }
-.btn-clear { background:#1a1a1a; color:#666; border:1px solid #2a2a2a; border-radius:10px; padding:13px 16px; font-size:0.9rem; cursor:pointer; font-family:inherit; }
-.qty-btn   { background:#222; color:#aaa; border:1px solid #333; border-radius:6px; width:26px; height:26px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit; }
-.qty-btn:hover { background:#2e2e2e; color:#e8e0d0; }
+.btn-pay   { flex:1; background:linear-gradient(135deg,#e0a94a,#f2cd72); color:#4a3a12; border:none; border-radius:10px; padding:13px; font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit; }
+.btn-clear { background:#f6f1ea; color:#8a7f76; border:1px solid #e7ded3; border-radius:10px; padding:13px 16px; font-size:0.9rem; cursor:pointer; font-family:inherit; }
+.qty-btn   { background:#f6f1ea; color:#8a7f76; border:1px solid #ddd3c6; border-radius:6px; width:26px; height:26px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit; }
+.qty-btn:hover { background:#ebe5dd; color:#3d3630; }
 
-.preset-btn { flex:1; background:#161616; border:1px solid #252525; border-radius:8px; color:#999; font-size:0.8rem; padding:8px 0; cursor:pointer; font-family:inherit; }
-.preset-btn:hover { background:#202020; color:#e8e0d0; }
+.preset-btn { flex:1; background:#ffffff; border:1px solid #e7ded3; border-radius:8px; color:#8a7f76; font-size:0.8rem; padding:8px 0; cursor:pointer; font-family:inherit; }
+.preset-btn:hover { background:#f0ece6; color:#3d3630; }
 
-.btn-save   { width:100%; background:linear-gradient(135deg,#c8922a,#e8b840); color:#0a0a0a; border:none; border-radius:10px; padding:14px; font-size:1rem; font-weight:700; cursor:pointer; font-family:inherit; }
-.btn-danger { width:100%; background:transparent; color:#e05555; border:1px solid #e0555533; border-radius:10px; padding:11px; font-size:0.88rem; cursor:pointer; font-family:inherit; }
-.btn-complete { flex:1; background:linear-gradient(135deg,#1a4a1a,#2a7a2a); color:#7ef07e; border:1px solid #3a7a3a; border-radius:10px; padding:10px; font-size:0.9rem; font-weight:700; cursor:pointer; font-family:inherit; transition:background 0.15s; }
-.btn-complete:hover { background:linear-gradient(135deg,#1f5a1f,#307a30); }
-.btn-sm-gold { background:#1a1400; color:#d4a853; border:1px solid #d4a85344; border-radius:8px; padding:7px 13px; font-size:0.82rem; cursor:pointer; font-family:inherit; }
+.btn-save   { width:100%; background:linear-gradient(135deg,#e0a94a,#f2cd72); color:#4a3a12; border:none; border-radius:10px; padding:14px; font-size:1rem; font-weight:700; cursor:pointer; font-family:inherit; }
+.btn-danger { width:100%; background:transparent; color:#c94a45; border:1px solid #e0a09b33; border-radius:10px; padding:11px; font-size:0.88rem; cursor:pointer; font-family:inherit; }
+.btn-complete { flex:1; background:linear-gradient(135deg,#e2f2e6,#c9e6d0); color:#2c7344; border:1px solid #c9e2ce; border-radius:10px; padding:10px; font-size:0.9rem; font-weight:700; cursor:pointer; font-family:inherit; transition:background 0.15s; }
+.btn-complete:hover { background:linear-gradient(135deg,#d3ead9,#bfe0c6); }
+.btn-sm-gold { background:#faf0dc; color:#b07c1e; border:1px solid #d3a94f44; border-radius:8px; padding:7px 13px; font-size:0.82rem; cursor:pointer; font-family:inherit; }
 
-.pos-tab { flex:1; background:transparent; border:none; color:#555; padding:10px 0; font-size:0.82rem; cursor:pointer; font-family:inherit; border-bottom:2px solid transparent; transition:color 0.15s,border-color 0.15s; }
-.pos-tab-active { color:#d4a853 !important; border-bottom:2px solid #d4a853 !important; font-weight:700; }
+.pos-tab { flex:1; background:transparent; border:none; color:#9a8f85; padding:10px 0; font-size:0.82rem; cursor:pointer; font-family:inherit; border-bottom:2px solid transparent; transition:color 0.15s,border-color 0.15s; }
+.pos-tab-active { color:#b07c1e !important; border-bottom:2px solid #d3a94f !important; font-weight:700; }
 
-.staff-select-btn { display:flex; align-items:center; gap:10px; width:100%; background:#111; border:1px solid #1e1e1e; border-radius:12px; padding:14px 16px; cursor:pointer; font-family:inherit; color:#e8e0d0; font-size:0.95rem; transition:background 0.15s,border-color 0.15s; }
-.staff-select-btn:hover { background:#161616; border-color:#2e2e2e; }
-.staff-select-btn.manager { border-color:#d4a85333; }
-.staff-select-btn.manager:hover { background:#1a1400; border-color:#d4a85366; }
+.staff-select-btn { display:flex; align-items:center; gap:10px; width:100%; background:#ffffff; border:1px solid #e7ded3; border-radius:12px; padding:14px 16px; cursor:pointer; font-family:inherit; color:#3d3630; font-size:0.95rem; transition:background 0.15s,border-color 0.15s; }
+.staff-select-btn:hover { background:#f6f1ea; border-color:#e7ded3; }
+.staff-select-btn.manager { border-color:#d3a94f33; }
+.staff-select-btn.manager:hover { background:#faf0dc; border-color:#d3a94f66; }
 
-.btn-tiny-edit { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px; padding:5px 9px; font-size:0.88rem; cursor:pointer; transition:background 0.15s; flex-shrink:0; }
-.btn-tiny-edit:hover { background:#252525; }
-.btn-tiny-del  { background:#1a1010; border:1px solid #3a2020; border-radius:6px; padding:5px 9px; font-size:0.88rem; cursor:pointer; transition:background 0.15s; flex-shrink:0; }
-.btn-tiny-del:hover { background:#2a1515; }
+.btn-tiny-edit { background:#f6f1ea; border:1px solid #e7ded3; border-radius:6px; padding:5px 9px; font-size:0.88rem; cursor:pointer; transition:background 0.15s; flex-shrink:0; }
+.btn-tiny-edit:hover { background:#f0ece6; }
+.btn-tiny-del  { background:#fbebea; border:1px solid #f0d6d4; border-radius:6px; padding:5px 9px; font-size:0.88rem; cursor:pointer; transition:background 0.15s; flex-shrink:0; }
+.btn-tiny-del:hover { background:#f7dcda; }
 
 .flash { position:absolute; right:0; top:-4px; font-size:1rem; font-weight:800; animation:flashPop 1s ease forwards; pointer-events:none; white-space:nowrap; }
-.flash-add { color:#7ef07e; }
-.flash-sub { color:#e06655; }
+.flash-add { color:#3e9a5c; }
+.flash-sub { color:#c94a45; }
 @keyframes flashPop {
   0%   { opacity:0; transform:translateY(0) scale(0.7); }
   20%  { opacity:1; transform:translateY(-10px) scale(1.15); }
