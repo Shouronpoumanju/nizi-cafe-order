@@ -100,6 +100,33 @@ const dbPush = async (key, val) => {
   }
 };
 
+// ══════════════════════════════════════════
+//  サーバー（/api）経由のログイン
+// ══════════════════════════════════════════
+// パスワードの照合を、ブラウザではなくサーバーの中で行う。
+// ここが動くようになると、スタッフのパスワードをブラウザに配る必要がなくなる。
+// 発行されたログイン証（トークン）は、この後の段階で読み書きにも使う。
+let _apiToken = null;
+const getApiToken = () => _apiToken;   // 段階3b以降、読み書きの認証に使う
+
+const apiLogin = async (role, body) => {
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role, ...body }),
+  });
+  let json = {};
+  try { json = await res.json(); } catch {}
+  if (!res.ok) {
+    // 401（パスワード違い）は「そのまま伝える」。それ以外はサーバー側の不調とみなす。
+    const err = new Error(json.error || "ログインに失敗しました");
+    err.rejected = res.status === 401 || res.status === 400;
+    throw err;
+  }
+  _apiToken = json.token;
+  return json;
+};
+
 // チャージ・取消・残高手修正を、消えない台帳に残す
 const logMoney = (entry) => dbPush("cafe_v4_money_log", {
   ...entry,
@@ -1404,15 +1431,35 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
   const [pw, setPw]   = useState("");
   const [err, setErr] = useState("");
 
-  const login = () => {
-    if (!selected) return;
+  const [busy, setBusy] = useState(false);
+
+  const enter = (isMgr) => {
+    setStaffRole(isMgr ? "manager" : "staff");
+    setStaffIsChief(!isMgr && !!selected.isChief);
+    setStaffName(selected.name);
+    setScreen("pos");
+  };
+
+  const login = async () => {
+    if (!selected || busy) return;
     const isMgr = selected._role === "manager";
-    if (pw === selected.password) {
-      setStaffRole(isMgr ? "manager" : "staff");
-      setStaffIsChief(!isMgr && !!selected.isChief);
-      setStaffName(selected.name);
-      setScreen("pos");
-    } else setErr("パスワードが違います");
+    setBusy(true); setErr("");
+    try {
+      // パスワードの照合はサーバーの中で行う（ブラウザでは照合しない）
+      await apiLogin(isMgr ? "manager" : "staff", { name: selected.name, password: pw });
+      enter(isMgr);
+    } catch (e) {
+      if (e.rejected) {
+        // サーバーが「違う」と判断した場合は、そのまま伝える
+        setErr("パスワードが違います");
+      } else {
+        // サーバーに繋がらない・不調のときは、お店が止まらないよう今までの方法で確認する
+        console.warn("ログイン用サーバーに繋がらないため、従来の方法で確認します", e);
+        if (pw === selected.password) enter(isMgr);
+        else setErr("パスワードが違います");
+      }
+    }
+    setBusy(false);
   };
 
   const allAccounts = [
@@ -1453,7 +1500,8 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
           <input style={S.input} type="password" placeholder="パスワード"
             value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} autoFocus/>
           {err && <p style={S.err}>{err}</p>}
-          <button className="btn-gold" onClick={login}>ログイン</button>
+          <button className="btn-gold" onClick={login} disabled={busy}
+            style={busy?{opacity:0.5}:undefined}>{busy ? "確認中..." : "ログイン"}</button>
         </div>
       )}
     </div>
