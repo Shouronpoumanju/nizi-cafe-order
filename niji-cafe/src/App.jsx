@@ -522,7 +522,20 @@ export default function App() {
           result.push(o); // 他端末の注文は消さずに残す
         }
       });
-      list.forEach(o => { if (o && o.orderId && !used.has(o.orderId)) { result.unshift(o); used.add(o.orderId); } });
+      // DBに無い注文を足し戻すのは「この端末で今つくった注文」だけにする。
+      // ずっと手元にあった完了済みの注文がDBに無い場合は、アーカイブに移されたか
+      // 他の端末で消されたということなので、足し戻してはいけない。
+      // （足し戻すと、アーカイブした過去の注文が全部書き戻されてしまい、
+      //   さらに配列の先頭が古い注文になって、定期同期が新しい注文を見つけられなくなる）
+      // 未処理の注文はアーカイブされないので、取りこぼし防止のため足し戻す。
+      const prevOrderIds = new Set(prev.map(o => o && o.orderId));
+      list.forEach(o => {
+        if (!o || !o.orderId || used.has(o.orderId)) return;
+        if (!prevOrderIds.has(o.orderId) || o.status === "pending") {
+          result.unshift(o);
+          used.add(o.orderId);
+        }
+      });
       setOrders(result);
       dbSet("cafe_v4_orders", result);
     } catch (e) {
@@ -644,7 +657,10 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
     ? Math.min(100, ((cyp - getRank(cyp).min) / (next.min - getRank(cyp).min)) * 100)
     : 100;
 
-  const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending") : null;
+  // VIPプレゼントの注文は「🎁 プレゼント」タブが別に管理しているので、
+  // 通常の注文の未処理判定からは外す。混ぜると、通常注文をしたときに
+  // プレゼントの注文が巻き添えで消え、しかも受け取り済みの表示だけが残ってしまう。
+  const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending" && !o.isVipGift) : null;
   // スタッフ・マネージャーリンク確認
   const linkedStaff = found
     ? (staffAccounts.find(s=>s.linkedCustomerId===found.id) || (managerAccounts||[]).find(s=>s.linkedCustomerId===found.id))
@@ -686,9 +702,12 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
       status: "pending",
       createdAt: new Date().toLocaleString("ja-JP"),
     };
-    saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending"))]);
+    // 通常の注文を出すとき、置き換えるのは同じ人の「通常の」未処理注文だけ。
+    // VIPプレゼントの注文は消さない。
+    saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending" && !o.isVipGift))]);
 
-    let updated = { ...found };
+    // 書き込みの土台は同期済みの最新を使う（開きっぱなしの画面の古い残高で上書きしないため）
+    let updated = { ...(customers.find(c=>c.id===found.id) || found) };
     if (benefitUsed) {
       if (isToppingRank) {
         const newRemaining = availableTopping - benefitItems.length;
@@ -704,10 +723,12 @@ function CustomerView({ customers, menu, orders, saveOrders, saveC, designatedDr
 
   const cancelOrder = () => {
     if (!myPendingOrder) return;
-    let updated = { ...found };
+    let updated = { ...(customers.find(c=>c.id===found.id) || found) };
     if (myPendingOrder.usedBenefit) {
       if (isToppingRank) {
-        const restored = (found.toppingRemaining ?? 0) + (myPendingOrder.usedToppingCount || 0);
+        // 月が変わっていたら満数に戻っている扱い（先月の残りを土台にしない）
+        const base = (found.toppingRemainingMonth === currentMonth()) ? (found.toppingRemaining ?? toppingMax) : toppingMax;
+        const restored = base + (myPendingOrder.usedToppingCount || 0);
         updated = { ...updated, toppingRemaining: Math.min(restored, toppingMax), toppingRemainingMonth: currentMonth() };
       } else {
         updated = { ...updated, benefitUsedMonth: null };
@@ -993,14 +1014,17 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
       createdAt: new Date().toLocaleString("ja-JP"),
     };
     saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending" && o.isVipGift))]);
-    const updated = { ...found, vipGiftUsedMonth: currentMonth() };
+    // 書き込みの土台は同期済みの最新を使う（開きっぱなしの画面の古い残高で上書きしないため）
+    const base = customers.find(c=>c.id===found.id) || found;
+    const updated = { ...base, vipGiftUsedMonth: currentMonth() };
     saveC(customers.map(c=>c.id===found.id ? updated : c));
   };
 
   const cancelGift = () => {
     if (!pendingGift) return;
     saveOrders(orders.filter(o=>o.orderId!==pendingGift.orderId));
-    const updated = { ...found, vipGiftUsedMonth: null };
+    const base = customers.find(c=>c.id===found.id) || found;
+    const updated = { ...base, vipGiftUsedMonth: null };
     saveC(customers.map(c=>c.id===found.id ? updated : c));
   };
 
@@ -1438,7 +1462,17 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
   const isAlways  = rank?.benefit.type === "always_discount";
   const subtotal  = cart.reduce((s,i)=>s+i.price*i.qty, 0);
   const discount  = rank ? calcDiscount(rank, subtotal) : 0;
-  const total     = subtotal - discount;
+  // お客様側の注文画面と同じ計算にそろえる。
+  // 以前はPOSだけスペシャル会員（全品無料）とスタッフ割引を見ておらず、
+  // 同じ人でもPOSで会計すると満額を引かれていた。
+  const posLinkedStaff = customer
+    ? (staffAccounts.find(s=>s.linkedCustomerId===customer.id)
+       || (managerAccounts||[]).find(s=>s.linkedCustomerId===customer.id)) || null
+    : null;
+  const posStaffDiscount = posLinkedStaff
+    ? Math.floor(subtotal * (posLinkedStaff.discountRate ?? 10) / 100) : 0;
+  const isSpecialCustomer = !!customer?.isSpecial;
+  const total     = isSpecialCustomer ? 0 : Math.max(0, subtotal - discount - posStaffDiscount);
 
   const update = (updated) => {
     saveC(customers.map(c=>c.id===updated.id?updated:c));
@@ -1465,21 +1499,26 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
   };
 
   const doPayment = () => {
-    if (!customer||total===0) return;
-    if (total>customer.balance) { alert("残高が不足しています"); return; }
+    // スペシャル会員は total が 0 になるので、0円でも会計できるようにする
+    // （以前は total===0 で何も起きず、決済ボタンが無反応だった）
+    if (!customer || cart.length===0) return;
+    // 書き込みの土台は、選んだ瞬間の控えではなく同期済みの最新を使う。
+    // そうしないと、選んでいる間に他の端末で入ったチャージや決済を消してしまう。
+    const base = customers.find(c=>c.id===customer.id) || customer;
+    if (total>base.balance) { alert("残高が不足しています"); return; }
     // 二重決済の防止：この会員にアプリからの未処理注文が残っていないか確認する
     const pendingOfCustomer = (orders||[]).filter(o=>o.customerId===customer.id && o.status==="pending");
     if (pendingOfCustomer.length > 0 &&
         !window.confirm(`${customer.name} さんには、アプリからの未処理の注文が${pendingOfCustomer.length}件あります。\n「📋 注文」タブで完了すると、そこでも残高が引かれます。\n\nこのままPOSで決済すると二重に引かれる可能性があります。続けますか？`)) return;
     const updated = {
-      ...customer,
-      balance: customer.balance - total,
+      ...base,
+      balance: isSpecialCustomer ? base.balance : Math.max(0, base.balance - total),
       history: [{
-        type:"use", amount:total, subtotal, discount,
+        type:"use", amount:total, subtotal, discount: subtotal - total,
         items:cart.map(c=>`${c.name}×${c.qty}`).join(", "),
         performer: staffName,
         date:new Date().toLocaleString("ja-JP")
-      }, ...(customer.history||[])].slice(0,60),
+      }, ...(base.history||[])].slice(0,60),
     };
     update(updated);
     trigFlash("sub", total);
@@ -1488,24 +1527,28 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
   };
 
   const doCharge = () => requireManager(()=>{
+    // 入金も、選んだ瞬間の控えではなく同期済みの最新を土台にする
+    const base = customers.find(c=>c.id===customer.id) || customer;
     const updated = {
-      ...customer,
-      balance:              customer.balance + 2200,
-      currentYearPurchases: (customer.currentYearPurchases ?? 0) + 1,
-      history:   [{type:"charge",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(customer.history||[])].slice(0,60),
+      ...base,
+      balance:              base.balance + 2200,
+      currentYearPurchases: (base.currentYearPurchases ?? 0) + 1,
+      history:   [{type:"charge",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(base.history||[])].slice(0,60),
     };
     update(updated);
     trigFlash("add", 2200);
   });
 
   const undoCharge = () => requireManager(()=>{
-    const newBalance = Math.max(0, customer.balance - 2200);
-    const newPurchases = Math.max(0, (customer.currentYearPurchases ?? 0) - 1);
+    // 入金の取り消しも、同期済みの最新を土台にする
+    const base = customers.find(c=>c.id===customer.id) || customer;
+    const newBalance = Math.max(0, base.balance - 2200);
+    const newPurchases = Math.max(0, (base.currentYearPurchases ?? 0) - 1);
     const updated = {
-      ...customer,
+      ...base,
       balance:              newBalance,
       currentYearPurchases: newPurchases,
-      history:   [{type:"charge_undo",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(customer.history||[])].slice(0,60),
+      history:   [{type:"charge_undo",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(base.history||[])].slice(0,60),
     };
     update(updated);
     trigFlash("sub", 2200);
@@ -1746,10 +1789,22 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                     <span style={{color:"#666",fontSize:"0.8rem"}}>小計</span>
                     <span style={{color:"#888",fontSize:"0.8rem"}}>¥{subtotal.toLocaleString()}</span>
                   </div>
-                  {discount>0 && (
+                  {!isSpecialCustomer && discount>0 && (
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
                       <span style={{color:rank.color,fontSize:"0.8rem"}}>{rank.benefit.icon} {rank.benefit.desc}</span>
                       <span style={{color:rank.color,fontWeight:700,fontSize:"0.8rem"}}>－¥{discount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {!isSpecialCustomer && posStaffDiscount>0 && (
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                      <span style={{color:"#5ecf7f",fontSize:"0.8rem"}}>🟢 スタッフ割引 {posLinkedStaff.discountRate ?? 10}%</span>
+                      <span style={{color:"#5ecf7f",fontWeight:700,fontSize:"0.8rem"}}>－¥{posStaffDiscount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {isSpecialCustomer && (
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                      <span style={{color:"#e040fb",fontSize:"0.8rem"}}>💜 スペシャル（全品無料）</span>
+                      <span style={{color:"#e040fb",fontWeight:700,fontSize:"0.8rem"}}>－¥{subtotal.toLocaleString()}</span>
                     </div>
                   )}
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
@@ -2248,7 +2303,14 @@ function SalesHistoryPanel({ customers, orders }) {
   const getDay = (dateStr) => dateStr ? dateStr.split(" ")[0] : "不明";
 
   // 日付でソート（新しい順）してグループ化
-  allEntries.sort((a, b) => (b.date || "") > (a.date || "") ? 1 : -1);
+  // 日時は "2026/8/9 9:05:03" のようにゼロ埋めされていないので、文字列のまま比べると
+  // "2026/8/9" が "2026/8/11" より新しい扱いになってしまう。必ず数値に直してから比べる。
+  const toTime = (s) => {
+    if (!s) return 0;
+    const m = String(s).match(/(\d+)\/(\d+)\/(\d+)\D+(\d+):(\d+):?(\d*)/);
+    return m ? new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)).getTime() : 0;
+  };
+  allEntries.sort((a, b) => toTime(b.date) - toTime(a.date));
 
   const groups = {};
   allEntries.forEach(h => {
@@ -2418,7 +2480,10 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
         const r   = getEffectiveRank(c);
         const max = getToppingMax(r);
         if (max > 0) {
-          const restored = (c.toppingRemaining ?? max) + (order.usedToppingCount || 0);
+          // 月が変わっていたらトッピング残数は満数に戻っている扱いなので、
+          // 先月の残り（例:0回）を土台にしないよう気をつける。
+          const base = (c.toppingRemainingMonth === currentMonth()) ? (c.toppingRemaining ?? max) : max;
+          const restored = base + (order.usedToppingCount || 0);
           updated.toppingRemaining      = Math.min(restored, max);
           updated.toppingRemainingMonth = currentMonth();
         } else {
