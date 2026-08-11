@@ -84,6 +84,29 @@ const dbSet = async (key, val) => {
   }
 };
 
+// お金の出入りを、消えない別の場所に記録しておくための書き込み。
+// 会員データの history は60件で古いものが切り捨てられるため、
+// チャージ・チャージ取消・残高の手修正だけは、こちらにも1件ずつ積んでおく。
+// POST を使うと Firebase が勝手にキーを振ってくれるので、
+// 既存の全件を読み書きする必要がなく、通信量もほとんど増えない。
+const dbPush = async (key, val) => {
+  try {
+    const token = await getAuthToken();
+    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
+    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
+  } catch (e) {
+    // ここが失敗しても、本来の残高の記録（history）は別途保存されるので、画面は止めない
+    console.error("入出金ログの記録に失敗しました", e);
+  }
+};
+
+// チャージ・取消・残高手修正を、消えない台帳に残す
+const logMoney = (entry) => dbPush("cafe_v4_money_log", {
+  ...entry,
+  at: new Date().toLocaleString("ja-JP"),
+  atISO: new Date().toISOString(),
+});
+
 const dbGet = async (key, query) => {
   try {
     const token = await getAuthToken();
@@ -1536,6 +1559,8 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
       history:   [{type:"charge",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(base.history||[])].slice(0,60),
     };
     update(updated);
+    logMoney({ type:"charge", customerId:base.id, customerName:base.name, amount:2200,
+               balanceBefore:base.balance, balanceAfter:updated.balance, performer:staffName });
     trigFlash("add", 2200);
   });
 
@@ -1551,6 +1576,8 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
       history:   [{type:"charge_undo",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(base.history||[])].slice(0,60),
     };
     update(updated);
+    logMoney({ type:"charge_undo", customerId:base.id, customerName:base.name, amount:-2200,
+               balanceBefore:base.balance, balanceAfter:newBalance, performer:staffName });
     trigFlash("sub", 2200);
   });
 
@@ -3046,8 +3073,13 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
     const newCyp = Math.max(0, parseInt(cyp)||0);
     const newRb  = Math.max(0, parseInt(rb)||0);
     const logs = [];
-    if (newBal !== customer.balance)
+    if (newBal !== customer.balance) {
       logs.push({ type:"edit_balance", before:customer.balance, after:newBal, performer:"マネージャー", date:new Date().toLocaleString("ja-JP") });
+      // 残高の手修正も、消えない台帳に残す
+      logMoney({ type:"edit_balance", customerId:customer.id, customerName:customer.name,
+                 amount:newBal-customer.balance, balanceBefore:customer.balance, balanceAfter:newBal,
+                 performer:"マネージャー" });
+    }
     if (newCyp !== (customer.currentYearPurchases ?? 0))
       logs.push({ type:"edit_purchases", label:"今年の購入回数", before:customer.currentYearPurchases??0, after:newCyp, performer:"マネージャー", date:new Date().toLocaleString("ja-JP") });
     if (newRb !== (customer.rankBasis ?? 0))
