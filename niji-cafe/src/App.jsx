@@ -754,6 +754,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // サーバーが不調なときは null のままになり、今までどおりの動作に戻る。
   const [boot, setBoot] = useState(null);
   const custToken = useRef(null);   // お客様のログイン証
+  const [showRanks, setShowRanks] = useState(false);
 
   const reset = () => { setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); };
 
@@ -1004,14 +1005,17 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           {cvTab==="ticket" && (
             <div>
               <div className="ticket-card" style={{background:rank.bg,boxShadow:`0 0 50px ${rank.glow}55`}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-                  <div>
-                    <div style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"88"}}>{rank.gem} {rank.name}会員</div>
-                    <div style={{fontSize:"1.05rem",fontWeight:700,color:"#3d3630"}}>{found.name}</div>
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{color:"#8a7f76",fontSize:"0.72rem",marginBottom:2}}>残高</div>
-                    <div style={{color:rank.color,fontSize:"1.7rem",fontWeight:800,letterSpacing:"-0.02em"}}>¥{found.balance.toLocaleString()}</div>
+                {/* 名前とランクは1行にまとめ、残高を主役にする。
+                    お客様がこの画面を開く一番の理由は「いくら残っているか」なので、
+                    そこが一番大きく、最初に目に入る位置にある必要がある。 */}
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                  <span style={{fontSize:"1.05rem",fontWeight:700,color:"#3d3630"}}>{found.name}</span>
+                  <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"88",marginBottom:0}}>{rank.gem} {rank.name}</span>
+                </div>
+                <div style={{marginBottom:16}}>
+                  <div style={{color:"#8a7f76",fontSize:"0.85rem",marginBottom:2}}>のこり</div>
+                  <div style={{color:rank.color,fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05}}>
+                    ¥{found.balance.toLocaleString()}
                   </div>
                 </div>
                 <div style={{...S.benefitBox,borderColor:rank.color+"55",background:rank.color+"11"}}>
@@ -1030,24 +1034,31 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     {used?"来月またご利用いただけます":"スタッフにお申し付けください"}
                   </div>}
                 </div>
+                {/* 回数と次のランクを1つにまとめた。
+                    以前は「今年の購入回数」「来年のランク予測」「あと何回」「バー」が
+                    バラバラに4段あって、読むのに手間がかかっていた。
+                    来年の予測は今この場では要らない情報なので落とした。 */}
                 <div style={S.divider}/>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{color:"#8a7f76",fontSize:"0.8rem"}}>今年の購入回数</span>
-                  <span style={{color:rank.color,fontWeight:700}}>{cyp}回</span>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+                  <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>今年 {cyp}回</span>
+                  {next
+                    ? <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>あと{next.min-cyp}回で <span style={{color:next.color,fontWeight:700}}>{next.gem}{next.name}</span></span>
+                    : <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>最高ランクです</span>}
                 </div>
-                <div style={{background:"#ffffff0a",borderRadius:8,padding:"7px 10px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:next?4:0}}>
-                    <span style={{color:"#8a7f76",fontSize:"0.72rem"}}>来年のランク予測</span>
-                    <span style={{color:nextYearRank.color,fontWeight:700,fontSize:"0.8rem"}}>{nextYearRank.gem} {nextYearRank.name}</span>
-                  </div>
-                  {next&&<><div style={{marginBottom:4}}><span style={{color:"#9a8f85",fontSize:"0.7rem"}}>あと{next.min-cyp}回で {next.gem}{next.name}</span></div>
-                  <div style={S.bar}><div className="bar-fill" style={{width:`${pct}%`,background:nextYearRank.color}}/></div></>}
-                  {!next&&<div style={{color:nextYearRank.color,fontSize:"0.72rem",marginTop:2}}>✨ 最高ランク達成！</div>}
-                </div>
-                <div style={{textAlign:"right",fontSize:"0.68rem",color:"#ffffff22",marginTop:10,letterSpacing:"0.15em"}}>虹カフェ</div>
+                {next && <div style={S.bar}><div className="bar-fill" style={{width:`${pct}%`,background:rank.color}}/></div>}
               </div>
-              <div style={{marginTop:14,background:"#ffffff",borderRadius:14,padding:"14px 16px"}}>
-                <div style={{color:"#a79b90",fontSize:"0.72rem",letterSpacing:"0.08em",marginBottom:10}}>ランク一覧</div>
+              {/* ランク一覧は9行あり、毎回見る情報ではない。
+                  常に開いていると本題（残高と特典）が画面外に押し出されるので、
+                  必要なときだけ開く形にした。 */}
+              <button onClick={()=>setShowRanks(v=>!v)}
+                style={{width:"100%",marginTop:14,background:"#ffffff",border:"1px solid #e7ded3",borderRadius:14,
+                  padding:"14px 16px",cursor:"pointer",fontFamily:"inherit",display:"flex",
+                  justifyContent:"space-between",alignItems:"center",color:"#8a7f76",fontSize:"0.9rem"}}>
+                <span>ランクと特典を見る</span>
+                <span style={{color:"#a79b90"}}>{showRanks?"閉じる ▲":"▼"}</span>
+              </button>
+              {showRanks && (
+              <div style={{marginTop:8,background:"#ffffff",borderRadius:14,padding:"14px 16px"}}>
                 {RANKS.map(r=>{
                   const unlocked=found.rankBasis>=r.min, isCur=r.name===rank.name;
                   return (
@@ -1068,6 +1079,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   );
                 })}
               </div>
+              )}
               <button className="btn-ghost" style={{marginTop:14}} onClick={()=>{setFound(null);setInput("");}}>別の番号を確認</button>
               <RankingBoard customers={customers} myId={found.id}/>
             </div>
@@ -3601,8 +3613,8 @@ const S = {
   input:         { background:"#ffffff", border:"1px solid #e7ded3", borderRadius:8, padding:"12px 14px", color:"#3d3630", fontSize:"1rem", width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
   err:           { color:"#c94a45", fontSize:"0.85rem", margin:"4px 0 0" },
   rankBadge:     { display:"inline-block", border:"1px solid", borderRadius:20, padding:"3px 10px", fontSize:"0.76rem", fontWeight:700, letterSpacing:"0.05em", marginBottom:7 },
-  divider:       { borderTop:"1px dashed #ffffff22", margin:"12px 0" },
-  bar:           { background:"#ffffff22", borderRadius:4, height:6, overflow:"hidden" },
+  divider:       { borderTop:"1px dashed #d9cdbe", margin:"14px 0" },
+  bar:           { background:"#e7ded3", borderRadius:999, height:8, overflow:"hidden" },
   benefitBox:    { border:"1px solid", borderRadius:10, padding:"10px 12px", marginTop:12 },
   benefitTagUsed:{ background:"#fbebea", color:"#c94a45", border:"1px solid #e0a09b44", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", fontWeight:700, whiteSpace:"nowrap" },
   benefitTagAvail:{ border:"1px solid", borderRadius:20, padding:"3px 10px", fontSize:"0.72rem", fontWeight:700, whiteSpace:"nowrap" },
