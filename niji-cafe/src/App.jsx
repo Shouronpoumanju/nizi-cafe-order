@@ -491,7 +491,9 @@ export default function App() {
           dbGet("cafe_v4_manager_accounts"),
         ]);
         if (!mounted) return;
-        const raw = cust || SAMPLE;
+        // 取得できなかったときに見本データを表示しない。
+        // （データベースを直接読めない設定にしたあとも、見本の会員が出てこないようにするため）
+        const raw = Array.isArray(cust) ? cust : [];
         const migrated = raw.map(checkYearRollover);
         setCustomers(migrated);
         // 読み込み失敗時（cust が無い）は DB に一切書き込まない（見本データでの上書き事故を防止）
@@ -505,7 +507,7 @@ export default function App() {
         if (vip)    setVipGiftDrink(vip);
         if (staff)  setStaffAccounts(staff);
         if (mga)    setManagerAccounts(mga);
-      } catch { if (mounted) setCustomers(SAMPLE); }
+      } catch (e) { console.warn("初回の読み込みに失敗しました", e); }
       if (mounted) setLoaded(true);
     };
 
@@ -534,7 +536,9 @@ export default function App() {
       } catch {}
     };
 
-    const shouldSync = () => screenRef.current !== "home" && !document.hidden;
+    // この定期同期が要るのは POS 画面だけ。
+    // お客様のチケット画面は自分専用の窓口で別に取り直しているので、ここでは何もしない。
+    const shouldSync = () => screenRef.current === "pos" && !document.hidden;
 
     const timer = setInterval(() => { if (shouldSync()) syncNow(); }, 8000);
 
@@ -1608,7 +1612,19 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
     setBusy(false);
   };
 
-  const allAccounts = [
+  // ログイン画面に出すアカウント一覧は、サーバーから「名前と役割だけ」を受け取る。
+  // 取れなかったときは今までどおり手元のデータを使う。
+  const [serverAccounts, setServerAccounts] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/login")
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (alive && j && Array.isArray(j.accounts)) setServerAccounts(j.accounts); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const allAccounts = serverAccounts || [
     ...(managerAccounts||[]).map(a=>({...a, _role:"manager"})),
     ...(staffAccounts||[]).map(a=>({...a, _role:"staff"})),
   ];
