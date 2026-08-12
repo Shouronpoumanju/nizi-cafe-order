@@ -496,7 +496,12 @@ export default function App() {
   const screenRef = useRef(screen);
   screenRef.current = screen;
 
-  // Firebase REST API + ポーリング（3秒ごとに同期）
+  // データの読み込みと定期同期。
+  // ※ staffRole を依存に入れているのは重要。
+  //    データベースを直接読めない設定にしたため、ログイン前の読み込みは全部失敗する。
+  //    ログインして初めてサーバー経由で取れるようになるので、
+  //    ログインした時点でもう一度まとめて読み直す必要がある。
+  //    （これが無いと、メニューやスタッフ一覧が初期設定の見本データのままになる）
   useEffect(() => {
     let mounted = true;
 
@@ -575,7 +580,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, []);
+  }, [staffRole]);
 
   const saveC = async (list) => {
     lastSaveAt.current = Date.now();
