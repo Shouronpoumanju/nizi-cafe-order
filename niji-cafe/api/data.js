@@ -107,6 +107,19 @@ export default async function handler(req, res) {
         if (key === "cafe_v4_customers" && arr(value).length === 0) {
           return send(res, 400, { error: "会員が0人になる書き込みは受け付けません" });
         }
+        // スタッフ／マネージャーの一覧は、取得するときパスワードを伏せて返している。
+        // そのまま保存されるとパスワードが消えて誰もログインできなくなるので、
+        // パスワードが入っていない項目は、いまDBにある値をそのまま引き継ぐ。
+        if (MANAGER_ONLY.includes(key)) {
+          const before = arr(await fbGet(key));
+          const pw = {};
+          before.forEach((a) => { if (a.id && a.password !== undefined) pw[a.id] = a.password; });
+          const merged = arr(value).map((a) =>
+            a.password === undefined && pw[a.id] !== undefined ? { ...a, password: pw[a.id] } : a
+          );
+          await fbPut(key, merged);
+          return send(res, 200, { ok: true });
+        }
         await fbPut(key, value);
         return send(res, 200, { ok: true });
       }
