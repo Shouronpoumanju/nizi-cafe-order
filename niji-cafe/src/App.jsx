@@ -330,13 +330,15 @@ function PinChangeModal({ customer, customers, onSave, onClose }) {
 const RANKS = [
   { name:"ブロンズ",    min:2,  color:"#a2622a", gem:"🟫", bg:"linear-gradient(135deg,#f6e6d8,#eed3bb)", glow:"#cd7f32",
     benefit:{ type:"monthly",          desc:"トッピング1回無料",       icon:"🧁" } },
-  { name:"シルバー",    min:5,  color:"#8a8a8a", gem:"⬜", bg:"linear-gradient(135deg,#eeeeee,#dcdce4)", glow:"#c0c0c0",
+  // ※ シルバー・プラチナ・チタンの3つは、以前ほぼ同じ薄い灰色だった。
+  //    バッジもバーも背景に溶けて読めなかったので、それぞれ濃さと色味を分けてある。
+  { name:"シルバー",    min:5,  color:"#6c727e", gem:"⬜", bg:"linear-gradient(135deg,#dfe3ea,#c9cfda)", glow:"#a8b0bd",
     benefit:{ type:"monthly",          desc:"トッピング2回無料",       icon:"🧁🧁" } },
   { name:"ゴールド",    min:7,  color:"#a9791a", gem:"🟨", bg:"linear-gradient(135deg,#fbf0d6,#f5e2b0)", glow:"#ffd700",
     benefit:{ type:"monthly",          desc:"トッピング3回無料",       icon:"🧁🧁🧁" } },
-  { name:"プラチナ",    min:10, color:"#7a736c", gem:"🔘", bg:"linear-gradient(135deg,#f6f1ea,#eee7dd)", glow:"#e0dcd8",
+  { name:"プラチナ",    min:10, color:"#8a6f52", gem:"🔘", bg:"linear-gradient(135deg,#f0e8dc,#e2d6c4)", glow:"#cbb89f",
     benefit:{ type:"monthly",          desc:"コーヒー1杯無料",         icon:"☕" } },
-  { name:"チタン",      min:13, color:"#8a7f76", gem:"🩶", bg:"linear-gradient(135deg,#e9eef2,#d7e0e7)", glow:"#9da8b0",
+  { name:"チタン",      min:13, color:"#4f6b7a", gem:"🩶", bg:"linear-gradient(135deg,#dce7ee,#c2d3de)", glow:"#8ba4b3",
     benefit:{ type:"monthly",          desc:"指定ドリンク1杯無料",     icon:"🥤" } },
   { name:"サファイア",  min:16, color:"#3b7fb8", gem:"🔷", bg:"linear-gradient(135deg,#e4eefb,#cddff5)", glow:"#4fa3e8",
     benefit:{ type:"monthly",          desc:"好きなドリンク1杯無料",   icon:"🍹" } },
@@ -1016,7 +1018,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
         </div>
       ) : (
         <div>
-          <div style={{display:"flex",background:"#ffffff",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
+          <div style={{display:"flex",background:"#f2ece4",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
             {[
               ["ticket","🎫 チケット"],
               ["order","🛒 注文する"],
@@ -1034,17 +1036,22 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
 
           {cvTab==="ticket" && (
             <div>
-              <div className="ticket-card" style={{background:rank.bg,boxShadow:`0 0 50px ${rank.glow}55`}}>
-                {/* 名前とランクは1行にまとめ、残高を主役にする。
-                    お客様がこの画面を開く一番の理由は「いくら残っているか」なので、
-                    そこが一番大きく、最初に目に入る位置にある必要がある。 */}
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
+                  以前はカード全体をランク色のグラデーションで塗っていたため、
+                  シルバーやプラチナの人には画面全体が灰色一色になり、
+                  一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
+              <div className="ticket-card" style={{background:"#ffffff",border:"1px solid #ece4d9",
+                boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
                   <span style={{fontSize:"1.15rem",fontWeight:700,color:"#3d3630"}}>{found.name}</span>
-                  <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"88",marginBottom:0}}>{rank.gem} {rank.name}</span>
+                  <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>{rank.gem} {rank.name}</span>
                 </div>
+                {/* 残高はランクに関係なく、いつも一番はっきり読める濃さにする。
+                    この画面を開く理由がこれなので、色よりも読みやすさを優先する。 */}
                 <div style={{marginBottom:16}}>
                   <div style={{color:"#8a7f76",fontSize:"0.85rem",marginBottom:2}}>のこり</div>
-                  <div style={{color:rank.color,fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05}}>
+                  <div style={{color:"#2f2925",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05}}>
                     ¥{found.balance.toLocaleString()}
                   </div>
                 </div>
@@ -1110,8 +1117,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 })}
               </div>
               )}
-              <button className="btn-ghost" style={{marginTop:14}} onClick={()=>{setFound(null);setInput("");}}>別の番号を確認</button>
               <RankingBoard customers={customers} myId={found.id}/>
+              {/* めったに使わない操作なので、一番下で控えめに */}
+              <button className="btn-quiet" style={{marginTop:10}} onClick={()=>{setFound(null);setInput("");}}>別の番号を確認する</button>
             </div>
           )}
 
@@ -1175,7 +1183,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       <span style={{fontSize:"1rem"}}>🟢</span>
                       <div>
                         <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.85rem"}}>スタッフ割引 {discountRate}%OFF</div>
-                        <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>スタッフ紐付きアカウントは全商品10%オフ</div>
+                        {/* ここは「10%」と決め打ちで書かれていたため、
+                            割引率が15%の人には上下で違う数字が並んで見えていた。 */}
+                        <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>全商品が自動で{discountRate}%オフになります</div>
                       </div>
                     </div>
                   )}
@@ -3712,7 +3722,7 @@ const S = {
   err:           { color:"#c94a45", fontSize:"0.85rem", margin:"4px 0 0" },
   rankBadge:     { display:"inline-block", border:"1px solid", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, letterSpacing:"0.05em", marginBottom:7 },
   divider:       { borderTop:"1px dashed #d9cdbe", margin:"14px 0" },
-  bar:           { background:"#e7ded3", borderRadius:999, height:8, overflow:"hidden" },
+  bar:           { background:"#ece4d9", borderRadius:999, height:10, overflow:"hidden" },
   benefitBox:    { border:"1px solid", borderRadius:12, padding:"10px 12px", marginTop:12 },
   benefitTagUsed:{ background:"#fbebea", color:"#c94a45", border:"1px solid #e0a09b44", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
   benefitTagAvail:{ border:"1px solid", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
@@ -3789,6 +3799,31 @@ input:focus { border-color:#e86a8a !important; outline:none; }
 .close-btn { background:#f6f1ea; color:#8a7f76; border:none; border-radius:50%; width:28px; height:28px; cursor:pointer; font-size:0.85rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 
 .ticket-card { border-radius:16px; padding:20px; margin-bottom:8px; }
+
+/* ── お客様画面の切り替えタブ ──────────────────
+   ここには今までスタイルが1つも当たっておらず、
+   ブラウザ既定の四角いボタンがそのまま出ていた（画面で一番目につく粗）。
+   iOS や Android で見慣れた「切り替えスイッチ」の形にする。 */
+.tab-btn {
+  flex:1; background:transparent; border:none; border-radius:9px;
+  padding:10px 6px; font-size:0.95rem; font-family:inherit; font-weight:600;
+  color:#9a8f85; cursor:pointer; white-space:nowrap;
+  transition:background 0.18s, color 0.18s, box-shadow 0.18s;
+}
+.tab-btn:hover { color:#8a7f76; }
+.tab-btn.active {
+  background:#faf0dc; color:#b07c1e;
+  box-shadow:0 1px 3px rgba(61,54,48,0.10);
+}
+
+/* 「別の番号を確認」のように、めったに押さないものは目立たせない。
+   本題（残高・特典）と同じ強さで並んでいると、どれが主役か分からなくなる。 */
+.btn-quiet {
+  background:transparent; border:none; color:#a79b90; font-size:0.85rem;
+  font-family:inherit; cursor:pointer; padding:10px; width:100%;
+  text-decoration:underline; text-underline-offset:3px;
+}
+.btn-quiet:hover { color:#8a7f76; }
 .bar-fill    { height:100%; border-radius:8px; transition:width 0.6s ease; }
 
 .c-row { background:#ffffff; border:1px solid #e7ded3; border-radius:12px; padding:12px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:background 0.15s; }
