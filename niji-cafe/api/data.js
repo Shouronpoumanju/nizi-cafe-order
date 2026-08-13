@@ -8,7 +8,7 @@
 //    ・残高・暗証番号・氏名は書き換えられない（特典の使用状況だけ）
 //  ので、細工したリクエストを送られても残高を増やすことはできません。
 // ══════════════════════════════════════════
-import { envReady, fbGet, fbPut, fbPost, readToken, send, readBody, bearer } from "./_lib.js";
+import { envReady, fbGet, fbPut, fbPost, readToken, sameSecret, send, readBody, bearer } from "./_lib.js";
 
 // 誰でも読んでよいもの（お店の掲示物にあたるもの）
 const PUBLIC_READ = ["cafe_v4_menu", "cafe_v4_designated_drink", "cafe_v4_vip_gift_drink"];
@@ -122,6 +122,20 @@ export default async function handler(req, res) {
         }
         await fbPut(key, value);
         return send(res, 200, { ok: true });
+      }
+
+      // ── マネージャーのパスワード確認 ─────────────────
+      // POS の中の保護された操作（残高の手修正など）で使う。
+      // 画面側にはパスワードを渡していないので、照合はここで行う。
+      // 誰のパスワードかは問わず「マネージャーの誰かのものか」だけを見る。
+      case "verifyManagerPw": {
+        if (!isStaff) return send(res, 403, { error: "この操作はスタッフのみです" });
+        const pw = value && value.password;
+        const mgrs = arr(await fbGet("cafe_v4_manager_accounts"));
+        const ok = mgrs.some((a) => a && sameSecret(a.password, pw));
+        // 総当たりを現実的でなくするため、外れたときだけ待たせる
+        if (!ok) await new Promise((r) => setTimeout(r, 400));
+        return send(res, 200, { ok });
       }
 
       // ── お客様：自分の特典の使用状況だけを更新 ──────────
