@@ -479,10 +479,14 @@ const DEFAULT_MENU = [
 export default function App() {
   const [screen,         setScreen]         = useState("home");
   const [customers,      setCustomers]      = useState([]);
-  const [menu,           setMenu]           = useState(DEFAULT_MENU);
+  // ※ 見本データ（DEFAULT_MENU / 山田花子 など）を初期値にしない。
+  //    読み込みに失敗したとき、実在しないメニューやスタッフがそのまま画面に出て、
+  //    本物だと思って操作してしまう事故を防ぐため。
+  //    取得できていない状態では、後述の saveMenu などが保存を断るようにしてある。
+  const [menu,           setMenu]           = useState([]);
   const [orders,         setOrders]         = useState([]);
-  const [staffAccounts,  setStaffAccounts]  = useState(DEFAULT_STAFF_ACCOUNTS);
-  const [managerAccounts, setManagerAccounts]= useState(DEFAULT_MANAGER_ACCOUNTS);
+  const [staffAccounts,  setStaffAccounts]  = useState([]);
+  const [managerAccounts, setManagerAccounts]= useState([]);
   const [designatedDrink,setDesignatedDrink]= useState(null);
   const [vipGiftDrink,   setVipGiftDrink]   = useState(null);
   const [staffRole,      setStaffRole]      = useState(null);
@@ -495,6 +499,11 @@ export default function App() {
   // 今どの画面にいるかを同期処理から参照するための控え（通信量を抑えるために使う）
   const screenRef = useRef(screen);
   screenRef.current = screen;
+
+  // サーバーからちゃんと取得できた項目の控え。
+  // 取得できていないものを保存すると、DB の中身を空で上書きしてしまうので、
+  // ここが false の間は保存を断る（データを丸ごと失う事故の防止）。
+  const gotFromServer = useRef({ menu:false, staff:false, manager:false });
 
   // データの読み込みと定期同期。
   // ※ staffRole を依存に入れているのは重要。
@@ -528,12 +537,12 @@ export default function App() {
           if (changed) dbSet("cafe_v4_customers", migrated);
         }
         // 配列で来たときだけ差し替える。おかしな値が入ると画面が壊れるため。
-        if (Array.isArray(menu_) && menu_.length) setMenu(menu_);
+        if (Array.isArray(menu_) && menu_.length) { setMenu(menu_); gotFromServer.current.menu = true; }
         if (Array.isArray(ord))   setOrders(ord);
         if (dd  && typeof dd  === "object") setDesignatedDrink(dd);
         if (vip && typeof vip === "object") setVipGiftDrink(vip);
-        if (Array.isArray(staff) && staff.length) setStaffAccounts(staff);
-        if (Array.isArray(mga)   && mga.length)   setManagerAccounts(mga);
+        if (Array.isArray(staff) && staff.length) { setStaffAccounts(staff); gotFromServer.current.staff = true; }
+        if (Array.isArray(mga)   && mga.length)   { setManagerAccounts(mga); gotFromServer.current.manager = true; }
       } catch (e) { console.warn("初回の読み込みに失敗しました", e); }
       if (mounted) setLoaded(true);
     };
@@ -613,7 +622,10 @@ export default function App() {
       dbSet("cafe_v4_customers", list); // 失敗時は従来動作にフォールバック
     }
   };
-  const saveMenu        = (list) => { lastSaveAt.current = Date.now(); setMenu(list);             dbSet("cafe_v4_menu",             list); };
+  const saveMenu        = (list) => {
+    if (!gotFromServer.current.menu) return notLoadedYet("メニュー");
+    lastSaveAt.current = Date.now(); setMenu(list);             dbSet("cafe_v4_menu",             list);
+  };
   const saveOrders = async (list) => {
     lastSaveAt.current = Date.now();
     setOrders(list); // 画面はすぐ更新（従来どおり）
@@ -659,10 +671,23 @@ export default function App() {
       dbSet("cafe_v4_orders", list); // 失敗時は従来動作にフォールバック
     }
   };
+  // 読み込めていないものは保存させない。
+  // （空っぽの状態で保存すると、DB にある本物のメニューやスタッフが消えてしまう）
+  const notLoadedYet = (what) => {
+    alert(`${what}をまだ読み込めていないため、保存できません。\n通信状況を確認して、画面を開き直してください。`);
+    return false;
+  };
+
   const saveDesignatedDrink = (item)=> { lastSaveAt.current = Date.now(); setDesignatedDrink(item); dbSet("cafe_v4_designated_drink", item); };
   const saveVipGiftDrink    = (item)=> { lastSaveAt.current = Date.now(); setVipGiftDrink(item);    dbSet("cafe_v4_vip_gift_drink",   item); };
-  const saveManagerAccounts = (list)=> { lastSaveAt.current = Date.now(); setManagerAccounts(list); dbSet("cafe_v4_manager_accounts", list); };
-  const saveStaffAccounts   = (list)=> { lastSaveAt.current = Date.now(); setStaffAccounts(list);   dbSet("cafe_v4_staff_accounts",   list); };
+  const saveManagerAccounts = (list)=> {
+    if (!gotFromServer.current.manager) return notLoadedYet("マネージャー一覧");
+    lastSaveAt.current = Date.now(); setManagerAccounts(list); dbSet("cafe_v4_manager_accounts", list);
+  };
+  const saveStaffAccounts   = (list)=> {
+    if (!gotFromServer.current.staff) return notLoadedYet("スタッフ一覧");
+    lastSaveAt.current = Date.now(); setStaffAccounts(list);   dbSet("cafe_v4_staff_accounts",   list);
+  };
 
   if (!loaded) return <div style={S.loading}>読み込み中...</div>;
 
@@ -1738,6 +1763,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
   const [pwInput,   setPwInput]   = useState("");
   const [pwErr,     setPwErr]     = useState("");
   const [pwTarget,  setPwTarget]  = useState(null);
+  const [pwBusy,    setPwBusy]    = useState(false);
 
   const isManager = staffRole === "manager";
   const canEditPin = isManager || staffIsChief;
@@ -1861,9 +1887,22 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
     if (isManager) { fn(); return; }
     setPwTarget(()=>fn); setPwPrompt("auth"); setPwInput(""); setPwErr("");
   };
-  const confirmManager = () => {
-    if ((managerAccounts||[]).some(a=>a.password===pwInput)) { setPwPrompt(null); pwTarget&&pwTarget(); }
-    else setPwErr("マネージャーパスワードが違います");
+  // マネージャーのパスワード確認。
+  // ※ 照合はサーバーの中で行う。画面側にはパスワードを渡していないので、
+  //    ここで手元のデータと見比べる方法では、正しいパスワードでも必ず弾かれる。
+  const confirmManager = async () => {
+    if (pwBusy) return;
+    setPwBusy(true); setPwErr("");
+    try {
+      const r = await apiData("verifyManagerPw", { value: { password: pwInput } });
+      if (r.ok) { setPwPrompt(null); pwTarget && pwTarget(); }
+      else setPwErr("マネージャーパスワードが違います");
+    } catch (e) {
+      // サーバーに繋がらないときだけ、お店が止まらないよう手元のデータで確認する
+      if ((managerAccounts||[]).some(a=>a.password===pwInput)) { setPwPrompt(null); pwTarget&&pwTarget(); }
+      else setPwErr("確認できませんでした。通信状況を確認してください");
+    }
+    setPwBusy(false);
   };
 
   const categories = [...new Set(menu.map(m=>m.category))];
@@ -1889,6 +1928,17 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
           </span>
         </div>
       </div>
+
+      {/* 読み込みに失敗したときは、黙って見本データを出さずに、はっきり知らせる。
+          （何も言わずに古い／偽の一覧が出ていると、それを本物だと思って操作してしまう） */}
+      {(menu.length===0 || staffAccounts.length===0) && (
+        <div style={{background:"#fbebea",borderBottom:"1px solid #f0d6d4",color:"#a5453e",
+          padding:"10px 16px",fontSize:"0.85rem",lineHeight:1.5}}>
+          ⚠️ {menu.length===0 && staffAccounts.length===0 ? "メニューとスタッフ一覧" : menu.length===0 ? "メニュー" : "スタッフ一覧"}
+          を読み込めませんでした。通信状況を確認して、画面を開き直してください。
+          （この状態では保存できません）
+        </div>
+      )}
 
       {/* TAB NAV（客未選択時のみ） */}
       {!customer && (
