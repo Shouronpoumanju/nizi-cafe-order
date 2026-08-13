@@ -1764,6 +1764,12 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
   const [pwErr,     setPwErr]     = useState("");
   const [pwTarget,  setPwTarget]  = useState(null);
   const [pwBusy,    setPwBusy]    = useState(false);
+  // 暗証番号を一時的に表示している会員（1人だけ・5秒で自動的に伏せる）
+  const [pinShown,  setPinShown]  = useState(null);
+  const revealPin = (id) => {
+    setPinShown(id);
+    setTimeout(() => setPinShown(cur => (cur === id ? null : cur)), 5000);
+  };
 
   const isManager = staffRole === "manager";
   const canEditPin = isManager || staffIsChief;
@@ -1940,9 +1946,12 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
         </div>
       )}
 
-      {/* TAB NAV（客未選択時のみ） */}
+      {/* TAB NAV（客未選択時のみ）
+          タブの帯は画面いっぱい、中のボタンは本文と同じ幅で中央に揃える。
+          （帯だけ1440px、中身は中央——という不揃いを避けるため） */}
       {!customer && (
-        <div style={{display:"flex",background:"#ffffff",borderBottom:"1px solid #e7ded3",overflowX:"auto"}}>
+        <div style={{background:"#ffffff",borderBottom:"1px solid #e7ded3"}}>
+        <div style={{display:"flex",overflowX:"auto",maxWidth:1080,margin:"0 auto"}}>
           {[["order","👥 会員"],["menu","🍽 メニュー"],["cash","💵 現金注文"],["orders","📋 注文"],["history","🗂 履歴"],
             ...(isManager?[["staffmgmt","🔐 スタッフ"]]:[])
           ].map(([k,l])=>(
@@ -1958,18 +1967,19 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
             </button>
           ))}
         </div>
+        </div>
       )}
 
       {/* ── 客未選択: 検索 ── */}
       {!customer && posTab==="order" && (
-        <div style={{...S.page,paddingTop:14}}>
+        <div className="pos-page" style={{paddingTop:14}}>
           <h2 style={S.title}>お客様を検索</h2>
-          <div style={{display:"flex",gap:8,marginBottom:12}}>
-            <input style={{...S.input,flex:1,marginBottom:0}} placeholder={isManager ? "名前 or 暗証番号で検索" : "名前で検索"}
-              value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSearch()}/>
-            <button className="btn-gold" style={{width:"auto",padding:"0 16px",fontSize:"0.95rem",flexShrink:0}} onClick={doSearch}>検索</button>
+          {/* 打ちながら絞り込まれるので、検索ボタンは無くしてある（1操作減る） */}
+          <div style={{marginBottom:12}}>
+            <input style={{...S.input,marginBottom:0}} placeholder={isManager ? "名前 or 暗証番号で絞り込み" : "名前で絞り込み"}
+              value={query} onChange={e=>setQuery(e.target.value)}/>
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div className="pos-list">
             {customers.filter(c=>{
                 if (!query) return true;
                 if (isManager) return c.name.includes(query)||c.pin.includes(query);
@@ -1984,10 +1994,17 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                     <div style={{width:10,height:10,borderRadius:"50%",background:r.color,flexShrink:0}}/>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:"0.95rem"}}>{c.name} {c.isVIP&&<span style={{color:"#a9791a",fontSize:"0.85rem"}}>⭐</span>}{c.isSpecial&&<span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>💜</span>}</div>
-                      {isManager
-                        ? <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>暗証: {c.pin} · {r.gem}{r.name}</div>
-                        : <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>{r.gem}{r.name}</div>
-                      }
+                      {/* 暗証番号は伏せておく。POSの画面はカウンター越しにお客様からも見えるため。
+                          「暗証」の部分を押したときだけ、その1人分を5秒だけ表示する。 */}
+                      <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>
+                        {isManager && (
+                          <span onClick={(e)=>{ e.stopPropagation(); revealPin(c.id); }}
+                            style={{cursor:"pointer",borderBottom:"1px dotted #c3bab0",paddingBottom:1}}>
+                            暗証: {pinShown===c.id ? c.pin : "•".repeat(String(c.pin||"").length||4)}
+                          </span>
+                        )}
+                        {isManager && " · "}{r.gem}{r.name}
+                      </div>
                     </div>
                     <div style={{textAlign:"right",display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
                       <div style={{color:r.color,fontWeight:700}}>¥{c.balance.toLocaleString()}</div>
@@ -2035,7 +2052,8 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
         <SalesHistoryPanel customers={customers} orders={orders}/>
       )}
       {customer && (
-        <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 44px)",overflow:"hidden"}}>
+        <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 44px)",overflow:"hidden",
+          width:"100%",maxWidth:1080,margin:"0 auto"}}>
 
           {/* 客ストリップ */}
           <div style={{...S.customerStrip, borderColor:rank.color+"44"}}>
@@ -2078,12 +2096,12 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
             </div>
           </div>
 
-          {/* メニューグリッド */}
+          {/* メニューグリッド。広い画面では列が増えるので、スクロールがぐっと減る */}
           <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
             {categories.map(cat=>(
               <div key={cat} style={{marginBottom:14}}>
                 <div style={S.catLabel}>{cat}</div>
-                <div style={S.menuGrid}>
+                <div className="menu-grid-auto">
                   {menu.filter(m=>m.category===cat).map(item=>{
                     const inCart=cart.find(c=>c.id===item.id);
                     return (
@@ -2195,12 +2213,6 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
     </div>
   );
 
-  function doSearch() {
-    const c = isManager
-      ? customers.find(c=>c.pin===query.trim()||c.name.includes(query.trim()))
-      : customers.find(c=>c.name.includes(query.trim()));
-    if(c) setCustomer(c);
-  }
 }
 
 // ── BACKUP PANEL ─────────────────────────
@@ -2374,6 +2386,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
   const [form,          setForm]          = useState({});
   const [linkTarget,    setLinkTarget]    = useState(null);
   const [linkTargetMgr, setLinkTargetMgr] = useState(null);
+  const [pickVip,       setPickVip]       = useState(false); // VIPドリンクの選択肢を開いているか
   const upd = (f,v) => setForm(p=>({...p,[f]:v}));
 
   const openNewStaff  = () => { setForm({id:`st_${Date.now()}`,name:"",password:"",linkedCustomerId:null}); setEditingStaff("new"); };
@@ -2413,7 +2426,11 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
           <span style={{fontSize:"1.15rem"}}>{isManager?"👑":"👤"}</span>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:"0.95rem",color:isManager?"#b07c1e":"#3d3630"}}>{acc.name}</div>
-            <div style={{color:"#8a7f76",fontSize:"0.75rem",marginTop:2}}>PW: {acc.password}</div>
+            {/* パスワードはサーバーの中だけで扱うようになったので、画面には届いていない。
+                空の「PW:」を出しても混乱させるだけなので、状態だけを示す。 */}
+            <div style={{color:"#a79b90",fontSize:"0.75rem",marginTop:2}}>
+              {acc.password ? `PW: ${acc.password}` : "パスワード設定済み（✏️ から変更できます）"}
+            </div>
           </div>
           <button className="btn-tiny-edit" onClick={()=>onEdit(acc)}>✏️</button>
           <button className="btn-tiny-del"  onClick={()=>onDel(acc.id)}>🗑</button>
@@ -2466,8 +2483,10 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
   };
 
   return (
-    <div style={{...S.page, paddingTop:14, paddingBottom:40}}>
-      <BackupPanel customers={customers}/>
+    <div className="pos-page" style={{paddingTop:14, paddingBottom:40}}>
+      {/* ※ バックアップ欄はこのタブの一番下に移した。
+             年に数回しか使わないものが最上段にあると、毎回それを飛ばしてから
+             本題（スタッフ一覧）に入ることになるため。 */}
 
       {/* マネージャーアカウント */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -2479,24 +2498,32 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
           ltId={linkTargetMgr} setLtId={setLinkTargetMgr} onLink={linkMgr} onUnlink={unlinkMgr}/>
       ))}
 
-      {/* VIPプレゼントドリンク設定 */}
+      {/* VIPプレゼントドリンク設定。選択肢は普段は畳んでおく（月に一度しか変えないため） */}
       <div style={{background:"linear-gradient(135deg,#faf0dc,#f7e7c4)",border:"1px solid #e8c14a44",borderRadius:12,padding:"14px",marginBottom:14,marginTop:10}}>
         <div style={{color:"#a9791a",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>⭐ VIPプレゼント — 今月のドリンク</div>
-        {vipGiftDrink ? (
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <span style={{color:"#3d3630",fontWeight:700}}>{vipGiftDrink.emoji} {vipGiftDrink.name}</span>
-            <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:999,padding:"3px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveVipGiftDrink(null)}>解除</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          <span style={{color:vipGiftDrink?"#3d3630":"#9a8f85",fontWeight:vipGiftDrink?700:400,fontSize:vipGiftDrink?"1rem":"0.85rem"}}>
+            {vipGiftDrink ? `${vipGiftDrink.emoji} ${vipGiftDrink.name}` : "未設定"}
+          </span>
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            {vipGiftDrink && (
+              <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:999,padding:"4px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveVipGiftDrink(null)}>解除</button>
+            )}
+            <button style={{background:"#ffffff",border:"1px solid #e8c14a",borderRadius:999,padding:"4px 12px",color:"#a9791a",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+              onClick={()=>setPickVip(v=>!v)}>{pickVip?"閉じる":"変更"}</button>
           </div>
-        ) : <div style={{color:"#9a8f85",fontSize:"0.85rem",marginBottom:10}}>未設定</div>}
-        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-          {menu.map(item=>(
-            <button key={item.id}
-              style={{background:vipGiftDrink?.id===item.id?"#f7e7c4":"#ffffff",border:`1px solid ${vipGiftDrink?.id===item.id?"#e8c14a":"#e7ded3"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",color:vipGiftDrink?.id===item.id?"#a9791a":"#8a7f76",fontSize:"0.85rem",fontWeight:vipGiftDrink?.id===item.id?700:400,transition:"all 0.15s"}}
-              onClick={()=>saveVipGiftDrink(item)}>
-              {item.emoji} {item.name}
-            </button>
-          ))}
         </div>
+        {pickVip && (
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+            {menu.map(item=>(
+              <button key={item.id}
+                style={{background:vipGiftDrink?.id===item.id?"#f7e7c4":"#ffffff",border:`1px solid ${vipGiftDrink?.id===item.id?"#e8c14a":"#e7ded3"}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",color:vipGiftDrink?.id===item.id?"#a9791a":"#8a7f76",fontSize:"0.85rem",fontWeight:vipGiftDrink?.id===item.id?700:400,transition:"all 0.15s"}}
+                onClick={()=>{ saveVipGiftDrink(item); setPickVip(false); }}>
+                {item.emoji} {item.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* スタッフアカウント */}
@@ -2523,6 +2550,11 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
         }
       </div>
       {staffAccounts.length===0&&<div style={{textAlign:"center",color:"#8a7f76",padding:"20px",background:"#ffffff",borderRadius:12}}>スタッフアカウントがありません</div>}
+
+      {/* バックアップ欄はここ（一番下）。普段使うものではないため。 */}
+      <div style={{marginTop:24}}>
+        <BackupPanel customers={customers}/>
+      </div>
 
       {/* マネージャー編集モーダル */}
       {editingMgr && (
@@ -2661,7 +2693,7 @@ function SalesHistoryPanel({ customers, orders }) {
   const days = Object.keys(groups); // 既にソート済み
 
   return (
-    <div style={{...S.page, paddingTop:14, paddingBottom:40}}>
+    <div className="pos-page" style={{paddingTop:14, paddingBottom:40}}>
       <h2 style={{...S.title, margin:"0 0 14px"}}>会計履歴</h2>
 
       {days.length === 0 ? (
@@ -2836,7 +2868,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
   };
 
   return (
-    <div style={{...S.page, paddingTop:14}}>
+    <div className="pos-page" style={{paddingTop:14}}>
       <h2 style={{...S.title,margin:"0 0 14px"}}>注文管理</h2>
 
       {/* 受付中 */}
@@ -2850,7 +2882,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
           現在注文はありません
         </div>
       ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+        <div className="pos-list" style={{marginBottom:20}}>
           {pending.map(order=>(
             <div key={order.orderId} style={{
               background:"#eef3df",border:`1px solid ${order.rankColor}55`,
@@ -2915,13 +2947,15 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       {completed.length>0&&(
         <>
           <div style={{color:"#9a8f85",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:8}}>完了済み（直近10件）</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {/* 以前は opacity:0.7 をかけていて、金額も担当者も読み取りにくかった。
+              「済んだもの」という区別は背景の色でつけて、文字はそのまま読める濃さにする。 */}
+          <div className="pos-list">
             {completed.map(order=>(
-              <div key={order.orderId} style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,padding:"10px 12px",opacity:0.7}}>
+              <div key={order.orderId} style={{background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:12,padding:"10px 12px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
-                    <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{order.customerName}</span>
-                    <span style={{color:"#a79b90",fontSize:"0.75rem",marginLeft:8}}>{order.completedAt}</span>
+                    <span style={{color:"#3d3630",fontSize:"0.85rem",fontWeight:700}}>{order.customerName}</span>
+                    <span style={{color:"#8a7f76",fontSize:"0.75rem",marginLeft:8}}>{order.completedAt}</span>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <span style={{color:"#3e9a5c",fontSize:"0.85rem",fontWeight:700}}>¥{order.total.toLocaleString()}</span>
@@ -2945,6 +2979,7 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
   const [editing,    setEditing]    = useState(null); // item id or "new"
   const [form,       setForm]       = useState({});
   const [emojiPick,  setEmojiPick]  = useState(false);
+  const [pickDrink,  setPickDrink]  = useState(false); // 指定ドリンクの選択肢を開いているか
   const categories = [...new Set(menu.map(m=>m.category))];
 
   const openNew = () => {
@@ -2971,46 +3006,54 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
   };
 
   return (
-    <div style={{...S.page, paddingTop:14}}>
+    <div className="pos-page" style={{paddingTop:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h2 style={{...S.title,margin:0}}>メニュー管理</h2>
         <button className="btn-sm-gold" onClick={openNew}>＋ 追加</button>
       </div>
 
-      {/* ── 今月の指定ドリンク設定（チタン特典用） ── */}
+      {/* ── 今月の指定ドリンク設定（チタン特典用） ──
+          選択肢は全メニュー分あるので、開きっぱなしだと本題のメニュー一覧まで
+          2画面ぶんスクロールが要る。月に一度しか変えないものなので、普段は畳んでおく。 */}
       <div style={{background:"#e9f1fa",border:"1px solid #c3bab044",borderRadius:12,padding:"12px 14px",marginBottom:18}}>
         <div style={{color:"#8a7f76",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>
           🩶 チタン特典 — 今月の指定ドリンク
         </div>
-        {designatedDrink ? (
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{color:"#3d3630",fontWeight:700}}>{designatedDrink.emoji} {designatedDrink.name}</span>
-            <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:999,
-              padding:"4px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}
-              onClick={()=>saveDesignatedDrink(null)}>解除</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          <span style={{color:designatedDrink?"#3d3630":"#9a8f85",fontWeight:designatedDrink?700:400,fontSize:designatedDrink?"1rem":"0.85rem"}}>
+            {designatedDrink ? `${designatedDrink.emoji} ${designatedDrink.name}` : "未設定"}
+          </span>
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            {designatedDrink && (
+              <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:999,
+                padding:"4px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}
+                onClick={()=>saveDesignatedDrink(null)}>解除</button>
+            )}
+            <button style={{background:"#ffffff",border:"1px solid #c3bab0",borderRadius:999,
+              padding:"4px 12px",color:"#5d7d99",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+              onClick={()=>setPickDrink(v=>!v)}>{pickDrink?"閉じる":"変更"}</button>
           </div>
-        ) : (
-          <div style={{color:"#9a8f85",fontSize:"0.85rem"}}>未設定 — 下のドリンクから選んで設定してください</div>
-        )}
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-          {menu.map(item=>(
-            <button key={item.id}
-              style={{background:designatedDrink?.id===item.id?"#dceaf5":"#ffffff",
-                border:`1px solid ${designatedDrink?.id===item.id?"#c3bab0":"#e7ded3"}`,
-                borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",
-                color:designatedDrink?.id===item.id?"#8a7f76":"#8a7f76",fontSize:"0.85rem",
-                transition:"all 0.15s"}}
-              onClick={()=>saveDesignatedDrink(item)}>
-              {item.emoji} {item.name}
-            </button>
-          ))}
         </div>
+        {pickDrink && (
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+            {menu.map(item=>(
+              <button key={item.id}
+                style={{background:designatedDrink?.id===item.id?"#dceaf5":"#ffffff",
+                  border:`1px solid ${designatedDrink?.id===item.id?"#c3bab0":"#e7ded3"}`,
+                  borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",
+                  color:"#8a7f76",fontSize:"0.85rem",transition:"all 0.15s"}}
+                onClick={()=>{ saveDesignatedDrink(item); setPickDrink(false); }}>
+                {item.emoji} {item.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {categories.map(cat=>(
         <div key={cat} style={{marginBottom:18}}>
           <div style={S.catLabel}>{cat}</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div className="pos-list">
             {menu.filter(m=>m.category===cat).map(item=>(
               <div key={item.id} style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,
                 padding:"10px 12px",display:"flex",alignItems:"center",gap:10}}>
@@ -3537,7 +3580,7 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
   };
 
   return (
-    <div style={{...S.page, paddingTop:14, paddingBottom:40}}>
+    <div className="pos-page" style={{paddingTop:14, paddingBottom:40}}>
       <h2 style={{...S.title,margin:"0 0 6px"}}>💵 現金注文</h2>
       <p style={{color:"#8a7f76",fontSize:"0.85rem",lineHeight:1.6,marginBottom:14}}>
         会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。確定すると「📋 注文」に届き、完了すると会計履歴にも残ります。会員の残高・購入回数には影響しません。
@@ -3558,7 +3601,7 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
       {categories.map(cat=>(
         <div key={cat} style={{marginBottom:14}}>
           <div style={S.catLabel}>{cat}</div>
-          <div style={S.menuGrid}>
+          <div className="menu-grid-auto">
             {menu.filter(m=>m.category===cat).map(item=>{
               const inCart=cart.find(c=>c.id===item.id);
               return (
@@ -3676,7 +3719,7 @@ const S = {
   benefitTagAlways:{ background:"#eef2fb", color:"#3b7fb8", border:"1px solid #8fbde044", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
   rankRow:       { display:"flex", alignItems:"center", padding:"7px 8px", marginBottom:2, position:"relative" },
   curDot:        { width:6, height:6, borderRadius:"50%", marginLeft:8, flexShrink:0 },
-  topbar:        { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", background:"#ffffff", borderBottom:"1px solid #e7ded3", height:44 },
+  topbar:        { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", background:"#ffffff", borderBottom:"1px solid #e7ded3", height:44, boxSizing:"border-box" },
   customerStrip: { padding:"10px 14px", background:"#ffffff", borderBottom:"2px solid", flexShrink:0 },
   benefitStripBox:{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#ffffff", border:"1px solid", borderRadius:8, padding:"6px 10px", marginTop:6, gap:8 },
   catLabel:      { color:"#9a8f85", fontSize:"0.75rem", letterSpacing:"0.08em", marginBottom:8, paddingLeft:2 },
@@ -3780,6 +3823,25 @@ input:focus { border-color:#e86a8a !important; outline:none; }
 .btn-complete { flex:1; background:linear-gradient(135deg,#e2f2e6,#c9e6d0); color:#2c7344; border:1px solid #c9e2ce; border-radius:12px; padding:10px; font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit; transition:background 0.15s; }
 .btn-complete:hover { background:linear-gradient(135deg,#d3ead9,#bfe0c6); }
 .btn-sm-gold { background:#faf0dc; color:#b07c1e; border:1px solid #d3a94f44; border-radius:8px; padding:7px 13px; font-size:0.85rem; cursor:pointer; font-family:inherit; }
+
+/* ── POS の横幅 ──────────────────────────────
+   POS はレジ台のタブレットやパソコンでも使う。
+   これまでは画面がどれだけ広くても中央480pxしか使わず、
+   商品名が「ホットヘーゼルナッ／ツコーヒー」のように不自然に折り返し、
+   メニュー33品が1行ずつ縦に並んで延々スクロールが要る状態だった。
+   広い画面では横に並べて、1画面で見渡せるようにする。
+   ※ お客様のチケット画面はスマホ前提なので、そちらの幅は変えない。 */
+.pos-page { max-width:480px; margin:0 auto; padding:24px 16px; }
+.pos-list { display:grid; grid-template-columns:1fr; gap:8px; align-items:start; }
+@media (min-width:820px) {
+  .pos-page { max-width:1080px; }
+  .pos-list { grid-template-columns:repeat(2,1fr); }
+}
+@media (min-width:1240px) {
+  .pos-list { grid-template-columns:repeat(3,1fr); }
+}
+/* 商品ボタンは、幅に合わせて自然に列数が増える形にする（3列固定をやめる） */
+.menu-grid-auto { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:8px; }
 
 .pos-tab { flex:1; background:transparent; border:none; color:#9a8f85; padding:10px 0; font-size:0.85rem; cursor:pointer; font-family:inherit; border-bottom:2px solid transparent; transition:color 0.15s,border-color 0.15s; }
 .pos-tab-active { color:#b07c1e !important; border-bottom:2px solid #d3a94f !important; font-weight:700; }
