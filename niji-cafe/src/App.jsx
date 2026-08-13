@@ -1212,12 +1212,19 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     removeOne={removeOne}
                   />
 
-                  {/* ── カート ── */}
+                  {/* ── カート ──
+                      画面の下に貼り付いて、常に見えるようにしてある。
+                      以前はメニュー33品の下にあったため、1品選ぶたびに
+                      合計を見るために一番下までスクロールする必要があった。
+                      選んだ品数が多いときは、この中だけがスクロールする。 */}
                   {(cart.length>0 || benefitItems.length>0) &&(
-                    <div style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:16,padding:"12px 14px",marginTop:4}}>
+                    <div style={{position:"sticky",bottom:8,zIndex:20,marginTop:8,
+                      background:"#ffffff",border:"1px solid #e7ded3",borderRadius:16,padding:"12px 14px",
+                      boxShadow:"0 -6px 24px rgba(61,54,48,0.12)"}}>
+                      <div style={{maxHeight:"32vh",overflowY:"auto"}}>
                       {cart.map(item=>(
                         <div key={item.id} style={S.cartRow}>
-                          <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
+                          <span style={{color:"#3d3630",fontSize:"0.85rem",fontWeight:600}}>{item.emoji} {item.name}</span>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
                             <span style={{color:"#3d3630",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
@@ -1232,6 +1239,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                           <span style={{color:rank.color,fontWeight:700,fontSize:"0.85rem"}}>🎁 無料</span>
                         </div>
                       ))}
+                      </div>
                       <div style={{paddingTop:8,borderTop:"1px solid #e7ded3",marginTop:6}}>
                         {isSpecial&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
                           <span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>💜 スペシャル割引</span>
@@ -1249,17 +1257,28 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                           <span style={{color:rank.color,fontSize:"0.85rem"}}>🎁 月次特典</span>
                           <span style={{color:rank.color,fontSize:"0.85rem"}}>無料</span>
                         </div>}
+                        {/* 合計と一緒に「払ったあといくら残るか」を出す。
+                            残高不足で押せなくなってから気づくのでは遅いため。 */}
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                          <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</span>
-                          <span style={{color:"#3d3630",fontWeight:800,fontSize:"1.4rem"}}>¥{total.toLocaleString()}</span>
+                          <div>
+                            <div style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</div>
+                            <div style={{color:total>found.balance?"#c25b52":"#a79b90",fontSize:"0.75rem",marginTop:2}}>
+                              {total>found.balance
+                                ? `のこり ¥${found.balance.toLocaleString()} — ¥${(total-found.balance).toLocaleString()} 足りません`
+                                : `お支払い後 ¥${(found.balance-total).toLocaleString()}`}
+                            </div>
+                          </div>
+                          <span style={{color:"#2f2925",fontWeight:800,fontSize:"1.7rem",letterSpacing:"-0.02em"}}>¥{total.toLocaleString()}</span>
                         </div>
-                        <div style={{display:"flex",gap:8}}>
-                          <button className="btn-clear" onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false);}}>クリア</button>
+                        {/* 「クリア」は間違って押されると全部消える操作なので、小さく端に置く */}
+                        <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
+                          <button className="btn-clear" style={{flexShrink:0,padding:"13px 14px",fontSize:"0.85rem"}}
+                            onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false);}}>クリア</button>
                           <button className="btn-pay"
                             disabled={(cart.length===0 && benefitItems.length===0) || total>found.balance}
-                            style={{opacity:(cart.length>0||benefitItems.length>0)&&total<=found.balance?1:0.35}}
+                            style={{opacity:(cart.length>0||benefitItems.length>0)&&total<=found.balance?1:0.35,fontSize:"1rem"}}
                             onClick={placeOrder}>
-                            {total<=found.balance?"注文する":"残高不足"}
+                            {total<=found.balance?"注文する":"残高が足りません"}
                           </button>
                         </div>
                       </div>
@@ -1539,7 +1558,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
                 style={{border:`1px solid ${rank.color}44`,background:rank.color+"0a"}}
                 onClick={()=>selectDrink(item)}>
                 <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                <span style={{fontSize:"0.85rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:rank.color,fontWeight:700,fontSize:"0.75rem"}}>🎁 無料</span>
               </button>
             ))}
@@ -1557,8 +1576,10 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
 
   return (
     <div>
-      {/* カテゴリタブ */}
-      <div style={{display:"flex",gap:0,overflowX:"auto",background:"#ffffff",borderRadius:"10px 10px 0 0",marginBottom:0}}>
+      {/* カテゴリタブ。スクロールしても上に貼り付いたままにして、
+          下の方の商品を見ている途中でもカテゴリを切り替えられるようにする。 */}
+      <div style={{display:"flex",gap:0,overflowX:"auto",background:"#ffffff",borderRadius:"10px 10px 0 0",marginBottom:0,
+        position:"sticky",top:0,zIndex:15,borderBottom:"1px solid #f0eae2"}}>
         {categories.map(cat=>(
           <button key={cat}
             style={{flexShrink:0,background:"transparent",border:"none",
@@ -1579,7 +1600,7 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
             return (
               <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                 <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                <span style={{fontSize:"0.85rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                 {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
               </button>
@@ -2117,7 +2138,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                     return (
                       <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                         <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                        <span style={{fontSize:"0.85rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                        <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                         <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                         {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
                       </button>
@@ -3617,7 +3638,7 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
               return (
                 <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                   <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                  <span style={{fontSize:"0.85rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2,textAlign:"center"}}>{item.name}</span>
+                  <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                   <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                   {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
                 </button>
