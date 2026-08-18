@@ -22,6 +22,14 @@ const STAFF_RW = [
 // マネージャーだけが書き換えてよいもの
 const MANAGER_ONLY = ["cafe_v4_staff_accounts", "cafe_v4_manager_accounts"];
 
+// スタッフが「読むだけ」できるもの。
+// 台帳（消えない記録）なので、まるごと書き換えることは誰にも許さない。
+// 追記は下の PUSH_OK 経由で1件ずつだけ。
+const STAFF_READ_ONLY = ["cafe_v4_sales_log", "cafe_v4_money_log"];
+
+// 1件ずつ追記してよい台帳
+const PUSH_OK = ["cafe_v4_money_log", "cafe_v4_sales_log"];
+
 // お客様が自分の会員データのうち書き換えてよい項目（特典の使用状況だけ）
 const CUSTOMER_WRITABLE = [
   "benefitUsedMonth", "toppingRemaining", "toppingRemainingMonth", "vipGiftUsedMonth",
@@ -44,6 +52,9 @@ export default async function handler(req, res) {
       // ── 読み取り ────────────────────────────
       case "get": {
         if (PUBLIC_READ.includes(key)) return send(res, 200, { value: await fbGet(key, query) });
+        if (isStaff && STAFF_READ_ONLY.includes(key)) {
+          return send(res, 200, { value: await fbGet(key, query) });
+        }
         if (isStaff && (STAFF_RW.includes(key) || MANAGER_ONLY.includes(key))) {
           const v = await fbGet(key, query);
           // スタッフ一覧を返すときもパスワードは伏せる
@@ -124,6 +135,33 @@ export default async function handler(req, res) {
         return send(res, 200, { ok: true });
       }
 
+      // ── 会員1人だけを書き換える ───────────────────
+      // これまでは、1人の残高を変えるだけでも「会員21人ぶんの一覧」をまるごと
+      // 送り直していた。ブラウザが一覧を読んでから書き戻すまでの数秒のあいだに、
+      // 別の端末が別のお客様の会計をすると、その会計が消えてしまう。
+      //
+      // この窓口では、送るのは「変える1人ぶんの中身」だけ。
+      // 読み込みから書き戻しまでをサーバーの中で一続きに行うので、
+      // すれ違いが起きる余地がミリ秒単位まで縮む。通信量もぐっと減る。
+      case "patchCustomer": {
+        if (!isStaff) return send(res, 403, { error: "この操作はスタッフのみです" });
+        const id = value && value.id;
+        const fields = (value && value.fields) || {};
+        if (!id) return send(res, 400, { error: "会員が指定されていません" });
+
+        const list = arr(await fbGet("cafe_v4_customers"));
+        const i = list.findIndex((c) => String(c.id) === String(id));
+        if (i < 0) return send(res, 404, { error: "会員が見つかりません" });
+
+        // id だけは書き換えさせない（別人に化けるのを防ぐ）
+        const safe = { ...fields };
+        delete safe.id;
+        list[i] = { ...list[i], ...safe };
+
+        await fbPut("cafe_v4_customers", list);
+        return send(res, 200, { value: list[i] });
+      }
+
       // ── マネージャーのパスワード確認 ─────────────────
       // POS の中の保護された操作（残高の手修正など）で使う。
       // 画面側にはパスワードを渡していないので、照合はここで行う。
@@ -188,7 +226,7 @@ export default async function handler(req, res) {
       // ── 台帳への追記（消えない入出金の記録） ──────────
       case "push": {
         if (!isStaff) return send(res, 403, { error: "この操作はスタッフのみです" });
-        if (key !== "cafe_v4_money_log") return send(res, 403, { error: "この場所には追記できません" });
+        if (!PUSH_OK.includes(key)) return send(res, 403, { error: "この場所には追記できません" });
         await fbPost(key, { ...value, by: me.name || me.id, byRole: me.r });
         return send(res, 200, { ok: true });
       }
