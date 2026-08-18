@@ -178,6 +178,40 @@ const logMoney = (entry) => dbPush("cafe_v4_money_log", {
   atISO: new Date().toISOString(),
 });
 
+// ══════════════════════════════════════════
+//  売上を「消えない台帳」に1件ずつ残す
+// ══════════════════════════════════════════
+// これまで売上の記録は、会員データの中の history にしか残っていなかった。
+// history は1人あたり60件までで、古いものから捨てられる。
+// つまり、よく来てくださるお客様ほど、過去の会計記録が先に消えていた。
+// （会計履歴タブも日次レポートも、その history を見ていた）
+//
+// ここでは会計のたびに、独立した台帳へ1件ずつ積んでいく。
+// 追記なので他の記録を巻き込まず、通信量もほとんど増えない。
+// date は会員データの history と同じ書き方にしてある（同じ会計を二重に数えないため）。
+const logSale = (entry) => dbPush("cafe_v4_sales_log", {
+  ...entry,
+  day: new Date().toLocaleDateString("ja-JP"),
+  atISO: new Date().toISOString(),
+});
+
+// 台帳から新しい方だけを取り出す（全部読むと通信量が増えていくため）
+const SALES_LOG_QUERY = `orderBy=%22%24key%22&limitToLast=500`;
+
+// 会員1人ぶんだけをサーバーに保存する。
+// 成功したら true、できなかったら false（呼び出し側が従来の方法に切り替える）。
+const saveOneCustomer = async (c) => {
+  if (!_apiToken || !c || !c.id) return false;
+  try {
+    await apiData("patchCustomer", { value: { id: c.id, fields: c } });
+    return true;
+  } catch (e) {
+    if (e.status === 401) { notifyExpired(); return false; }
+    console.warn("1人ぶんの保存に失敗したため、一覧まるごとの保存に切り替えます", e);
+    return false;
+  }
+};
+
 const dbGet = async (key, query) => {
   // スタッフがログイン済みならサーバー経由で取得する（不調なら直接取得に切り替える）
   if (_apiToken) {
@@ -596,6 +630,24 @@ export default function App() {
   const saveC = async (list) => {
     lastSaveAt.current = Date.now();
     setCustomers(list); // 画面はすぐ更新（従来どおり）
+
+    // ── 変わったのが1人だけなら、その1人ぶんだけを送る ──────────
+    // 会計・チャージはどれも「1人の残高と履歴を変える」だけの操作。
+    // それなのに今までは、会員21人ぶんの一覧をまるごと送り直していた。
+    // 一覧を読んでから書き戻すまでの数秒のあいだに別の端末が会計をすると、
+    // その会計が消えてしまう（実際に過去、記録が失われている）。
+    //
+    // 1人ぶんだけを送れば、読み込みから書き戻しまでをサーバーの中で
+    // 一続きに行えるので、すれ違いが起きる余地がほぼ無くなる。
+    // 通信量も21分の1になる。
+    // うまくいかなかったときは、今までのやり方に自動で切り替える。
+    const prevList = customers;
+    const prevById = new Map(prevList.map(c => c && [c.id, c]).filter(Boolean));
+    const sameMembers =
+      prevList.length === list.length && list.every(c => c && prevById.has(c.id));
+    const changed = sameMembers ? list.filter(c => prevById.get(c.id) !== c) : [];
+    if (changed.length === 1 && await saveOneCustomer(changed[0])) return;
+
     try {
       const prev = customers;
       const latest = await dbGet("cafe_v4_customers");
@@ -1858,19 +1910,25 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
     const pendingOfCustomer = (orders||[]).filter(o=>o.customerId===customer.id && o.status==="pending");
     if (pendingOfCustomer.length > 0 &&
         !window.confirm(`${customer.name} さんには、アプリからの未処理の注文が${pendingOfCustomer.length}件あります。\n「📋 注文」タブで完了すると、そこでも残高が引かれます。\n\nこのままPOSで決済すると二重に引かれる可能性があります。続けますか？`)) return;
+    const now = new Date().toLocaleString("ja-JP");
+    const itemText = cart.map(c=>`${c.name}×${c.qty}`).join(", ");
     const updated = {
       ...base,
       balance: isSpecialCustomer ? base.balance : Math.max(0, base.balance - total),
       history: [{
         type:"use", amount:total, subtotal, discount: subtotal - total,
-        items:cart.map(c=>`${c.name}×${c.qty}`).join(", "),
+        items: itemText,
         performer: staffName,
-        date:new Date().toLocaleString("ja-JP")
+        date: now
       }, ...(base.history||[])].slice(0,60),
     };
     update(updated);
     trigFlash("sub", total);
     recordSale(total, false);
+    // 会員データの履歴とは別に、消えない台帳にも残す
+    logSale({ date: now, customerId: base.id, customerName: base.name,
+              amount: total, subtotal, discount: subtotal - total,
+              items: itemText, performer: staffName, isCash: false, source: "pos" });
     setCart([]);
   };
 
@@ -2625,10 +2683,20 @@ function SalesHistoryPanel({ customers, orders }) {
   // 普段の同期では読みに行かないので、通信量は増えない。
   // アーカイブがまだ無い場合も、何も表示が変わらないだけで問題なく動く。
   const [archive, setArchive] = useState(null);
+  // 消えない売上台帳（2026-08-17 から記録開始）。
+  // 会員データの履歴は1人60件で古いものから消えるため、
+  // 消えた分をこちらで補う。まだ台帳が空でも、表示は今までどおり。
+  const [salesLog, setSalesLog] = useState([]);
   useEffect(() => {
     let alive = true;
     dbGet("cafe_v4_orders_archive").then(a => {
       if (alive) setArchive(Array.isArray(a) ? a.filter(Boolean) : []);
+    });
+    dbGet("cafe_v4_sales_log", SALES_LOG_QUERY).then(v => {
+      if (!alive) return;
+      // Firebase は追記した記録を「鍵つきの入れ物」で返すので、中身だけ取り出す
+      const list = v && typeof v === "object" ? Object.values(v).filter(Boolean) : [];
+      setSalesLog(list);
     });
     return () => { alive = false; };
   }, []);
@@ -2698,6 +2766,31 @@ function SalesHistoryPanel({ customers, orders }) {
       date: o.completedAt || o.createdAt,
       customerName: o.customerName,
       fromOrder: true,
+    });
+  });
+
+  // 消えない売上台帳の分を足す。
+  // 会員データの履歴が60件を超えて古いものが捨てられても、ここには残っている。
+  // すでに上で数えた会計は足さないので、二重にはならない。
+  // 同じ会計かどうかは「お客様の名前＋日時（秒まで）」で見分ける。
+  // 台帳に書くときも会計履歴に出すときも、同じ名前・同じ日時の文字列を使っている。
+  const countedKeys = new Set(allEntries.map(e => `${e.customerName} ${e.date}`));
+  salesLog.forEach(s => {
+    if (!s || !s.date) return;
+    const k = `${s.customerName} ${s.date}`;
+    if (countedKeys.has(k)) return;
+    countedKeys.add(k);
+    allEntries.push({
+      type: "use",
+      amount: s.amount || 0,
+      subtotal: s.subtotal || 0,
+      discount: s.discount || 0,
+      items: s.items || "",
+      performer: s.performer || "スタッフ",
+      date: s.date,
+      customerName: s.customerName || "—",
+      isCash: !!s.isCash,
+      fromLedger: true,
     });
   });
 
@@ -2839,6 +2932,12 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
         : o
       ));
       recordSale(order.total, true);
+      logSale({ date: now, customerId: null,
+                customerName: order.customerName || "現金のお客様",
+                amount: order.total, subtotal: order.subtotal, discount: 0,
+                items: (order.items||[]).map(i=>`${i.name}×${i.qty}`).join(", "),
+                performer: staffName || "スタッフ", isCash: true,
+                orderId: order.orderId, source: "order" });
       return;
     }
     const customer = customers.find(c=>c.id===order.customerId);
@@ -2846,16 +2945,17 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     if (order.total > customer.balance) {
       if (!window.confirm(`残高不足です（残高: ¥${customer.balance.toLocaleString()} / 合計: ¥${order.total.toLocaleString()}）\n続行しますか？`)) return;
     }
+    const itemText = [
+      ...(order.items||[]).map(i=>`${i.name}×${i.qty}`),
+      ...(order.benefitItems||[]).map(i=>`${i.name}(特典)`),
+      ...(order.makaiItem ? [`${order.makaiItem.name}(賄い)`] : []),
+    ].join(", ");
     const updatedCustomer = {
       ...customer,
       balance: (order.isSpecial || order.isVipGift) ? customer.balance : Math.max(0, customer.balance - order.total),
       history: [{
         type:"use", amount:order.total, subtotal:order.subtotal, discount:order.discount,
-        items:[
-          ...(order.items||[]).map(i=>`${i.name}×${i.qty}`),
-          ...(order.benefitItems||[]).map(i=>`${i.name}(特典)`),
-          ...(order.makaiItem ? [`${order.makaiItem.name}(賄い)`] : []),
-        ].join(", "),
+        items: itemText,
         performer: staffName || "スタッフ（注文完了）", date:now,
       }, ...(customer.history||[])].slice(0,60),
     };
@@ -2865,6 +2965,11 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       : o
     ));
     recordSale(order.total, false);
+    // 会員データの履歴とは別に、消えない台帳にも残す
+    logSale({ date: now, customerId: customer.id, customerName: customer.name,
+              amount: order.total, subtotal: order.subtotal, discount: order.discount,
+              items: itemText, performer: staffName || "スタッフ（注文完了）",
+              isCash: false, orderId: order.orderId, source: "order" });
   };
 
   // 注文をキャンセルするとき、その注文で使った特典（トッピング残数・月次特典・VIPプレゼント）を元に戻す。
