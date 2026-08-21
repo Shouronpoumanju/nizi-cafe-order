@@ -683,6 +683,24 @@ export default function App() {
   const saveOrders = async (list) => {
     lastSaveAt.current = Date.now();
     setOrders(list); // 画面はすぐ更新（従来どおり）
+
+    // ── まずサーバー側での合流を試す ─────────────────
+    // 下にある「読んで・混ぜて・書く」をブラウザでやると、
+    // 読みと書きのあいだに別の端末の変更が入ったとき、それを消してしまう。
+    // サーバーの中で同じことを一続きにやれば、その隙間がほぼ無くなる。
+    // 失敗したときは、今までのやり方（下の処理）に自動で切り替える。
+    if (_apiToken) {
+      try {
+        const prevIds = (orders || []).map(o => o && o.orderId).filter(Boolean);
+        const r = await apiData("setOrdersMerged", { value: { list, prevIds } });
+        if (r && Array.isArray(r.value)) setOrders(r.value);
+        return;
+      } catch (e) {
+        if (e.status === 401) { notifyExpired(); return; }
+        console.warn("サーバーでの合流保存に失敗したため、従来の方法で保存します", e);
+      }
+    }
+
     try {
       const prev = orders;
       const latest = await dbGet("cafe_v4_orders");
