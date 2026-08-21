@@ -8,7 +8,7 @@
 //    ・残高・暗証番号・氏名は書き換えられない（特典の使用状況だけ）
 //  ので、細工したリクエストを送られても残高を増やすことはできません。
 // ══════════════════════════════════════════
-import { envReady, fbGet, fbPut, fbPost, readToken, sameSecret, send, readBody, bearer } from "./_lib.js";
+import { envReady, fbGet, fbPut, fbPost, readToken, sameSecret, hashSecret, looksHashed, send, readBody, bearer } from "./_lib.js";
 
 // 誰でも読んでよいもの（お店の掲示物にあたるもの）
 const PUBLIC_READ = ["cafe_v4_menu", "cafe_v4_designated_drink", "cafe_v4_vip_gift_drink"];
@@ -125,9 +125,14 @@ export default async function handler(req, res) {
           const before = arr(await fbGet(key));
           const pw = {};
           before.forEach((a) => { if (a.id && a.password !== undefined) pw[a.id] = a.password; });
-          const merged = arr(value).map((a) =>
-            a.password === undefined && pw[a.id] !== undefined ? { ...a, password: pw[a.id] } : a
-          );
+          const merged = arr(value).map((a) => {
+            if (a.password === undefined) {
+              // パスワードが入っていない＝画面は伏せた一覧を持っている。今の値を引き継ぐ
+              return pw[a.id] !== undefined ? { ...a, password: pw[a.id] } : a;
+            }
+            // 新しいパスワードが入力された。素の文字列のまま保存せず、ハッシュ形式に変換する
+            return looksHashed(a.password) ? a : { ...a, password: hashSecret(a.password) };
+          });
           await fbPut(key, merged);
           return send(res, 200, { ok: true });
         }
@@ -160,6 +165,48 @@ export default async function handler(req, res) {
 
         await fbPut("cafe_v4_customers", list);
         return send(res, 200, { value: list[i] });
+      }
+
+      // ── 注文の一覧を「合流させて」保存する ─────────────
+      // ブラウザから届いた一覧をそのまま書くのではなく、
+      // いまDBにある最新と突き合わせてから書く。
+      // これで、2台の端末がほぼ同時に注文を触っても、互いの変更を消さない。
+      //   list    … ブラウザが保存したい一覧
+      //   prevIds … ブラウザが直前に持っていた注文のID（消した注文を見分けるため）
+      // ルール：
+      //   ・ブラウザが持っていたのに list に無い注文 → 消したとみなして除く
+      //   ・list にある注文 → ブラウザの内容で上書き
+      //   ・DBにだけある注文（他の端末の分）→ そのまま残す
+      //   ・list にだけある新しい注文 → 先頭に足す（未処理のもの、または本当に新しいもの）
+      case "setOrdersMerged": {
+        if (!isStaff) return send(res, 403, { error: "この操作はスタッフのみです" });
+        const list = arr(value && value.list);
+        const prevIds = new Set(arr(value && value.prevIds).map(String));
+        const latest = arr(await fbGet("cafe_v4_orders"));
+
+        const byId = {};
+        const callerIds = new Set();
+        list.forEach((o) => { if (o && o.orderId) { byId[o.orderId] = o; callerIds.add(String(o.orderId)); } });
+
+        const result = [];
+        const used = new Set();
+        latest.forEach((o) => {
+          if (!o || !o.orderId) return;
+          const id = String(o.orderId);
+          if (prevIds.has(id) && !callerIds.has(id)) return;   // ブラウザが消した注文
+          if (byId[o.orderId]) { result.push(byId[o.orderId]); used.add(id); }
+          else result.push(o);                                  // 他の端末の注文は残す
+        });
+        const news = [];
+        list.forEach((o) => {
+          if (!o || !o.orderId || used.has(String(o.orderId))) return;
+          // DBに無い注文を足すのは「新しく作った注文」か「未処理」だけ。
+          // 昔から持っていた完了済みがDBに無いのは、アーカイブに移された印なので足し戻さない。
+          if (!prevIds.has(String(o.orderId)) || o.status === "pending") news.push(o);
+        });
+        const finalList = [...news, ...result];
+        await fbPut("cafe_v4_orders", finalList);
+        return send(res, 200, { value: finalList });
       }
 
       // ── マネージャーのパスワード確認 ─────────────────
