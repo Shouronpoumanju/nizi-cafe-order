@@ -781,10 +781,10 @@ export default function App() {
 function Home({ setScreen }) {
   return (
     <div style={S.homeOuter}>
-      {/* 背景の虹グラデーション装飾 */}
-      <div style={S.homeBgCircle1}/>
-      <div style={S.homeBgCircle2}/>
-      <div style={S.homeBgCircle3}/>
+      {/* 背景の虹グラデーション装飾。それぞれ違う周期でゆっくり漂う */}
+      <div className="aurora" style={S.homeBgCircle1}/>
+      <div className="aurora" style={{...S.homeBgCircle2, animationDelay:"-3.5s"}}/>
+      <div className="aurora" style={{...S.homeBgCircle3, animationDelay:"-7s"}}/>
 
       <div style={S.homeWrap}>
         {/* ロゴ */}
@@ -823,15 +823,45 @@ function Home({ setScreen }) {
           </button>
         </div>
 
-        {/* 虹の点。絵文字を5つ並べるより、色だけのほうが静かでブランドが伝わる。 */}
+        {/* 虹の点。順番に小さくはねる（音の無いメトロノームのように） */}
         <div style={S.decoRow}>
           {["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4"].map((c,i)=>(
-            <span key={i} style={{width:9,height:9,borderRadius:"50%",background:c,display:"inline-block"}}/>
+            <span key={i} className="dot-wave"
+              style={{width:9,height:9,borderRadius:"50%",background:c,display:"inline-block",
+                animationDelay:`${i*0.18}s`}}/>
           ))}
         </div>
       </div>
     </div>
   );
+}
+
+// ══════════════════════════════════════════
+//  数字がカラカラと巻き上がる表示
+// ══════════════════════════════════════════
+// チケットを開いた瞬間、残高が0からすっと伸びる。
+// 「ちゃんと残っている」ことが目で伝わる、小さなご褒美の演出。
+// 端末の「視差効果を減らす」設定がオンなら、すぐ最終値を出す。
+function CountUp({ value }) {
+  const [shown, setShown] = useState(value);
+  const prev = useRef(null);
+  useEffect(() => {
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const from = prev.current === null ? 0 : prev.current;
+    prev.current = value;
+    if (reduce || from === value) { setShown(value); return; }
+    const t0 = performance.now(), dur = 750;
+    let raf;
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);   // 最後にゆっくり止まる
+      setShown(Math.round(from + (value - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{Number(shown).toLocaleString()}</>;
 }
 
 // ══════════════════════════════════════════
@@ -1110,19 +1140,21 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
                   一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
-              <div className="ticket-card" style={{background:"#ffffff",border:"1px solid #ece4d9",
+              <div className="ticket-card rise" style={{background:"#ffffff",border:"1px solid #ece4d9",
                 boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
                   <span style={{fontSize:"1.15rem",fontWeight:700,color:"#3d3630"}}>{found.name}</span>
-                  <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>{rank.gem} {rank.name}</span>
+                  <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>
+                    <span className="gem-pulse">{rank.gem}</span> {rank.name}
+                  </span>
                 </div>
                 {/* 残高はランクに関係なく、いつも一番はっきり読める濃さにする。
                     この画面を開く理由がこれなので、色よりも読みやすさを優先する。 */}
                 <div style={{marginBottom:16}}>
                   <div style={{color:"#8a7f76",fontSize:"0.85rem",marginBottom:2}}>のこり</div>
-                  <div style={{color:"#2f2925",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05}}>
-                    ¥{found.balance.toLocaleString()}
+                  <div style={{color:"#2f2925",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,fontVariantNumeric:"tabular-nums"}}>
+                    ¥<CountUp value={found.balance}/>
                   </div>
                 </div>
                 <div style={{...S.benefitBox,borderColor:rank.color+"55",background:rank.color+"11"}}>
@@ -1229,7 +1261,15 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 </div>
               ) : ordered ? (
                 <div style={{textAlign:"center",padding:"32px 16px"}}>
-                  <div style={{fontSize:"3rem",marginBottom:12}}>✅</div>
+                  {/* 紙吹雪。注文は小さなお祝い。1.5秒で消えて、あとは静かに戻る */}
+                  <div className="confetti-box" aria-hidden="true">
+                    {["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4",
+                      "#e8759b","#5fa878","#5b93c9","#d9a821","#8a7cc4","#e8944a"].map((c,i)=>(
+                      <i key={i} style={{left:`${6+i*8}%`,background:c,
+                        animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}/>
+                    ))}
+                  </div>
+                  <div className="pop" style={{fontSize:"3rem",marginBottom:12}}>✅</div>
                   <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.15rem",marginBottom:6}}>注文を受け付けました！</div>
                   <div style={{color:"#8a7f76",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
                   <button className="btn-ghost" style={{marginTop:20}} onClick={()=>setOrdered(false)}>続けて注文する</button>
@@ -1288,8 +1328,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       合計を見るために一番下までスクロールする必要があった。
                       選んだ品数が多いときは、この中だけがスクロールする。 */}
                   {(cart.length>0 || benefitItems.length>0) &&(
-                    <div style={{position:"sticky",bottom:8,zIndex:20,marginTop:8,
-                      background:"#ffffff",border:"1px solid #e7ded3",borderRadius:16,padding:"12px 14px",
+                    <div className="glass rise" style={{position:"sticky",bottom:8,zIndex:20,marginTop:8,
+                      border:"1px solid #e7ded3",borderRadius:16,padding:"12px 14px",
                       boxShadow:"0 -6px 24px rgba(61,54,48,0.12)"}}>
                       <div style={{maxHeight:"32vh",overflowY:"auto"}}>
                       {cart.map(item=>(
@@ -2023,7 +2063,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
   return (
     <div style={S.root}>
       {/* TOP BAR */}
-      <div style={S.topbar}>
+      <div className="glass" style={{...S.topbar,position:"sticky",top:0,zIndex:30}}>
         {customer ? (
           <button className="back-btn" style={{margin:0,fontSize:"0.85rem",color:"#b07c1e",fontWeight:700}}
             onClick={()=>{ setCustomer(null); setCart([]); }}>
@@ -3934,6 +3974,67 @@ input:focus { border-color:#e86a8a !important; outline:none; }
 @keyframes floatDeco {
   from { transform:translateY(0) rotate(-5deg); opacity:0.5; }
   to   { transform:translateY(-6px) rotate(5deg); opacity:0.9; }
+}
+
+/* ── 遊び心と、いまどきの質感 ──────────────────────
+   方針：飾りは「お客様が見る画面」に集中させ、POSの仕事の邪魔はしない。
+   すべてCSSと素のJSだけで動く（新しいライブラリは増やしていない）。
+   端末の「視差効果を減らす」設定がオンの人には、動きを全部止める。 */
+
+/* ホームの背景で、色の雲がゆっくり漂う */
+@keyframes auroraDrift {
+  0%   { transform:translate(0,0) scale(1); }
+  50%  { transform:translate(26px,-20px) scale(1.18); }
+  100% { transform:translate(-18px,14px) scale(0.94); }
+}
+.aurora { filter:blur(42px); opacity:0.8;
+  animation:auroraDrift 10s ease-in-out infinite alternate; }
+
+/* すりガラス。上のバーと注文の合計欄に使う（後ろがうっすら透ける） */
+.glass { background:rgba(255,255,255,0.72) !important;
+  backdrop-filter:blur(14px) saturate(1.5);
+  -webkit-backdrop-filter:blur(14px) saturate(1.5); }
+
+/* カードが下からふわっと現れる */
+@keyframes rise { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
+.rise { animation:rise 0.5s cubic-bezier(0.2,0.9,0.3,1) both; animation-delay:var(--d,0ms); }
+
+/* 押した指に「ばね」で応える（全ボタン共通） */
+button { transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1); }
+button:active { transform:scale(0.96); }
+
+/* ランクの進捗バーを、光の帯がすっと走る */
+@keyframes shine { from { transform:translateX(-110%); } to { transform:translateX(320%); } }
+.bar-fill { position:relative; overflow:hidden; }
+.bar-fill::after { content:""; position:absolute; top:0; left:0; width:40%; height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.7),transparent);
+  animation:shine 2.8s ease-in-out infinite; }
+
+/* ランクの宝石が、ときどき小さく鼓動する */
+@keyframes gemPulse { 0%,86%,100% { transform:scale(1); } 91% { transform:scale(1.22); } 96% { transform:scale(0.97); } }
+.gem-pulse { display:inline-block; animation:gemPulse 5s ease-in-out infinite; }
+
+/* 注文完了の紙吹雪と、✅のぽよんという登場 */
+@keyframes confettiFall {
+  0%   { transform:translateY(0) rotate(0deg); opacity:1; }
+  100% { transform:translateY(150px) rotate(340deg); opacity:0; }
+}
+.confetti-box { position:relative; height:0; pointer-events:none; }
+.confetti-box i { position:absolute; top:-6px; width:9px; height:14px; border-radius:3px;
+  animation:confettiFall 1.5s ease-in forwards; }
+@keyframes popIn {
+  0% { transform:scale(0.2); opacity:0; } 60% { transform:scale(1.15); opacity:1; } 100% { transform:scale(1); }
+}
+.pop { animation:popIn 0.55s cubic-bezier(0.34,1.56,0.64,1) both; display:inline-block; }
+
+/* ホームの虹の点が、順番に小さくはねる */
+@keyframes dotWave { 0%,55%,100% { transform:translateY(0); } 25% { transform:translateY(-7px); } }
+.dot-wave { animation:dotWave 2.6s ease-in-out infinite; }
+
+/* 「視差効果を減らす」設定の端末では、飾りの動きを全部止める */
+@media (prefers-reduced-motion: reduce) {
+  .aurora, .rise, .bar-fill::after, .gem-pulse, .confetti-box i, .pop, .dot-wave,
+  .btn-rainbow { animation:none !important; }
 }
 
 .btn-ghost { background:transparent; color:#8a7f76; border:1px solid #e7ded3; border-radius:12px; padding:12px 20px; font-size:0.95rem; font-weight:600; cursor:pointer; width:100%; font-family:inherit; transition:border-color 0.2s,color 0.2s; }
