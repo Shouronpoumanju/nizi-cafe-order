@@ -18,6 +18,7 @@
 //  8. 会計履歴の画面で `cafe_v4_orders_archive`（過去の完了注文の置き場）も読むようにした。
 //     アーカイブがまだ無くても動く。移行中に同じ注文が両方にあっても重複表示しない。
 import { useState, useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 
 // ══════════════════════════════════════════
 //  🔥 Firebase 設定（REST API + 匿名認証トークン）
@@ -761,15 +762,32 @@ export default function App() {
     lastSaveAt.current = Date.now(); setStaffAccounts(list);   dbSet("cafe_v4_staff_accounts",   list);
   };
 
-  if (!loaded) return <div style={S.loading}>読み込み中...</div>;
+  // ── 画面の切り替えを「ふわっと」つなぐ（View Transitions API）──
+  // 2024年に主要ブラウザへ入った新しい仕組み。前の画面と次の画面を
+  // ブラウザ自身がなめらかにクロスフェードしてくれる。
+  // 対応していない端末では、今までどおり瞬時に切り替わる（壊れない）。
+  const changeScreen = (s) => {
+    if (document.startViewTransition) {
+      document.startViewTransition(() => { flushSync(() => setScreen(s)); });
+    } else {
+      setScreen(s);
+    }
+  };
+
+  if (!loaded) return (
+    <div style={S.loading}>
+      <div className="spinner" aria-hidden="true"/>
+      読み込み中...
+    </div>
+  );
 
   return (
     <div style={S.root}>
       <style>{CSS}</style>
-      {screen==="home"     && <Home setScreen={setScreen} setStaffRole={setStaffRole}/>}
-      {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} managerAccounts={managerAccounts} vipGiftDrink={vipGiftDrink} setScreen={setScreen}/>}
-      {screen==="login"    && <StaffLogin setScreen={setScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} setStaffIsChief={setStaffIsChief} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
-      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffIsChief={staffIsChief} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={setScreen}/>}
+      {screen==="home"     && <Home setScreen={changeScreen} setStaffRole={setStaffRole}/>}
+      {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} managerAccounts={managerAccounts} vipGiftDrink={vipGiftDrink} setScreen={changeScreen}/>}
+      {screen==="login"    && <StaffLogin setScreen={changeScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} setStaffIsChief={setStaffIsChief} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
+      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffIsChief={staffIsChief} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={changeScreen}/>}
     </div>
   );
 }
@@ -832,6 +850,53 @@ function Home({ setScreen }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
+//  ホログラムの会員カード
+// ══════════════════════════════════════════
+// 指やマウスでなでると、カードが3Dに傾いて、
+// トレーディングカードのような虹色の光沢が指を追いかける。
+// 触っていないときは完全に静止しているので、目障りにはならない。
+// 「視差効果を減らす」設定の端末では何もしない。
+function HoloCard({ className, style, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = ref.current;
+    if (!el) return;
+    const move = (e) => {
+      const r = el.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width;
+      const py = (e.clientY - r.top) / r.height;
+      el.style.setProperty("--ry", ((px - 0.5) * 14).toFixed(2) + "deg");
+      el.style.setProperty("--rx", ((0.5 - py) * 10).toFixed(2) + "deg");
+      el.style.setProperty("--mx", (px * 100).toFixed(1) + "%");
+      el.style.setProperty("--my", (py * 100).toFixed(1) + "%");
+      el.classList.add("holo-on");
+    };
+    const reset = () => {
+      el.style.setProperty("--rx", "0deg");
+      el.style.setProperty("--ry", "0deg");
+      el.classList.remove("holo-on");
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerleave", reset);
+    el.addEventListener("pointerup", reset);
+    el.addEventListener("pointercancel", reset);
+    return () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerleave", reset);
+      el.removeEventListener("pointerup", reset);
+      el.removeEventListener("pointercancel", reset);
+    };
+  }, []);
+  return (
+    <div ref={ref} className={"tilt " + (className || "")} style={style}>
+      {children}
+      <div className="holo-layer" aria-hidden="true"/>
     </div>
   );
 }
@@ -1082,6 +1147,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       setFound(updated);
     }
     setCart([]); setBenefitItems([]); setBenefitUsed(false); setOrdered(true);
+    // 対応している端末（主にAndroid）では、注文完了を指先にも「トン・トン」と伝える
+    try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
   };
 
   const cancelOrder = () => {
@@ -1140,7 +1207,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
                   一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
-              <div className="ticket-card rise" style={{background:"#ffffff",border:"1px solid #ece4d9",
+              <HoloCard className="ticket-card rise" style={{background:"#ffffff",border:"1px solid #ece4d9",
                 boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
@@ -1185,7 +1252,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     : <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>最高ランクです</span>}
                 </div>
                 {next && <div style={S.bar}><div className="bar-fill" style={{width:`${pct}%`,background:rank.color}}/></div>}
-              </div>
+              </HoloCard>
               {/* ランク一覧は9行あり、毎回見る情報ではない。
                   常に開いていると本題（残高と特典）が画面外に押し出されるので、
                   必要なときだけ開く形にした。 */}
@@ -4031,10 +4098,43 @@ button:active { transform:scale(0.96); }
 @keyframes dotWave { 0%,55%,100% { transform:translateY(0); } 25% { transform:translateY(-7px); } }
 .dot-wave { animation:dotWave 2.6s ease-in-out infinite; }
 
+/* ── ホログラムの会員カード ──────────────────────
+   指の位置に合わせて3Dに傾き、虹色の光沢が指を追いかける。
+   トレーディングカードの「キラカード」と同じ原理を、CSSだけで再現。 */
+.tilt { transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
+  transition:transform 0.15s ease-out; will-change:transform; }
+.holo-layer { position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  opacity:0; transition:opacity 0.35s;
+  background:
+    radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,0.55), transparent 42%),
+    conic-gradient(from 0deg at var(--mx,50%) var(--my,50%),
+      rgba(232,117,155,0.28), rgba(255,221,130,0.28), rgba(159,220,174,0.28),
+      rgba(143,194,238,0.28), rgba(184,172,224,0.28), rgba(232,117,155,0.28));
+  mix-blend-mode:soft-light; }
+.holo-on .holo-layer { opacity:1; }
+
+/* 画面の切り替え（View Transitions API）。前の画面が少し縮みながら消え、
+   次の画面がふわっと現れる。非対応の端末では何も起きない（即切り替え） */
+::view-transition-old(root) { animation:vtOut 0.26s ease both; }
+::view-transition-new(root) { animation:vtIn 0.32s ease both; }
+@keyframes vtOut { to { opacity:0; transform:scale(0.985); } }
+@keyframes vtIn { from { opacity:0; transform:scale(1.015); } }
+
+/* 読み込み中の虹色リング */
+@keyframes spin { to { transform:rotate(360deg); } }
+.spinner { width:36px; height:36px; border-radius:50%; margin:0 auto 12px;
+  background:conic-gradient(#e8759b,#e8944a,#d9a821,#5fa878,#5b93c9,#8a7cc4,#e8759b);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));
+  animation:spin 0.9s linear infinite; }
+
 /* 「視差効果を減らす」設定の端末では、飾りの動きを全部止める */
 @media (prefers-reduced-motion: reduce) {
   .aurora, .rise, .bar-fill::after, .gem-pulse, .confetti-box i, .pop, .dot-wave,
-  .btn-rainbow { animation:none !important; }
+  .btn-rainbow, .spinner { animation:none !important; }
+  .tilt { transform:none !important; }
+  .holo-layer { display:none; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation:none; }
 }
 
 .btn-ghost { background:transparent; color:#8a7f76; border:1px solid #e7ded3; border-radius:12px; padding:12px 20px; font-size:0.95rem; font-weight:600; cursor:pointer; width:100%; font-family:inherit; transition:border-color 0.2s,color 0.2s; }
