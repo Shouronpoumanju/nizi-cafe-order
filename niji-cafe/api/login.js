@@ -5,7 +5,7 @@
 //  これにより、全会員の暗証番号やスタッフのパスワードを
 //  ブラウザに配る必要がなくなります。
 // ══════════════════════════════════════════
-import { envReady, fbGet, issueToken, sameSecret, send, readBody } from "./_lib.js";
+import { envReady, fbGet, fbPut, issueToken, sameSecret, hashSecret, looksHashed, send, readBody } from "./_lib.js";
 
 // 総当たりを遅くするための、ごく簡単な回数制限。
 // Serverless は実行環境が使い回されたときだけ有効なので、これは
@@ -81,6 +81,18 @@ export default async function handler(req, res) {
         (a) => a && String(a.name) === String(name) && sameSecret(a.password, password)
       );
       if (!acc) return send(res, 401, { error: "名前かパスワードが違います" });
+
+      // パスワードがまだ素の文字列で保存されていたら、この機会にハッシュ形式へ
+      // 変換して保存し直す（ログインできた＝正しいパスワードなので、いま変換できる）。
+      // 全員が一度ずつログインすれば、素のパスワードはデータベースから消える。
+      if (!looksHashed(acc.password)) {
+        try {
+          await fbPut(key, list.map((a) =>
+            a && a.id === acc.id ? { ...a, password: hashSecret(password) } : a
+          ));
+        } catch (e) { console.error("パスワードのハッシュ化に失敗", e); }
+      }
+
       // パスワードは返さない
       const { password: _pw, ...safe } = acc;
       return send(res, 200, {
