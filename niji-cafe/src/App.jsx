@@ -345,14 +345,14 @@ function PinChangeModal({ customer, customers, onSave, onClose }) {
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(61,54,48,0.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
-      <div style={{background:"#ffffff",border:"1px solid #d3a94f55",borderRadius:16,padding:"20px",width:"100%",maxWidth:340}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontWeight:700,color:"#b07c1e",fontSize:"1rem",marginBottom:4}}>🔑 暗証番号の変更</div>
-        <div style={{color:"#8a7f76",fontSize:"0.85rem",marginBottom:14}}>{customer.name} さんの新しい暗証番号（4桁）を入力してください。</div>
-        <input value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} inputMode="numeric" maxLength={4} placeholder="0000" autoFocus style={{width:"100%",boxSizing:"border-box",background:"#ffffff",border:"1px solid #ddd3c6",borderRadius:12,color:"#3d3630",fontSize:"1.4rem",letterSpacing:"0.3em",textAlign:"center",padding:"12px"}}/>
+      <div style={{background:"var(--card,#ffffff)",border:"1px solid #d3a94f55",borderRadius:16,padding:"20px",width:"100%",maxWidth:340}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontWeight:700,color:"var(--gold,#b07c1e)",fontSize:"1rem",marginBottom:4}}>🔑 暗証番号の変更</div>
+        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:14}}>{customer.name} さんの新しい暗証番号（4桁）を入力してください。</div>
+        <input value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} inputMode="numeric" maxLength={4} placeholder="0000" autoFocus style={{width:"100%",boxSizing:"border-box",background:"var(--card,#ffffff)",border:"1px solid #ddd3c6",borderRadius:12,color:"var(--ink,#3d3630)",fontSize:"1.4rem",letterSpacing:"0.3em",textAlign:"center",padding:"12px"}}/>
         {err && <div style={{color:"#c94a45",fontSize:"0.85rem",marginTop:8}}>{err}</div>}
         <div style={{display:"flex",gap:10,marginTop:16}}>
-          <button onClick={onClose} style={{flex:1,background:"#f6f1ea",border:"none",borderRadius:12,color:"#8a7f76",padding:"12px",fontWeight:600,cursor:"pointer"}}>キャンセル</button>
-          <button onClick={submit} style={{flex:1,background:"linear-gradient(135deg,#e8b96a,#d9a441)",border:"none",borderRadius:12,color:"#3d3630",padding:"12px",fontWeight:700,cursor:"pointer"}}>変更する</button>
+          <button onClick={onClose} style={{flex:1,background:"var(--panel2,#f6f1ea)",border:"none",borderRadius:12,color:"var(--ink2,#8a7f76)",padding:"12px",fontWeight:600,cursor:"pointer"}}>キャンセル</button>
+          <button onClick={submit} style={{flex:1,background:"linear-gradient(135deg,#e8b96a,#d9a441)",border:"none",borderRadius:12,color:"var(--ink,#3d3630)",padding:"12px",fontWeight:700,cursor:"pointer"}}>変更する</button>
         </div>
       </div>
     </div>
@@ -386,7 +386,7 @@ const RANKS = [
 ];
 
 const NO_RANK = {
-  name:"ランクなし", min:0, color:"#9a8f85", gem:"−",
+  name:"ランクなし", min:0, color:"var(--ink3,#9a8f85)", gem:"−",
   bg:"linear-gradient(135deg,#f4f1ec,#e8e2da)", glow:"#444",
   benefit:{ type:"none", desc:"ランクなし", icon:"−" },
 };
@@ -782,7 +782,7 @@ export default function App() {
   );
 
   return (
-    <div style={S.root}>
+    <div className="approot" style={S.root}>
       <style>{CSS}</style>
       {screen==="home"     && <Home setScreen={changeScreen} setStaffRole={setStaffRole}/>}
       {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} managerAccounts={managerAccounts} vipGiftDrink={vipGiftDrink} setScreen={changeScreen}/>}
@@ -794,11 +794,27 @@ export default function App() {
 
 
 // ══════════════════════════════════════════
+//  夜モードのスイッチ
+// ══════════════════════════════════════════
+// この部品を置いた画面にいる間だけ、アプリ全体が「夜のネオンガラス」配色になる。
+// 仕組みは、色をぜんぶ CSS変数（--ink や --card）経由にしておき、
+// body に night クラスが付いたときだけ夜の値に差し替える、というもの。
+// 画面を離れると自動で元に戻るので、スタッフ用POSは今までの明るい画面のまま。
+function NightMode() {
+  useEffect(() => {
+    document.body.classList.add("night");
+    return () => document.body.classList.remove("night");
+  }, []);
+  return null;
+}
+
+// ══════════════════════════════════════════
 //  HOME
 // ══════════════════════════════════════════
 function Home({ setScreen }) {
   return (
     <div style={S.homeOuter}>
+      <NightMode/>
       {/* 背景の虹グラデーション装飾。それぞれ違う周期でゆっくり漂う */}
       <div className="aurora" style={S.homeBgCircle1}/>
       <div className="aurora" style={{...S.homeBgCircle2, animationDelay:"-3.5s"}}/>
@@ -813,13 +829,15 @@ function Home({ setScreen }) {
           <div style={S.rainbowGlow}/>
         </div>
 
-        {/* ブランド名 */}
-        {/* 一文字ずつ揺らすのはやめた。動きが多いと落ち着かず、可愛さより騒がしさが出る。 */}
+        {/* ブランド名 ＝ ネオン看板。
+            開いた瞬間、文字が「パチ…パチ…ポワッ」と1文字ずつ順に点灯する。
+            3文字目の「フ」だけ、ときどき電気の切れかけみたいに瞬く（本物の看板の癖）。 */}
         <div style={{position:"relative",marginTop:6}}>
-          <h1 style={S.brandRainbow}>
+          <h1 className="neon-sign" style={S.brandRainbow}>
             {"虹カフェ".split("").map((ch, i) => (
-              <span key={i} style={{color:["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4"][i % 6],
-                display:"inline-block"}}>
+              <span key={i} className={"neon-ch" + (i === 2 ? " neon-flicker" : "")}
+                style={{"--nc":["#ff6ec7","#4deeea","#ffd166","#b28dff"][i % 4],
+                  animationDelay:`${0.3 + i * 0.22}s`, display:"inline-block"}}>
                 {ch}
               </span>
             ))}
@@ -1172,6 +1190,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
 
   return (
     <div style={S.page}>
+      <NightMode/>
       <button className="back-btn" onClick={()=>{setScreen("home");setFound(null);setInput("");}}>← 戻る</button>
       <h2 style={S.title}>チケット確認</h2>
 
@@ -1185,7 +1204,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
         </div>
       ) : (
         <div>
-          <div style={{display:"flex",background:"#f2ece4",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
+          <div style={{display:"flex",background:"var(--panel2,#f2ece4)",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
             {[
               ["ticket","🎫 チケット"],
               ["order","🛒 注文する"],
@@ -1207,11 +1226,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
                   一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
-              <HoloCard className="ticket-card rise" style={{background:"#ffffff",border:"1px solid #ece4d9",
+              <HoloCard className="ticket-card rise" style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#ece4d9)",
                 boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
-                  <span style={{fontSize:"1.15rem",fontWeight:700,color:"#3d3630"}}>{found.name}</span>
+                  <span style={{fontSize:"1.15rem",fontWeight:700,color:"var(--ink,#3d3630)"}}>{found.name}</span>
                   <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>
                     <span className="gem-pulse">{rank.gem}</span> {rank.name}
                   </span>
@@ -1219,8 +1238,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 {/* 残高はランクに関係なく、いつも一番はっきり読める濃さにする。
                     この画面を開く理由がこれなので、色よりも読みやすさを優先する。 */}
                 <div style={{marginBottom:16}}>
-                  <div style={{color:"#8a7f76",fontSize:"0.85rem",marginBottom:2}}>のこり</div>
-                  <div style={{color:"#2f2925",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,fontVariantNumeric:"tabular-nums"}}>
+                  <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:2}}>のこり</div>
+                  <div style={{color:"var(--ink-strong,#2f2925)",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,fontVariantNumeric:"tabular-nums"}}>
                     ¥<CountUp value={found.balance}/>
                   </div>
                 </div>
@@ -1230,13 +1249,13 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       <div style={{color:rank.color,fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:4}}>
                         {isAlways?"✨ 自動特典":"🎁 今月の特典"}
                       </div>
-                      <div style={{color:"#3d3630",fontWeight:700,fontSize:"0.95rem"}}>{rank.benefit.icon} {rank.benefit.desc}</div>
+                      <div style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"0.95rem"}}>{rank.benefit.icon} {rank.benefit.desc}</div>
                     </div>
                     {isAlways?<div style={S.benefitTagAlways}>毎回適用</div>
                       :used?<div style={S.benefitTagUsed}>使用済み</div>
                       :<div style={{...S.benefitTagAvail,borderColor:rank.color,color:rank.color}}>未使用</div>}
                   </div>
-                  {!isAlways&&<div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:8}}>
+                  {!isAlways&&<div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:8}}>
                     {used?"来月またご利用いただけます":"スタッフにお申し付けください"}
                   </div>}
                 </div>
@@ -1246,9 +1265,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     来年の予測は今この場では要らない情報なので落とした。 */}
                 <div style={S.divider}/>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-                  <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>今年 {cyp}回</span>
+                  <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>今年 {cyp}回</span>
                   {next
-                    ? <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>あと{next.min-cyp}回で <span style={{color:next.color,fontWeight:700}}>{next.gem}{next.name}</span></span>
+                    ? <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>あと{next.min-cyp}回で <span style={{color:next.color,fontWeight:700}}>{next.gem}{next.name}</span></span>
                     : <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>最高ランクです</span>}
                 </div>
                 {next && <div style={S.bar}><div className="bar-fill" style={{width:`${pct}%`,background:rank.color}}/></div>}
@@ -1257,14 +1276,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   常に開いていると本題（残高と特典）が画面外に押し出されるので、
                   必要なときだけ開く形にした。 */}
               <button onClick={()=>setShowRanks(v=>!v)}
-                style={{width:"100%",marginTop:14,background:"#ffffff",border:"1px solid #e7ded3",borderRadius:16,
+                style={{width:"100%",marginTop:14,background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:16,
                   padding:"14px 16px",cursor:"pointer",fontFamily:"inherit",display:"flex",
-                  justifyContent:"space-between",alignItems:"center",color:"#8a7f76",fontSize:"0.95rem"}}>
+                  justifyContent:"space-between",alignItems:"center",color:"var(--ink2,#8a7f76)",fontSize:"0.95rem"}}>
                 <span>ランクと特典を見る</span>
-                <span style={{color:"#a79b90"}}>{showRanks?"閉じる ▲":"▼"}</span>
+                <span style={{color:"var(--ink4,#a79b90)"}}>{showRanks?"閉じる ▲":"▼"}</span>
               </button>
               {showRanks && (
-              <div style={{marginTop:8,background:"#ffffff",borderRadius:16,padding:"14px 16px"}}>
+              <div style={{marginTop:8,background:"var(--card,#ffffff)",borderRadius:16,padding:"14px 16px"}}>
                 {RANKS.map(r=>{
                   const unlocked=found.rankBasis>=r.min, isCur=r.name===rank.name;
                   return (
@@ -1273,11 +1292,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                         <span style={{fontSize:"0.95rem"}}>{r.gem}</span>
                         <div>
                           <span style={{color:r.color,fontWeight:700,fontSize:"0.85rem"}}>{r.name}</span>
-                          <span style={{color:"#9a8f85",fontSize:"0.75rem",marginLeft:6}}>{r.min}回〜</span>
+                          <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginLeft:6}}>{r.min}回〜</span>
                         </div>
                       </div>
                       <div style={{textAlign:"right"}}>
-                        <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{r.benefit.icon} {r.benefit.desc}</span>
+                        <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>{r.benefit.icon} {r.benefit.desc}</span>
                         {r.benefit.type==="always_discount"&&<span style={{color:r.color,fontSize:"0.75rem",marginLeft:4,fontWeight:700}}>毎回</span>}
                       </div>
                       {isCur&&<div style={{...S.curDot,background:rank.color}}/>}
@@ -1309,21 +1328,21 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.95rem",marginBottom:10}}>✅ 注文受付済み — スタッフが準備中です</div>
                   {myPendingOrder.items.map((item,i)=>(
                     <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
-                      <span style={{color:"#8a7f76"}}>{item.emoji} {item.name} × {item.qty}</span>
-                      <span style={{color:"#b07c1e"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                      <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name} × {item.qty}</span>
+                      <span style={{color:"var(--gold,#b07c1e)"}}>¥{(item.price*item.qty).toLocaleString()}</span>
                     </div>
                   ))}
                   {(myPendingOrder.benefitItems||[]).map((item,i)=>(
                     <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
-                      <span style={{color:"#8a7f76"}}>{item.emoji} {item.name}</span>
+                      <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name}</span>
                       <span style={{color:"#3e9a5c",fontSize:"0.85rem"}}>🎁 無料</span>
                     </div>
                   ))}
                   <div style={{borderTop:"1px solid #c9e2ce",paddingTop:8,marginTop:6,display:"flex",justifyContent:"space-between"}}>
-                    <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</span>
+                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>合計</span>
                     <span style={{color:"#3e9a5c",fontWeight:800}}>¥{myPendingOrder.total.toLocaleString()}</span>
                   </div>
-                  <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:6}}>{myPendingOrder.createdAt} に注文</div>
+                  <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:6}}>{myPendingOrder.createdAt} に注文</div>
                   <button className="btn-danger" style={{marginTop:12,padding:"9px"}} onClick={cancelOrder}>注文をキャンセル</button>
                 </div>
               ) : ordered ? (
@@ -1338,7 +1357,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   </div>
                   <div className="pop" style={{fontSize:"3rem",marginBottom:12}}>✅</div>
                   <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.15rem",marginBottom:6}}>注文を受け付けました！</div>
-                  <div style={{color:"#8a7f76",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
+                  <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
                   <button className="btn-ghost" style={{marginTop:20}} onClick={()=>setOrdered(false)}>続けて注文する</button>
                 </div>
               ) : (
@@ -1349,7 +1368,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       <span style={{fontSize:"1.15rem"}}>💜</span>
                       <div>
                         <div style={{color:"#9c3fb5",fontWeight:800,fontSize:"0.95rem"}}>スペシャル — 全品無料</div>
-                        <div style={{color:"#8a7f76",fontSize:"0.75rem"}}>全ての注文が¥0になります</div>
+                        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem"}}>全ての注文が¥0になります</div>
                       </div>
                     </div>
                   )}
@@ -1362,7 +1381,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                         <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.85rem"}}>スタッフ割引 {discountRate}%OFF</div>
                         {/* ここは「10%」と決め打ちで書かれていたため、
                             割引率が15%の人には上下で違う数字が並んで見えていた。 */}
-                        <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>全商品が自動で{discountRate}%オフになります</div>
+                        <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>全商品が自動で{discountRate}%オフになります</div>
                       </div>
                     </div>
                   )}
@@ -1396,17 +1415,17 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       選んだ品数が多いときは、この中だけがスクロールする。 */}
                   {(cart.length>0 || benefitItems.length>0) &&(
                     <div className="glass rise" style={{position:"sticky",bottom:8,zIndex:20,marginTop:8,
-                      border:"1px solid #e7ded3",borderRadius:16,padding:"12px 14px",
+                      border:"1px solid var(--line,#e7ded3)",borderRadius:16,padding:"12px 14px",
                       boxShadow:"0 -6px 24px rgba(61,54,48,0.12)"}}>
                       <div style={{maxHeight:"32vh",overflowY:"auto"}}>
                       {cart.map(item=>(
                         <div key={item.id} style={S.cartRow}>
-                          <span style={{color:"#3d3630",fontSize:"0.85rem",fontWeight:600}}>{item.emoji} {item.name}</span>
+                          <span style={{color:"var(--ink,#3d3630)",fontSize:"0.85rem",fontWeight:600}}>{item.emoji} {item.name}</span>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                            <span style={{color:"#3d3630",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
+                            <span style={{color:"var(--ink,#3d3630)",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
                             <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                            <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                            <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
                           </div>
                         </div>
                       ))}
@@ -1417,7 +1436,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                         </div>
                       ))}
                       </div>
-                      <div style={{paddingTop:8,borderTop:"1px solid #e7ded3",marginTop:6}}>
+                      <div style={{paddingTop:8,borderTop:"1px solid var(--line,#e7ded3)",marginTop:6}}>
                         {isSpecial&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
                           <span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>💜 スペシャル割引</span>
                           <span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>全品無料</span>
@@ -1438,14 +1457,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                             残高不足で押せなくなってから気づくのでは遅いため。 */}
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                           <div>
-                            <div style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</div>
+                            <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>合計</div>
                             <div style={{color:total>found.balance?"#c25b52":"#a79b90",fontSize:"0.75rem",marginTop:2}}>
                               {total>found.balance
                                 ? `のこり ¥${found.balance.toLocaleString()} — ¥${(total-found.balance).toLocaleString()} 足りません`
                                 : `お支払い後 ¥${(found.balance-total).toLocaleString()}`}
                             </div>
                           </div>
-                          <span style={{color:"#2f2925",fontWeight:800,fontSize:"1.7rem",letterSpacing:"-0.02em"}}>¥{total.toLocaleString()}</span>
+                          <span style={{color:"var(--ink-strong,#2f2925)",fontWeight:800,fontSize:"1.7rem",letterSpacing:"-0.02em"}}>¥{total.toLocaleString()}</span>
                         </div>
                         {/* 「クリア」は間違って押されると全部消える操作なので、小さく端に置く */}
                         <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
@@ -1512,7 +1531,7 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
       <div style={{textAlign:"center",marginBottom:20,paddingTop:8}}>
         <div style={{fontSize:"2.5rem",marginBottom:8}}>⭐</div>
         <div style={{color:"#a9791a",fontWeight:800,fontSize:"1.15rem",letterSpacing:"0.08em"}}>VIP会員</div>
-        <div style={{color:"#8a7f76",fontSize:"0.85rem",marginTop:4}}>{found.name} さん専用</div>
+        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginTop:4}}>{found.name} さん専用</div>
       </div>
 
       {/* 今月のプレゼント */}
@@ -1520,16 +1539,16 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
         <div style={{color:"#a9791a",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.08em",marginBottom:8}}>🎁 今月のプレゼント</div>
 
         {!vipGiftDrink ? (
-          <div style={{textAlign:"center",color:"#9a8f85",fontSize:"0.85rem",padding:"16px 0"}}>
+          <div style={{textAlign:"center",color:"var(--ink3,#9a8f85)",fontSize:"0.85rem",padding:"16px 0"}}>
             今月のプレゼントは設定中です<br/>
-            <span style={{fontSize:"0.75rem",color:"#a79b90"}}>しばらくお待ちください</span>
+            <span style={{fontSize:"0.75rem",color:"var(--ink4,#a79b90)"}}>しばらくお待ちください</span>
           </div>
         ) : (
           <div>
             <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
               <span style={{fontSize:"2.5rem"}}>{vipGiftDrink.emoji}</span>
               <div>
-                <div style={{color:"#3d3630",fontWeight:700,fontSize:"1.15rem"}}>{vipGiftDrink.name}</div>
+                <div style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1.15rem"}}>{vipGiftDrink.name}</div>
                 <div style={{color:"#a9791a",fontSize:"0.85rem",marginTop:2}}>無料プレゼント ✨</div>
               </div>
             </div>
@@ -1544,13 +1563,13 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
                 </button>
               </div>
             ) : vipGiftUsed ? (
-              <div style={{background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
-                <div style={{color:"#9a8f85",fontSize:"0.85rem"}}>今月は受け取り済みです</div>
-                <div style={{color:"#a79b90",fontSize:"0.75rem",marginTop:4}}>来月また受け取れます</div>
+              <div style={{background:"var(--panel2,#f6f1ea)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
+                <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.85rem"}}>今月は受け取り済みです</div>
+                <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem",marginTop:4}}>来月また受け取れます</div>
               </div>
             ) : (
               <button
-                style={{width:"100%",background:"linear-gradient(135deg,#d9a441,#ffd98a)",color:"#3d3630",
+                style={{width:"100%",background:"linear-gradient(135deg,#d9a441,#ffd98a)",color:"var(--ink,#3d3630)",
                   border:"none",borderRadius:12,padding:"15px",fontSize:"1rem",fontWeight:800,
                   cursor:"pointer",fontFamily:"inherit",letterSpacing:"0.04em",
                   boxShadow:"0 4px 20px #ffd70044",transition:"transform 0.1s"}}
@@ -1562,7 +1581,7 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
         )}
       </div>
 
-      <div style={{color:"#a79b90",fontSize:"0.75rem",textAlign:"center"}}>
+      <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem",textAlign:"center"}}>
         プレゼントは月に1回受け取れます
       </div>
     </div>
@@ -1620,7 +1639,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:(open||benefitUsed)?10:0}}>
         <div>
           <div style={{color:rank.color,fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:2}}>🎁 今月の特典</div>
-          <div style={{color:"#3d3630",fontWeight:700,fontSize:"0.85rem"}}>{benefitIcon} {benefitName}
+          <div style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"0.85rem"}}>{benefitIcon} {benefitName}
             {subText && <span style={{color:rank.color,fontSize:"0.75rem",marginLeft:6,fontWeight:400}}>{subText}</span>}
           </div>
         </div>
@@ -1647,7 +1666,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
             </span>
           ))}
           {isToppingBenefit && benefitItems.length < selectable && (
-            <span style={{color:"#9a8f85",fontSize:"0.75rem",alignSelf:"center"}}>
+            <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",alignSelf:"center"}}>
               あと{selectable-benefitItems.length}つ選べます
             </span>
           )}
@@ -1656,7 +1675,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
 
       {open && isToppingBenefit && (
         <div>
-          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>
+          <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:8}}>
             トッピングを選択（あと{selectable - benefitItems.length}つ選べます）
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1677,7 +1696,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
               );
             })}
           </div>
-          <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:6}}>
+          <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:6}}>
             {benefitItems.length}/{selectable} 選択中
             {selectable < toppingMax && ` （今月の残り使用回数: ${selectable}回）`}
           </div>
@@ -1687,16 +1706,16 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       {/* コーヒー選択（プラチナ） */}
       {open && isCoffeeBenefit && (
         <div>
-          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>アイスコーヒー / ホットコーヒーから1杯選択</div>
+          <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:8}}>アイスコーヒー / ホットコーヒーから1杯選択</div>
           <div style={{display:"flex",gap:8}}>
             {coffeeItems.length===0
-              ? <div style={{color:"#9a8f85",fontSize:"0.85rem"}}>メニューにアイスコーヒー・ホットコーヒーがありません</div>
+              ? <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.85rem"}}>メニューにアイスコーヒー・ホットコーヒーがありません</div>
               : coffeeItems.map(item=>(
                 <button key={item.id} className="menu-item"
                   style={{flex:1,border:`1px solid ${rank.color}44`,background:rank.color+"0a"}}
                   onClick={()=>selectDrink(item)}>
                   <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                  <span style={{fontSize:"0.85rem",fontWeight:600,color:"#8a7f76",lineHeight:1.2,marginTop:2}}>{item.name}</span>
+                  <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink2,#8a7f76)",lineHeight:1.2,marginTop:2}}>{item.name}</span>
                   <span style={{color:rank.color,fontWeight:700,fontSize:"0.75rem"}}>🎁 無料</span>
                 </button>
               ))
@@ -1708,16 +1727,16 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       {/* 指定ドリンク選択（チタン） */}
       {open && isSpecificDrink && (
         <div>
-          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>今月の指定ドリンク（1杯無料）</div>
+          <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:8}}>今月の指定ドリンク（1杯無料）</div>
           {!designatedDrink
-            ? <div style={{color:"#9a8f85",fontSize:"0.85rem",background:"#ffffff",borderRadius:8,padding:"10px 12px"}}>
+            ? <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.85rem",background:"var(--card,#ffffff)",borderRadius:8,padding:"10px 12px"}}>
                 今月の指定ドリンクはスタッフが設定中です
               </div>
             : (
               <button className="menu-item" style={{width:"100%",border:`1px solid ${rank.color}55`,background:rank.color+"0a"}}
                 onClick={()=>selectDrink(designatedDrink)}>
                 <span style={{fontSize:"1.7rem"}}>{designatedDrink.emoji}</span>
-                <span style={{fontSize:"0.85rem",fontWeight:700,color:"#8a7f76",marginTop:2}}>{designatedDrink.name}</span>
+                <span style={{fontSize:"0.85rem",fontWeight:700,color:"var(--ink2,#8a7f76)",marginTop:2}}>{designatedDrink.name}</span>
                 <span style={{color:rank.color,fontWeight:700,fontSize:"0.85rem"}}>🎁 今月の指定ドリンク</span>
               </button>
             )
@@ -1728,14 +1747,14 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
       {/* 好きなドリンク選択（サファイア） */}
       {open && isAnyDrink && (
         <div>
-          <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:8}}>好きなドリンクを1杯選択（全て対象）</div>
+          <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:8}}>好きなドリンクを1杯選択（全て対象）</div>
           <div style={S.menuGrid}>
             {anyDrinkItems.map(item=>(
               <button key={item.id} className="menu-item"
                 style={{border:`1px solid ${rank.color}44`,background:rank.color+"0a"}}
                 onClick={()=>selectDrink(item)}>
                 <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
+                <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:rank.color,fontWeight:700,fontSize:"0.75rem"}}>🎁 無料</span>
               </button>
             ))}
@@ -1755,7 +1774,7 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
     <div>
       {/* カテゴリタブ。スクロールしても上に貼り付いたままにして、
           下の方の商品を見ている途中でもカテゴリを切り替えられるようにする。 */}
-      <div style={{display:"flex",gap:0,overflowX:"auto",background:"#ffffff",borderRadius:"10px 10px 0 0",marginBottom:0,
+      <div style={{display:"flex",gap:0,overflowX:"auto",background:"var(--card,#ffffff)",borderRadius:"10px 10px 0 0",marginBottom:0,
         position:"sticky",top:0,zIndex:15,borderBottom:"1px solid #f0eae2"}}>
         {categories.map(cat=>(
           <button key={cat}
@@ -1770,15 +1789,15 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
         ))}
       </div>
       {/* 選択カテゴリのメニュー */}
-      <div style={{background:"#ffffff",borderRadius:"0 0 10px 10px",padding:"10px 8px",marginBottom:8}}>
+      <div style={{background:"var(--card,#ffffff)",borderRadius:"0 0 10px 10px",padding:"10px 8px",marginBottom:8}}>
         <div style={S.menuGrid}>
           {menu.filter(m=>m.category===activeTab).map(item=>{
             const inCart=cart.find(c=>c.id===item.id);
             return (
               <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                 <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
-                <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
+                <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                 {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
               </button>
             );
@@ -1807,7 +1826,7 @@ function RankingBoard({ customers, myId }) {
     <div style={{marginTop:20,marginBottom:8}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
         <div style={{flex:1,height:1,background:"linear-gradient(90deg,transparent,#f6f1ea)"}}/>
-        <span style={{color:"#8a7f76",fontSize:"0.75rem",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>🏆 メンバーズランキング</span>
+        <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>🏆 メンバーズランキング</span>
         <div style={{flex:1,height:1,background:"linear-gradient(90deg,#f6f1ea,transparent)"}}/>
       </div>
 
@@ -1824,7 +1843,7 @@ function RankingBoard({ customers, myId }) {
               boxShadow: isMe ? `0 0 12px ${r.color}22` : "none",
             }}>
               <span style={{fontSize:"1.15rem",flexShrink:0,minWidth:24,textAlign:"center"}}>
-                {i < 3 ? medals[i] : <span style={{color:"#a79b90",fontSize:"0.85rem",fontWeight:700}}>{i+1}</span>}
+                {i < 3 ? medals[i] : <span style={{color:"var(--ink4,#a79b90)",fontSize:"0.85rem",fontWeight:700}}>{i+1}</span>}
               </span>
               <span style={{fontSize:"0.95rem",flexShrink:0}}>{r.gem}</span>
               <div style={{flex:1,minWidth:0}}>
@@ -1839,11 +1858,11 @@ function RankingBoard({ customers, myId }) {
                   </span>
                   {isMe && <span style={{color:r.color,fontSize:"0.75rem",fontWeight:700,background:r.color+"22",border:`1px solid ${r.color}44`,borderRadius:999,padding:"1px 6px",flexShrink:0}}>あなた</span>}
                 </div>
-                <span style={{color:"#9a8f85",fontSize:"0.75rem"}}>{r.name}</span>
+                <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>{r.name}</span>
               </div>
               <div style={{textAlign:"right",flexShrink:0}}>
                 <div style={{color: isMe ? r.color : "#8a7f76",fontWeight:700,fontSize:"0.85rem"}}>{c.currentYearPurchases??0}回</div>
-                <div style={{color:"#a79b90",fontSize:"0.75rem"}}>今年</div>
+                <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem"}}>今年</div>
               </div>
             </div>
           );
@@ -1930,15 +1949,15 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
                 onClick={()=>{setSelected(acc);setPw("");setErr("");}}>
                 <span style={{fontSize:"1.15rem"}}>{acc._role==="manager"?"👑":"👤"}</span>
                 <span style={{fontWeight:700,color:acc._role==="manager"?"#b07c1e":"#3d3630"}}>{acc.name}</span>
-                <span style={{color:"#9a8f85",fontSize:"0.85rem",marginLeft:"auto"}}>→</span>
+                <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.85rem",marginLeft:"auto"}}>→</span>
               </button>
             ))}
           </div>
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,padding:"12px 14px",marginBottom:4}}>
-            <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:2}}>ログイン中のアカウント</div>
+          <div style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"12px 14px",marginBottom:4}}>
+            <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:2}}>ログイン中のアカウント</div>
             <div style={{fontWeight:700,color:selected._role==="manager"?"#b07c1e":"#3d3630",display:"flex",alignItems:"center",gap:6}}>
               <span>{selected._role==="manager"?"👑":"👤"}</span>
               <span>{selected.name}</span>
@@ -2132,7 +2151,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
       {/* TOP BAR */}
       <div className="glass" style={{...S.topbar,position:"sticky",top:0,zIndex:30}}>
         {customer ? (
-          <button className="back-btn" style={{margin:0,fontSize:"0.85rem",color:"#b07c1e",fontWeight:700}}
+          <button className="back-btn" style={{margin:0,fontSize:"0.85rem",color:"var(--gold,#b07c1e)",fontWeight:700}}
             onClick={()=>{ setCustomer(null); setCart([]); }}>
             ← 客を変える
           </button>
@@ -2141,9 +2160,9 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
         )}
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {customer && (
-            <button className="back-btn" style={{margin:0,fontSize:"0.75rem",color:"#9a8f85"}} onClick={()=>setScreen("home")}>退出</button>
+            <button className="back-btn" style={{margin:0,fontSize:"0.75rem",color:"var(--ink3,#9a8f85)"}} onClick={()=>setScreen("home")}>退出</button>
           )}
-          <span style={{fontSize:"0.75rem",color:isManager?"#b07c1e":"#3b7fb8",background:"#ffffff",padding:"4px 12px",borderRadius:999}}>
+          <span style={{fontSize:"0.75rem",color:isManager?"#b07c1e":"#3b7fb8",background:"var(--card,#ffffff)",padding:"4px 12px",borderRadius:999}}>
             {isManager?"👑":"👤"} {staffName}
           </span>
         </div>
@@ -2164,7 +2183,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
           タブの帯は画面いっぱい、中のボタンは本文と同じ幅で中央に揃える。
           （帯だけ1440px、中身は中央——という不揃いを避けるため） */}
       {!customer && (
-        <div style={{background:"#ffffff",borderBottom:"1px solid #e7ded3"}}>
+        <div style={{background:"var(--card,#ffffff)",borderBottom:"1px solid var(--line,#e7ded3)"}}>
         <div style={{display:"flex",overflowX:"auto",maxWidth:1080,margin:"0 auto"}}>
           {[["order","👥 会員"],["menu","🍽 メニュー"],["cash","💵 現金注文"],["orders","📋 注文"],["history","🗂 履歴"],
             ...(isManager?[["staffmgmt","🔐 スタッフ"]]:[])
@@ -2210,7 +2229,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                       <div style={{fontWeight:700,fontSize:"0.95rem"}}>{c.name} {c.isVIP&&<span style={{color:"#a9791a",fontSize:"0.85rem"}}>⭐</span>}{c.isSpecial&&<span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>💜</span>}</div>
                       {/* 暗証番号は伏せておく。POSの画面はカウンター越しにお客様からも見えるため。
                           「暗証」の部分を押したときだけ、その1人分を5秒だけ表示する。 */}
-                      <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>
+                      <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>
                         {isManager && (
                           <span onClick={(e)=>{ e.stopPropagation(); revealPin(c.id); }}
                             style={{cursor:"pointer",borderBottom:"1px dotted #c3bab0",paddingBottom:1}}>
@@ -2275,7 +2294,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                   <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>{rank.gem} {rank.name}</span>
-                  <span style={{color:"#3d3630",fontWeight:700,fontSize:"1rem"}}>{customer.name}</span>
+                  <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1rem"}}>{customer.name}</span>
                 </div>
                 {/* 特典ステータス */}
                 <div style={{...S.benefitStripBox, borderColor:rank.color+"44"}}>
@@ -2321,8 +2340,8 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                     return (
                       <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                         <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                        <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
-                        <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                        <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
+                        <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                         {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
                       </button>
                     );
@@ -2335,18 +2354,18 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
           {/* カート */}
           <div style={S.cartPanel}>
             {cart.length===0 ? (
-              <div style={{color:"#a79b90",textAlign:"center",fontSize:"0.85rem",padding:"8px 0"}}>商品を選んでください</div>
+              <div style={{color:"var(--ink4,#a79b90)",textAlign:"center",fontSize:"0.85rem",padding:"8px 0"}}>商品を選んでください</div>
             ) : (
               <>
                 <div style={{maxHeight:100,overflowY:"auto",marginBottom:6}}>
                   {cart.map(item=>(
                     <div key={item.id} style={S.cartRow}>
-                      <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
+                      <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                        <span style={{color:"#3d3630",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
+                        <span style={{color:"var(--ink,#3d3630)",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
                         <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                        <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>
+                        <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>
                           ¥{(item.price*item.qty).toLocaleString()}
                         </span>
                       </div>
@@ -2355,10 +2374,10 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                 </div>
 
                 {/* 割引・合計 */}
-                <div style={{paddingTop:8,borderTop:"1px solid #e7ded3"}}>
+                <div style={{paddingTop:8,borderTop:"1px solid var(--line,#e7ded3)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                    <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>小計</span>
-                    <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>¥{subtotal.toLocaleString()}</span>
+                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>小計</span>
+                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>¥{subtotal.toLocaleString()}</span>
                   </div>
                   {!isSpecialCustomer && discount>0 && (
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
@@ -2379,8 +2398,8 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                     </div>
                   )}
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                    <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>合計</span>
-                    <span style={{color:"#3d3630",fontWeight:800,fontSize:"1.4rem"}}>¥{total.toLocaleString()}</span>
+                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>合計</span>
+                    <span style={{color:"var(--ink,#3d3630)",fontWeight:800,fontSize:"1.4rem"}}>¥{total.toLocaleString()}</span>
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     <button className="btn-clear" onClick={()=>setCart([])}>クリア</button>
@@ -2510,7 +2529,7 @@ function BackupPanel({ customers }) {
 
       {/* バックアップ */}
       <div style={{marginBottom:12}}>
-        <div style={{color:"#8a7f76",fontSize:"0.85rem",marginBottom:8}}>
+        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:8}}>
           全会員データをテキストとして表示→コピーして保存できます
         </div>
         <button onClick={openBackup}
@@ -2520,7 +2539,7 @@ function BackupPanel({ customers }) {
             fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
           <span>📋</span> バックアップデータを表示
         </button>
-        <div style={{color:"#a79b90",fontSize:"0.75rem",marginTop:6,textAlign:"center"}}>
+        <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem",marginTop:6,textAlign:"center"}}>
           表示されたテキストをコピーしてメモ帳やメールに保存してください
         </div>
       </div>
@@ -2529,12 +2548,12 @@ function BackupPanel({ customers }) {
       <div style={{borderTop:"1px solid #dbe4ec",paddingTop:12}}>
         <button onClick={()=>setRestoreMode(p=>!p)}
           style={{background:"transparent",border:"1px solid #dbe4ec",borderRadius:8,padding:"8px 14px",
-            color:"#8a7f76",fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+            color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
           {restoreMode?"▲ リストアを閉じる":"▼ バックアップから復元する"}
         </button>
         {restoreMode && (
           <div style={{marginTop:10}}>
-            <div style={{color:"#8a7f76",fontSize:"0.85rem",marginBottom:6}}>
+            <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:6}}>
               保存済みのJSONテキストを貼り付けてください
             </div>
             <textarea
@@ -2562,7 +2581,7 @@ function BackupPanel({ customers }) {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
               <div>
                 <h3 style={{color:"#3b7fb8",margin:0,fontSize:"1rem"}}>📋 バックアップデータ</h3>
-                <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:2}}>
+                <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:2}}>
                   全文をコピーしてメモ帳・メール等に保存
                 </div>
               </div>
@@ -2583,7 +2602,7 @@ function BackupPanel({ customers }) {
                 cursor:"pointer",fontFamily:"inherit",transition:"all 0.3s"}}>
               {copied ? "✅ コピーしました！" : "📋 全てコピーする"}
             </button>
-            <div style={{color:"#a79b90",fontSize:"0.75rem",marginTop:8,textAlign:"center"}}>
+            <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem",marginTop:8,textAlign:"center"}}>
               コピー後、メモ帳・メール・Googleドキュメント等に貼り付けて保存してください
             </div>
           </div>
@@ -2635,25 +2654,25 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
   const AccCard = ({acc, isManager, onEdit, onDel, ltId, setLtId, onLink, onUnlink}) => {
     const linked = acc.linkedCustomerId ? customers.find(c=>c.id===acc.linkedCustomerId) : null;
     return (
-      <div style={{background:"#ffffff",border:`1px solid ${isManager?"#d3a94f33":"#e7ded3"}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
+      <div style={{background:"var(--card,#ffffff)",border:`1px solid ${isManager?"#d3a94f33":"#e7ded3"}`,borderRadius:12,padding:"12px 14px",marginBottom:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
           <span style={{fontSize:"1.15rem"}}>{isManager?"👑":"👤"}</span>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:"0.95rem",color:isManager?"#b07c1e":"#3d3630"}}>{acc.name}</div>
             {/* パスワードはサーバーの中だけで扱うようになったので、画面には届いていない。
                 空の「PW:」を出しても混乱させるだけなので、状態だけを示す。 */}
-            <div style={{color:"#a79b90",fontSize:"0.75rem",marginTop:2}}>
+            <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem",marginTop:2}}>
               {acc.password ? `PW: ${acc.password}` : "パスワード設定済み（✏️ から変更できます）"}
             </div>
           </div>
           <button className="btn-tiny-edit" onClick={()=>onEdit(acc)}>✏️</button>
           <button className="btn-tiny-del"  onClick={()=>onDel(acc.id)}>🗑</button>
         </div>
-        <div style={{borderTop:"1px solid #e7ded3",paddingTop:8}}>
+        <div style={{borderTop:"1px solid var(--line,#e7ded3)",paddingTop:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>🔗 客アカウントリンク</div>
+            <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>🔗 客アカウントリンク</div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <span style={{color:"#9a8f85",fontSize:"0.75rem"}}>割引率:</span>
+              <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>割引率:</span>
               <input
                 type="number" min="0" max="100"
                 value={acc.discountRate ?? 10}
@@ -2662,7 +2681,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
                   if (isManager) saveManagerAccounts(managerAccounts.map(a=>a.id===acc.id?{...a,discountRate:rate}:a));
                   else saveStaffAccounts(staffAccounts.map(a=>a.id===acc.id?{...a,discountRate:rate}:a));
                 }}
-                style={{width:52,background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:8,padding:"3px 6px",color:"#3e9a5c",fontSize:"0.85rem",fontWeight:700,fontFamily:"inherit",textAlign:"center"}}
+                style={{width:52,background:"var(--panel2,#f6f1ea)",border:"1px solid var(--line,#e7ded3)",borderRadius:8,padding:"3px 6px",color:"#3e9a5c",fontSize:"0.85rem",fontWeight:700,fontFamily:"inherit",textAlign:"center"}}
               />
               <span style={{color:"#3e9a5c",fontSize:"0.75rem"}}>%</span>
             </div>
@@ -2671,7 +2690,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{color:"#2f9b85",fontSize:"0.85rem",fontWeight:600}}>{linked.name}</span>
               <div style={{display:"flex",gap:6}}>
-                <button style={{background:"transparent",border:"1px solid #e7ded3",borderRadius:999,padding:"3px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>変更</button>
+                <button style={{background:"transparent",border:"1px solid var(--line,#e7ded3)",borderRadius:999,padding:"3px 10px",color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setLtId(ltId===acc.id?null:acc.id)}>変更</button>
                 <button style={{background:"transparent",border:"1px solid #f0d6d4",borderRadius:999,padding:"3px 10px",color:"#c94a45",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>onUnlink(acc.id)}>解除</button>
               </div>
             </div>
@@ -2685,8 +2704,8 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
               {customers.map(c=>(
                 <button key={c.id} style={{background:acc.linkedCustomerId===c.id?"#e9f5ec":"#ffffff",border:`1px solid ${acc.linkedCustomerId===c.id?"#7fcdbd55":"#e7ded3"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontFamily:"inherit",display:"flex",justifyContent:"space-between"}}
                   onClick={()=>onLink(acc.id, c.id)}>
-                  <span style={{color:"#3d3630",fontSize:"0.85rem"}}>{c.name}</span>
-                  <span style={{color:"#9a8f85",fontSize:"0.75rem"}}>No.{c.id}</span>
+                  <span style={{color:"var(--ink,#3d3630)",fontSize:"0.85rem"}}>{c.name}</span>
+                  <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>No.{c.id}</span>
                 </button>
               ))}
             </div>
@@ -2704,7 +2723,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
 
       {/* マネージャーアカウント */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <h2 style={{...S.title,margin:0,color:"#b07c1e"}}>👑 マネージャー</h2>
+        <h2 style={{...S.title,margin:0,color:"var(--gold,#b07c1e)"}}>👑 マネージャー</h2>
         <button className="btn-sm-gold" onClick={openNewMgr}>＋ 追加</button>
       </div>
       {(managerAccounts||[]).map(acc=>(
@@ -2721,9 +2740,9 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
           </span>
           <div style={{display:"flex",gap:6,flexShrink:0}}>
             {vipGiftDrink && (
-              <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:999,padding:"4px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveVipGiftDrink(null)}>解除</button>
+              <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:999,padding:"4px 10px",color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>saveVipGiftDrink(null)}>解除</button>
             )}
-            <button style={{background:"#ffffff",border:"1px solid #e8c14a",borderRadius:999,padding:"4px 12px",color:"#a9791a",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
+            <button style={{background:"var(--card,#ffffff)",border:"1px solid #e8c14a",borderRadius:999,padding:"4px 12px",color:"#a9791a",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
               onClick={()=>setPickVip(v=>!v)}>{pickVip?"閉じる":"変更"}</button>
           </div>
         </div>
@@ -2750,11 +2769,11 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
           ltId={linkTarget} setLtId={setLinkTarget} onLink={linkStaff} onUnlink={unlinkStaff}/>
       ))}
       {/* 店長の指名（店長はお客さんのPINを変更できる） */}
-      <div style={{background:"#ffffff",border:"1px solid #d3a94f33",borderRadius:12,padding:"12px 14px",marginTop:4,marginBottom:8}}>
-        <div style={{fontWeight:700,color:"#b07c1e",fontSize:"0.95rem",marginBottom:4}}>⭐ 店長の指名</div>
-        <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:10}}>店長に選ばれたスタッフは、お客さんの暗証番号（PIN）を変更できます。店長は1人までです。</div>
+      <div style={{background:"var(--card,#ffffff)",border:"1px solid #d3a94f33",borderRadius:12,padding:"12px 14px",marginTop:4,marginBottom:8}}>
+        <div style={{fontWeight:700,color:"var(--gold,#b07c1e)",fontSize:"0.95rem",marginBottom:4}}>⭐ 店長の指名</div>
+        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:10}}>店長に選ばれたスタッフは、お客さんの暗証番号（PIN）を変更できます。店長は1人までです。</div>
         {staffAccounts.length===0
-          ? <div style={{color:"#8a7f76",fontSize:"0.85rem"}}>スタッフがいません</div>
+          ? <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>スタッフがいません</div>
           : staffAccounts.map(a=>(
             <button key={a.id} onClick={()=>toggleChief(a.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",boxSizing:"border-box",background:a.isChief?"#f7e7c4":"#ffffff",border:`1px solid ${a.isChief?"#d3a94f":"#e7ded3"}`,borderRadius:12,padding:"10px 12px",marginBottom:6,cursor:"pointer"}}>
               <span style={{color:a.isChief?"#b07c1e":"#3d3630",fontWeight:a.isChief?700:500,fontSize:"0.95rem"}}>{a.isChief?"⭐ ":""}{a.name}</span>
@@ -2763,7 +2782,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
           ))
         }
       </div>
-      {staffAccounts.length===0&&<div style={{textAlign:"center",color:"#8a7f76",padding:"20px",background:"#ffffff",borderRadius:12}}>スタッフアカウントがありません</div>}
+      {staffAccounts.length===0&&<div style={{textAlign:"center",color:"var(--ink2,#8a7f76)",padding:"20px",background:"var(--card,#ffffff)",borderRadius:12}}>スタッフアカウントがありません</div>}
 
       {/* バックアップ欄はここ（一番下）。普段使うものではないため。 */}
       <div style={{marginTop:24}}>
@@ -2775,7 +2794,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
         <div style={S.overlay}>
           <div style={{...S.modal,paddingBottom:28}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{color:"#b07c1e",margin:0}}>{editingMgr==="new"?"マネージャー追加":"マネージャー編集"}</h3>
+              <h3 style={{color:"var(--gold,#b07c1e)",margin:0}}>{editingMgr==="new"?"マネージャー追加":"マネージャー編集"}</h3>
               <button className="close-btn" onClick={()=>setEditingMgr(null)}>✕</button>
             </div>
             <div style={{marginBottom:12}}><label style={S.label}>名前 *</label><input style={S.input} placeholder="例: 田中 店長" value={form.name||""} onChange={e=>upd("name",e.target.value)}/></div>
@@ -2790,7 +2809,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
         <div style={S.overlay}>
           <div style={{...S.modal,paddingBottom:28}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{color:"#b07c1e",margin:0}}>{editingStaff==="new"?"スタッフ追加":"スタッフ編集"}</h3>
+              <h3 style={{color:"var(--gold,#b07c1e)",margin:0}}>{editingStaff==="new"?"スタッフ追加":"スタッフ編集"}</h3>
               <button className="close-btn" onClick={()=>setEditingStaff(null)}>✕</button>
             </div>
             <div style={{marginBottom:12}}><label style={S.label}>名前 *</label><input style={S.input} placeholder="例: 山田 花子" value={form.name||""} onChange={e=>upd("name",e.target.value)}/></div>
@@ -2946,8 +2965,8 @@ function SalesHistoryPanel({ customers, orders }) {
       <h2 style={{...S.title, margin:"0 0 14px"}}>会計履歴</h2>
 
       {days.length === 0 ? (
-        <div style={{textAlign:"center",color:"#a79b90",padding:"40px 0",fontSize:"0.85rem",
-          background:"#ffffff",borderRadius:12}}>
+        <div style={{textAlign:"center",color:"var(--ink4,#a79b90)",padding:"40px 0",fontSize:"0.85rem",
+          background:"var(--card,#ffffff)",borderRadius:12}}>
           まだ会計履歴がありません
         </div>
       ) : days.map(day => {
@@ -2960,18 +2979,18 @@ function SalesHistoryPanel({ customers, orders }) {
             {/* 日付ヘッダー */}
             <div style={{
               display:"flex", justifyContent:"space-between", alignItems:"center",
-              background:"#ffffff", border:"1px solid #e7ded3", borderRadius:12,
+              background:"var(--card,#ffffff)", border:"1px solid var(--line,#e7ded3)", borderRadius:12,
               padding:"10px 14px", marginBottom:8,
               position:"sticky", top:0, zIndex:2,
             }}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{color:"#b07c1e",fontSize:"0.95rem"}}>📅</span>
-                <span style={{color:"#3d3630",fontWeight:700,fontSize:"0.95rem"}}>{day}</span>
-                <span style={{color:"#9a8f85",fontSize:"0.75rem"}}>({dayCount}件)</span>
+                <span style={{color:"var(--gold,#b07c1e)",fontSize:"0.95rem"}}>📅</span>
+                <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"0.95rem"}}>{day}</span>
+                <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>({dayCount}件)</span>
               </div>
               <div style={{textAlign:"right"}}>
-                <span style={{color:"#9a8f85",fontSize:"0.75rem",marginRight:4}}>合計</span>
-                <span style={{color:"#b07c1e",fontWeight:800,fontSize:"1.15rem"}}>¥{dayTotal.toLocaleString()}</span>
+                <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginRight:4}}>合計</span>
+                <span style={{color:"var(--gold,#b07c1e)",fontWeight:800,fontSize:"1.15rem"}}>¥{dayTotal.toLocaleString()}</span>
               </div>
             </div>
 
@@ -2981,28 +3000,28 @@ function SalesHistoryPanel({ customers, orders }) {
                 const time = h.date ? h.date.split(" ")[1] : "";
                 return (
                   <div key={i} style={{
-                    background:"#ffffff", border:"1px solid #e7ded3",
+                    background:"var(--card,#ffffff)", border:"1px solid var(--line,#e7ded3)",
                     borderRadius:12, padding:"10px 14px",
                     display:"flex", gap:10, alignItems:"flex-start",
                   }}>
                     <div style={{flexShrink:0,marginTop:2}}>
-                      <div style={{color:"#a79b90",fontSize:"0.75rem"}}>{time}</div>
+                      <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem"}}>{time}</div>
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                        <span style={{color:"#3d3630",fontWeight:700,fontSize:"0.85rem"}}>
+                        <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"0.85rem"}}>
                           {h.isCash && <span style={{color:"#3e9a5c",marginRight:4}}>💵</span>}
                           {h.customerName}
                         </span>
                         <div style={{textAlign:"right",flexShrink:0}}>
-                          <span style={{color:"#3d3630",fontWeight:800,fontSize:"0.95rem"}}>¥{(h.amount||0).toLocaleString()}</span>
+                          <span style={{color:"var(--ink,#3d3630)",fontWeight:800,fontSize:"0.95rem"}}>¥{(h.amount||0).toLocaleString()}</span>
                           {h.discount>0 && (
-                            <div style={{color:"#8a7f76",fontSize:"0.75rem"}}>割引 -¥{h.discount.toLocaleString()}</div>
+                            <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem"}}>割引 -¥{h.discount.toLocaleString()}</div>
                           )}
                         </div>
                       </div>
                       {h.items && (
-                        <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:3,
+                        <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:3,
                           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {h.items}
                         </div>
@@ -3029,7 +3048,7 @@ function SalesHistoryPanel({ customers, orders }) {
                           </span>
                         )}
                         {h.subtotal && h.subtotal !== h.amount && (
-                          <span style={{color:"#a79b90",fontSize:"0.75rem"}}>小計 ¥{h.subtotal.toLocaleString()}</span>
+                          <span style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem"}}>小計 ¥{h.subtotal.toLocaleString()}</span>
                         )}
                       </div>
                     </div>
@@ -3133,13 +3152,13 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       <h2 style={{...S.title,margin:"0 0 14px"}}>注文管理</h2>
 
       {/* 受付中 */}
-      <div style={{color:"#9a8f85",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:8}}>
+      <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:8}}>
         受付中 {pending.length>0&&<span style={{color:"#c21354",fontWeight:700}}>({pending.length}件)</span>}
       </div>
 
       {pending.length===0 ? (
-        <div style={{textAlign:"center",color:"#a79b90",padding:"24px 0",fontSize:"0.85rem",
-          background:"#ffffff",borderRadius:12,marginBottom:20}}>
+        <div style={{textAlign:"center",color:"var(--ink4,#a79b90)",padding:"24px 0",fontSize:"0.85rem",
+          background:"var(--card,#ffffff)",borderRadius:12,marginBottom:20}}>
           現在注文はありません
         </div>
       ) : (
@@ -3154,7 +3173,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                     <span style={{fontSize:"0.95rem"}}>{order.rankGem}</span>
-                    <span style={{color:"#3d3630",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
+                    <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
                     {order.isVipGift
                       ? <span style={{color:"#a9791a",fontSize:"0.75rem",border:"1px solid #e8c14a55",borderRadius:999,padding:"2px 9px",fontWeight:700}}>⭐ VIPギフト</span>
                       : order.isCash
@@ -3164,18 +3183,18 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                           : <span style={{color:order.rankColor,fontSize:"0.75rem",border:`1px solid ${order.rankColor}55`,borderRadius:999,padding:"2px 9px"}}>{order.rankName}</span>
                     }
                   </div>
-                  <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>{order.createdAt}</div>
+                  <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>{order.createdAt}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{color:"#3d3630",fontWeight:800,fontSize:"1.15rem"}}>¥{order.total.toLocaleString()}</div>
+                  <div style={{color:"var(--ink,#3d3630)",fontWeight:800,fontSize:"1.15rem"}}>¥{order.total.toLocaleString()}</div>
                   {order.discount>0&&<div style={{color:order.rankColor,fontSize:"0.75rem"}}>割引 -¥{order.discount.toLocaleString()}</div>}
                 </div>
               </div>
               <div style={{borderTop:"1px solid #dfe7cd",paddingTop:8,marginBottom:10}}>
                 {(order.items||[]).map((item,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:3}}>
-                    <span style={{color:"#8a7f76"}}>{item.emoji} {item.name} × {item.qty}</span>
-                    <span style={{color:"#8a7f76"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                    <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name} × {item.qty}</span>
+                    <span style={{color:"var(--ink2,#8a7f76)"}}>¥{(item.price*item.qty).toLocaleString()}</span>
                   </div>
                 ))}
                 {(order.benefitItems||[]).map((item,i)=>(
@@ -3189,8 +3208,8 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                 <button className="btn-danger" style={{padding:"8px",fontSize:"0.85rem"}}
                   onClick={()=>deleteOrder(order)}>キャンセル</button>
                 {order.staffLinked && order.staffLinked===staffName ? (
-                  <div style={{flex:1,background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:12,padding:"10px",
-                    color:"#9a8f85",fontSize:"0.85rem",textAlign:"center"}}>
+                  <div style={{flex:1,background:"var(--panel2,#f6f1ea)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"10px",
+                    color:"var(--ink3,#9a8f85)",fontSize:"0.85rem",textAlign:"center"}}>
                     🔒 自分の注文は完了できません
                   </div>
                 ) : (
@@ -3207,20 +3226,20 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       {/* 完了済み */}
       {completed.length>0&&(
         <>
-          <div style={{color:"#9a8f85",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:8}}>完了済み（直近10件）</div>
+          <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:8}}>完了済み（直近10件）</div>
           {/* 以前は opacity:0.7 をかけていて、金額も担当者も読み取りにくかった。
               「済んだもの」という区別は背景の色でつけて、文字はそのまま読める濃さにする。 */}
           <div className="pos-list">
             {completed.map(order=>(
-              <div key={order.orderId} style={{background:"#f6f1ea",border:"1px solid #e7ded3",borderRadius:12,padding:"10px 12px"}}>
+              <div key={order.orderId} style={{background:"var(--panel2,#f6f1ea)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"10px 12px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
-                    <span style={{color:"#3d3630",fontSize:"0.85rem",fontWeight:700}}>{order.customerName}</span>
-                    <span style={{color:"#8a7f76",fontSize:"0.75rem",marginLeft:8}}>{order.completedAt}</span>
+                    <span style={{color:"var(--ink,#3d3630)",fontSize:"0.85rem",fontWeight:700}}>{order.customerName}</span>
+                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginLeft:8}}>{order.completedAt}</span>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <span style={{color:"#3e9a5c",fontSize:"0.85rem",fontWeight:700}}>¥{order.total.toLocaleString()}</span>
-                    <span style={{color:"#9a8f85",fontSize:"0.75rem"}}>{order.completedBy || "スタッフ"}</span>
+                    <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>{order.completedBy || "スタッフ"}</span>
                     <span style={{color:"#3e9a5c",fontSize:"0.75rem"}}>✓ 完了</span>
                   </div>
                 </div>
@@ -3277,7 +3296,7 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
           選択肢は全メニュー分あるので、開きっぱなしだと本題のメニュー一覧まで
           2画面ぶんスクロールが要る。月に一度しか変えないものなので、普段は畳んでおく。 */}
       <div style={{background:"#e9f1fa",border:"1px solid #c3bab044",borderRadius:12,padding:"12px 14px",marginBottom:18}}>
-        <div style={{color:"#8a7f76",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>
+        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:6}}>
           🩶 チタン特典 — 今月の指定ドリンク
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
@@ -3287,10 +3306,10 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
           <div style={{display:"flex",gap:6,flexShrink:0}}>
             {designatedDrink && (
               <button style={{background:"transparent",border:"1px solid #ddd3c6",borderRadius:999,
-                padding:"4px 10px",color:"#8a7f76",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}
+                padding:"4px 10px",color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}
                 onClick={()=>saveDesignatedDrink(null)}>解除</button>
             )}
-            <button style={{background:"#ffffff",border:"1px solid #c3bab0",borderRadius:999,
+            <button style={{background:"var(--card,#ffffff)",border:"1px solid #c3bab0",borderRadius:999,
               padding:"4px 12px",color:"#5d7d99",fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}
               onClick={()=>setPickDrink(v=>!v)}>{pickDrink?"閉じる":"変更"}</button>
           </div>
@@ -3302,7 +3321,7 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
                 style={{background:designatedDrink?.id===item.id?"#dceaf5":"#ffffff",
                   border:`1px solid ${designatedDrink?.id===item.id?"#c3bab0":"#e7ded3"}`,
                   borderRadius:8,padding:"6px 10px",cursor:"pointer",fontFamily:"inherit",
-                  color:"#8a7f76",fontSize:"0.85rem",transition:"all 0.15s"}}
+                  color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",transition:"all 0.15s"}}
                 onClick={()=>{ saveDesignatedDrink(item); setPickDrink(false); }}>
                 {item.emoji} {item.name}
               </button>
@@ -3316,12 +3335,12 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
           <div style={S.catLabel}>{cat}</div>
           <div className="pos-list">
             {menu.filter(m=>m.category===cat).map(item=>(
-              <div key={item.id} style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,
+              <div key={item.id} style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,
                 padding:"10px 12px",display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:"1.4rem",flexShrink:0}}>{item.emoji}</span>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:700,fontSize:"0.95rem"}}>{item.name}</div>
-                  <div style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price.toLocaleString()}</div>
+                  <div style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price.toLocaleString()}</div>
                 </div>
                 <button className="btn-tiny-edit" onClick={()=>openEdit(item)}>✏️</button>
                 <button className="btn-tiny-del"  onClick={()=>del(item.id)}>🗑</button>
@@ -3336,21 +3355,21 @@ function MenuManager({ menu, saveMenu, designatedDrink, saveDesignatedDrink }) {
         <div style={S.overlay}>
           <div style={{...S.modal,paddingBottom:28}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{color:"#b07c1e",margin:0}}>{editing==="new"?"メニュー追加":"メニュー編集"}</h3>
+              <h3 style={{color:"var(--gold,#b07c1e)",margin:0}}>{editing==="new"?"メニュー追加":"メニュー編集"}</h3>
               <button className="close-btn" onClick={()=>setEditing(null)}>✕</button>
             </div>
 
             {/* 絵文字ピッカー */}
             <div style={{marginBottom:14}}>
               <label style={S.label}>絵文字</label>
-              <button style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:8,
+              <button style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:8,
                 padding:"10px 16px",fontSize:"1.7rem",cursor:"pointer",display:"block"}}
                 onClick={()=>setEmojiPick(p=>!p)}>
                 {form.emoji || "☕"}
               </button>
               {emojiPick && (
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,background:"#ffffff",
-                  border:"1px solid #e7ded3",borderRadius:12,padding:10}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,background:"var(--card,#ffffff)",
+                  border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:10}}>
                   {EMOJIS.map(e=>(
                     <button key={e} style={{background:form.emoji===e?"#faf0dc":"#f6f1ea",
                       border:`1px solid ${form.emoji===e?"#d3a94f":"#e7ded3"}`,borderRadius:8,
@@ -3428,8 +3447,8 @@ function YearHistoryModal({ customer, rank, onClose }) {
         {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
           <div>
-            <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>📅 年度別履歴</h3>
-            <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:2}}>
+            <h3 style={{color:"var(--gold,#b07c1e)",margin:0,fontSize:"1rem"}}>📅 年度別履歴</h3>
+            <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:2}}>
               <span style={{color:rank.color}}>{rank.gem} {rank.name}</span> · {customer.name}
             </div>
           </div>
@@ -3440,13 +3459,13 @@ function YearHistoryModal({ customer, rank, onClose }) {
         <div style={{background:`${nextYearRankObj.color}18`, border:`1px solid ${nextYearRankObj.color}44`,
           borderRadius:12, padding:"10px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
           <div>
-            <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:2}}>来年のランク予測（今年の購入回数ベース）</div>
+            <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:2}}>来年のランク予測（今年の購入回数ベース）</div>
             <div style={{color:nextYearRankObj.color,fontWeight:700,fontSize:"0.95rem"}}>
               {nextYearRankObj.gem} {nextYearRankObj.name}
             </div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{color:"#8a7f76",fontSize:"0.75rem",marginBottom:2}}>今年の購入</div>
+            <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginBottom:2}}>今年の購入</div>
             <div style={{color:nextYearRankObj.color,fontWeight:800,fontSize:"1.15rem"}}>{customer.currentYearPurchases ?? 0}回</div>
           </div>
         </div>
@@ -3454,7 +3473,7 @@ function YearHistoryModal({ customer, rank, onClose }) {
         {/* 年度別カード一覧 */}
         <div style={{overflowY:"auto",maxHeight:"calc(90vh - 200px)",display:"flex",flexDirection:"column",gap:10}}>
           {allStats.length === 0 ? (
-            <div style={{textAlign:"center",color:"#a79b90",padding:"32px 0",fontSize:"0.85rem"}}>履歴がありません</div>
+            <div style={{textAlign:"center",color:"var(--ink4,#a79b90)",padding:"32px 0",fontSize:"0.85rem"}}>履歴がありません</div>
           ) : allStats.map((s, i) => {
             const barPct = Math.round((s.purchases / maxPurchases) * 100);
             const isCur  = s.isCurrent;
@@ -3472,7 +3491,7 @@ function YearHistoryModal({ customer, rank, onClose }) {
                       background: isCur ? s.rankColor+"22" : "#f6f1ea",
                       border:`1px solid ${s.rankColor}55`,
                       borderRadius:8, padding:"4px 10px",
-                      color:"#8a7f76", fontSize:"0.85rem", fontWeight:700,
+                      color:"var(--ink2,#8a7f76)", fontSize:"0.85rem", fontWeight:700,
                     }}>
                       {s.year}年
                       {isCur && <span style={{color:s.rankColor,marginLeft:4,fontSize:"0.75rem"}}>（今年）</span>}
@@ -3484,12 +3503,12 @@ function YearHistoryModal({ customer, rank, onClose }) {
                   </div>
                   <div style={{textAlign:"right"}}>
                     <span style={{color:s.rankColor,fontWeight:800,fontSize:"1.4rem"}}>{s.purchases}</span>
-                    <span style={{color:"#9a8f85",fontSize:"0.75rem",marginLeft:3}}>回</span>
+                    <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginLeft:3}}>回</span>
                   </div>
                 </div>
 
                 {/* 棒グラフ */}
-                <div style={{background:"#f6f1ea",borderRadius:8,height:8,overflow:"hidden",marginBottom:8}}>
+                <div style={{background:"var(--panel2,#f6f1ea)",borderRadius:8,height:8,overflow:"hidden",marginBottom:8}}>
                   <div style={{
                     height:"100%", borderRadius:8,
                     width:`${barPct}%`,
@@ -3503,7 +3522,7 @@ function YearHistoryModal({ customer, rank, onClose }) {
                 {(() => {
                   const r = RANKS.find(r=>r.name===s.rankName) || RANKS[0];
                   return (
-                    <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>
+                    <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>
                       {r.benefit.icon} {r.benefit.desc}
                       <span style={{marginLeft:6,color:r.benefit.type==="always_discount"?"#3b7fb8":"#8a7f76",fontSize:"0.75rem"}}>
                         {r.benefit.type==="always_discount"?"毎回自動":"月1回"}
@@ -3527,10 +3546,10 @@ const HIST_CONFIG = {
   use:            { icon:"💳", label:"決済",          color:"#c94a45" },
   charge:         { icon:"🎫", label:"チャージ",       color:"#3e9a5c" },
   charge_undo:    { icon:"↩️", label:"チャージ取消",   color:"#c94a45" },
-  benefit:        { icon:"🎁", label:"特典使用",       color:"#b07c1e" },
+  benefit:        { icon:"🎁", label:"特典使用",       color:"var(--gold,#b07c1e)" },
   edit_balance:   { icon:"✏️", label:"残高編集",       color:"#3b7fb8" },
   edit_purchases: { icon:"✏️", label:"購入回数変更",   color:"#3b7fb8" },
-  benefit_reset:  { icon:"🔄", label:"特典リセット",   color:"#8a7f76" },
+  benefit_reset:  { icon:"🔄", label:"特典リセット",   color:"var(--ink2,#8a7f76)" },
   year_reset:     { icon:"🎉", label:"年次リセット",   color:"#7a6fd4" },
 };
 
@@ -3566,8 +3585,8 @@ function HistoryModal({ customer, rank, onClose }) {
       <div style={{...S.modal, maxHeight:"88vh"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
           <div>
-            <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>📋 操作履歴</h3>
-            <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:2}}>
+            <h3 style={{color:"var(--gold,#b07c1e)",margin:0,fontSize:"1rem"}}>📋 操作履歴</h3>
+            <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:2}}>
               <span style={{color:rank.color}}>{rank.gem} {rank.name}</span> · {customer.name}
             </div>
           </div>
@@ -3575,19 +3594,19 @@ function HistoryModal({ customer, rank, onClose }) {
         </div>
 
         {history.length === 0 ? (
-          <div style={{textAlign:"center",color:"#a79b90",padding:"32px 0",fontSize:"0.85rem"}}>
+          <div style={{textAlign:"center",color:"var(--ink4,#a79b90)",padding:"32px 0",fontSize:"0.85rem"}}>
             履歴がありません
           </div>
         ) : (
           <div style={{marginTop:14,overflowY:"auto",maxHeight:"calc(88vh - 100px)"}}>
             {Object.entries(groups).map(([day, entries]) => (
               <div key={day} style={{marginBottom:18}}>
-                <div style={{color:"#9a8f85",fontSize:"0.75rem",letterSpacing:"0.08em",
-                  borderBottom:"1px solid #e7ded3",paddingBottom:4,marginBottom:8}}>
+                <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",letterSpacing:"0.08em",
+                  borderBottom:"1px solid var(--line,#e7ded3)",paddingBottom:4,marginBottom:8}}>
                   📅 {day}
                 </div>
                 {entries.map((h, i) => {
-                  const cfg = HIST_CONFIG[h.type] || {icon:"•",label:h.type,color:"#8a7f76"};
+                  const cfg = HIST_CONFIG[h.type] || {icon:"•",label:h.type,color:"var(--ink2,#8a7f76)"};
                   const time = h.date?.split(" ")[1] || "";
                   return (
                     <div key={i} style={{display:"flex",gap:10,marginBottom:10,alignItems:"flex-start"}}>
@@ -3605,10 +3624,10 @@ function HistoryModal({ customer, rank, onClose }) {
                             }}>
                               {h.performer==="マネージャー" ? "👑 MG" : "👤 ST"}
                             </span>
-                            <span style={{color:"#a79b90",fontSize:"0.75rem"}}>{time}</span>
+                            <span style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem"}}>{time}</span>
                           </div>
                         </div>
-                        <div style={{color:"#8a7f76",fontSize:"0.85rem",marginTop:2,wordBreak:"break-all"}}>
+                        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginTop:2,wordBreak:"break-all"}}>
                           {formatDetail(h)}
                         </div>
                       </div>
@@ -3630,19 +3649,19 @@ function CodeModal({ customer, rank, onClose }) {
     <div style={S.overlay}>
       <div style={{...S.modal,paddingBottom:28}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-          <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>🔑 お客様確認コード</h3>
+          <h3 style={{color:"var(--gold,#b07c1e)",margin:0,fontSize:"1rem"}}>🔑 お客様確認コード</h3>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         <div style={{textAlign:"center",marginBottom:16}}>
           <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>{rank.gem} {rank.name}会員</span>
-          <div style={{color:"#3d3630",fontWeight:700,fontSize:"1.15rem",marginTop:4}}>{customer.name}</div>
+          <div style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1.15rem",marginTop:4}}>{customer.name}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {[["会員番号",customer.id,"会員番号欄に入力"],["暗証番号",customer.pin,"暗証番号欄に入力"]].map(([l,v,h])=>(
-            <div key={l} style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,padding:"14px 18px",textAlign:"center"}}>
-              <div style={{color:"#9a8f85",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:6}}>{l}</div>
-              <div style={{color:"#3d3630",fontSize:"2.2rem",fontWeight:800,letterSpacing:"0.25em"}}>{v}</div>
-              <div style={{color:"#a79b90",fontSize:"0.75rem",marginTop:6}}>{h}</div>
+            <div key={l} style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"14px 18px",textAlign:"center"}}>
+              <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:6}}>{l}</div>
+              <div style={{color:"var(--ink,#3d3630)",fontSize:"2.2rem",fontWeight:800,letterSpacing:"0.25em"}}>{v}</div>
+              <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem",marginTop:6}}>{h}</div>
             </div>
           ))}
         </div>
@@ -3658,10 +3677,10 @@ function ManagerPwModal({ onConfirm, onClose, pwInput, setPwInput, err }) {
     <div style={S.overlay}>
       <div style={{...S.modal,paddingBottom:28}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <h3 style={{color:"#b07c1e",margin:0,fontSize:"1rem"}}>🔒 マネージャー認証</h3>
+          <h3 style={{color:"var(--gold,#b07c1e)",margin:0,fontSize:"1rem"}}>🔒 マネージャー認証</h3>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
-        <p style={{color:"#9a8f85",fontSize:"0.85rem",marginBottom:12}}>この操作にはマネージャーパスワードが必要です</p>
+        <p style={{color:"var(--ink3,#9a8f85)",fontSize:"0.85rem",marginBottom:12}}>この操作にはマネージャーパスワードが必要です</p>
         <input style={{...S.input,marginBottom:8}} type="password" placeholder="マネージャーパスワード"
           value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onConfirm()} autoFocus/>
         {err && <p style={S.err}>{err}</p>}
@@ -3720,7 +3739,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
     <div style={S.overlay}>
       <div style={S.modal}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{color:"#b07c1e",margin:0}}>会員情報の編集</h3>
+          <h3 style={{color:"var(--gold,#b07c1e)",margin:0}}>会員情報の編集</h3>
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         <div style={{marginBottom:14}}>
@@ -3728,7 +3747,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
           <input style={S.input} value={pin} onChange={e=>setPin(e.target.value)} placeholder="例: 1234"/>
           {pinOwner
             ? <div style={{color:"#c94a45",fontSize:"0.75rem",marginTop:4,fontWeight:700}}>⚠️ この番号は「{pinOwner.name}」さんが使用中です</div>
-            : <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:4}}>お客様が確認画面でこの番号を使用します</div>}
+            : <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:4}}>お客様が確認画面でこの番号を使用します</div>}
         </div>
         <div style={{marginBottom:14}}>
           <label style={S.label}>残高 (¥)</label>
@@ -3743,11 +3762,11 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
         <div style={{marginBottom:14}}>
           <label style={S.label}>今年の購入回数（来年のランク判定に使用）</label>
           <input style={S.input} type="number" value={cyp} onChange={e=>setCyp(e.target.value)}/>
-          <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:4}}>
+          <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:4}}>
             来年のランク予測: <span style={{color:getRank(parseInt(cyp)||0).color,fontWeight:700}}>{getRank(parseInt(cyp)||0).gem} {getRank(parseInt(cyp)||0).name}</span>
           </div>
         </div>
-        <div style={{marginBottom:14,background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,padding:"12px 14px"}}>
+        <div style={{marginBottom:14,background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"12px 14px"}}>
           <label style={S.label}>現在のランク基準値（前年の購入回数）</label>
           <input style={S.input} type="number" value={rb} onChange={e=>setRb(e.target.value)}/>
           <div style={{color:rankPreview.color,fontSize:"0.75rem",marginTop:4,fontWeight:700}}>
@@ -3756,13 +3775,13 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
         </div>
         {/* 月次特典リセット */}
         {rankPreview.benefit.type === "monthly" && (
-          <div style={{marginBottom:14,background:"#ffffff",border:"1px solid #e7ded3",borderRadius:12,padding:"12px 14px"}}>
+          <div style={{marginBottom:14,background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"12px 14px"}}>
             <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
               <input type="checkbox" checked={resetBenefit} onChange={e=>setResetBenefit(e.target.checked)}
                 style={{width:16,height:16,accentColor:"#d4a853"}}/>
               <div>
-                <div style={{color:"#3d3630",fontSize:"0.85rem",fontWeight:600}}>今月の特典をリセット</div>
-                <div style={{color:"#9a8f85",fontSize:"0.75rem"}}>
+                <div style={{color:"var(--ink,#3d3630)",fontSize:"0.85rem",fontWeight:600}}>今月の特典をリセット</div>
+                <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>
                   {isBenefitUsed(customer) ? "現在: 使用済み → 未使用に戻す" : "現在: 未使用（変更不要）"}
                 </div>
               </div>
@@ -3778,7 +3797,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
             </div>
             <div>
               <div style={{color:isVIP?"#a9791a":"#8a7f76",fontWeight:700,fontSize:"0.85rem"}}>⭐ VIP会員</div>
-              <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:2}}>毎月プレゼントドリンクが受け取れます</div>
+              <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:2}}>毎月プレゼントドリンクが受け取れます</div>
             </div>
           </label>
         </div>
@@ -3791,7 +3810,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
             </div>
             <div>
               <div style={{color:isSpecial?"#9c3fb5":"#8a7f76",fontWeight:700,fontSize:"0.85rem"}}>💜 スペシャル</div>
-              <div style={{color:"#9a8f85",fontSize:"0.75rem",marginTop:2}}>全ての注文が常に無料になります</div>
+              <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:2}}>全ての注文が常に無料になります</div>
             </div>
           </label>
         </div>
@@ -3843,7 +3862,7 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
   return (
     <div className="pos-page" style={{paddingTop:14, paddingBottom:40}}>
       <h2 style={{...S.title,margin:"0 0 6px"}}>💵 現金注文</h2>
-      <p style={{color:"#8a7f76",fontSize:"0.85rem",lineHeight:1.6,marginBottom:14}}>
+      <p style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",lineHeight:1.6,marginBottom:14}}>
         会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。確定すると「📋 注文」に届き、完了すると会計履歴にも残ります。会員の残高・購入回数には影響しません。
       </p>
 
@@ -3868,8 +3887,8 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
               return (
                 <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
                   <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
-                  <span style={{fontSize:"0.85rem",fontWeight:600,color:"#3d3630",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
-                  <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                  <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
+                  <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                   {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
                 </button>
               );
@@ -3879,22 +3898,22 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
       ))}
 
       {cart.length>0 && (
-        <div style={{background:"#ffffff",border:"1px solid #e7ded3",borderRadius:16,padding:"12px 14px",marginTop:8}}>
+        <div style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:16,padding:"12px 14px",marginTop:8}}>
           {cart.map(item=>(
             <div key={item.id} style={S.cartRow}>
-              <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
+              <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                <span style={{color:"#3d3630",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
+                <span style={{color:"var(--ink,#3d3630)",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
                 <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                <span style={{color:"#b07c1e",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
               </div>
             </div>
           ))}
-          <div style={{paddingTop:8,borderTop:"1px solid #e7ded3",marginTop:6}}>
+          <div style={{paddingTop:8,borderTop:"1px solid var(--line,#e7ded3)",marginTop:6}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{color:"#8a7f76",fontSize:"0.85rem"}}>現金で受け取る金額</span>
-              <span style={{color:"#3d3630",fontWeight:800,fontSize:"1.4rem"}}>¥{subtotal.toLocaleString()}</span>
+              <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>現金で受け取る金額</span>
+              <span style={{color:"var(--ink,#3d3630)",fontWeight:800,fontSize:"1.4rem"}}>¥{subtotal.toLocaleString()}</span>
             </div>
             <div style={{display:"flex",gap:8}}>
               <button className="btn-clear" onClick={()=>{setCart([]);setCustName("");}}>クリア</button>
@@ -3948,8 +3967,8 @@ function AddCustomerModal({ onSave, onClose, nextId, customers }) {
 const S = {
   // 書体は丸ゴシック。明朝は「格式」を語る書体で、カフェの空気に合わなかった。
   // 丸みのある書体にするだけで、画面全体の印象がやわらかくなる。
-  root:          { fontFamily:"'Zen Maru Gothic','Hiragino Maru Gothic ProN','ヒラギノ丸ゴ ProN',sans-serif", background:"#fdf8f3", minHeight:"100vh", color:"#3d3630" },
-  loading:       { color:"#8a7f76", textAlign:"center", padding:40 },
+  root:          { fontFamily:"'Zen Maru Gothic','Hiragino Maru Gothic ProN','ヒラギノ丸ゴ ProN',sans-serif", background:"#fdf8f3", minHeight:"100vh", color:"var(--ink,#3d3630)" },
+  loading:       { color:"var(--ink2,#8a7f76)", textAlign:"center", padding:40 },
   page:          { maxWidth:480, margin:"0 auto", padding:"24px 16px" },
 
   // HOME
@@ -3964,33 +3983,33 @@ const S = {
   brandRainbow:  { margin:0, fontSize:"2.6rem", fontWeight:800, letterSpacing:"0.08em", lineHeight:1 },
   brandUnderline:{ height:3, borderRadius:8, background:"linear-gradient(90deg,#ff8fb3,#ffb877,#ffd98a,#9fdcae,#8fc2ee,#b8ace0)", marginTop:6, width:"100%" },
   // 小さすぎる文字は読みにくいので、本文まわりは大きめに。
-  taglineRainbow:{ color:"#8a7f76", fontSize:"0.95rem", letterSpacing:"0.04em", margin:"2px 0 4px" },
+  taglineRainbow:{ color:"var(--ink2,#8a7f76)", fontSize:"0.95rem", letterSpacing:"0.04em", margin:"2px 0 4px" },
   homeBtns:      { display:"flex", flexDirection:"column", gap:12, width:"100%", maxWidth:320 },
   decoRow:       { display:"flex", gap:10, marginTop:10, alignItems:"center" },
-  title:         { fontSize:"1.15rem", color:"#b07c1e", letterSpacing:"0.08em", marginBottom:18, fontWeight:700 },
-  hint:          { color:"#8a7f76", fontSize:"0.85rem", lineHeight:1.7, marginBottom:4 },
-  input:         { background:"#ffffff", border:"1px solid #e7ded3", borderRadius:8, padding:"12px 14px", color:"#3d3630", fontSize:"1rem", width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
+  title:         { fontSize:"1.15rem", color:"var(--gold,#b07c1e)", letterSpacing:"0.08em", marginBottom:18, fontWeight:700 },
+  hint:          { color:"var(--ink2,#8a7f76)", fontSize:"0.85rem", lineHeight:1.7, marginBottom:4 },
+  input:         { background:"var(--card,#ffffff)", border:"1px solid var(--line,#e7ded3)", borderRadius:8, padding:"12px 14px", color:"var(--ink,#3d3630)", fontSize:"1rem", width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
   err:           { color:"#c94a45", fontSize:"0.85rem", margin:"4px 0 0" },
   rankBadge:     { display:"inline-block", border:"1px solid", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, letterSpacing:"0.05em", marginBottom:7 },
   divider:       { borderTop:"1px dashed #d9cdbe", margin:"14px 0" },
-  bar:           { background:"#ece4d9", borderRadius:999, height:10, overflow:"hidden" },
+  bar:           { background:"var(--barbg,#ece4d9)", borderRadius:999, height:10, overflow:"hidden" },
   benefitBox:    { border:"1px solid", borderRadius:12, padding:"10px 12px", marginTop:12 },
   benefitTagUsed:{ background:"#fbebea", color:"#c94a45", border:"1px solid #e0a09b44", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
   benefitTagAvail:{ border:"1px solid", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
   benefitTagAlways:{ background:"#eef2fb", color:"#3b7fb8", border:"1px solid #8fbde044", borderRadius:999, padding:"3px 10px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
   rankRow:       { display:"flex", alignItems:"center", padding:"7px 8px", marginBottom:2, position:"relative" },
   curDot:        { width:6, height:6, borderRadius:"50%", marginLeft:8, flexShrink:0 },
-  topbar:        { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", background:"#ffffff", borderBottom:"1px solid #e7ded3", height:44, boxSizing:"border-box" },
-  customerStrip: { padding:"10px 14px", background:"#ffffff", borderBottom:"2px solid", flexShrink:0 },
-  benefitStripBox:{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#ffffff", border:"1px solid", borderRadius:8, padding:"6px 10px", marginTop:6, gap:8 },
-  catLabel:      { color:"#9a8f85", fontSize:"0.75rem", letterSpacing:"0.08em", marginBottom:8, paddingLeft:2 },
+  topbar:        { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 16px", background:"var(--card,#ffffff)", borderBottom:"1px solid var(--line,#e7ded3)", height:44, boxSizing:"border-box" },
+  customerStrip: { padding:"10px 14px", background:"var(--card,#ffffff)", borderBottom:"2px solid", flexShrink:0 },
+  benefitStripBox:{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"var(--card,#ffffff)", border:"1px solid", borderRadius:8, padding:"6px 10px", marginTop:6, gap:8 },
+  catLabel:      { color:"var(--ink3,#9a8f85)", fontSize:"0.75rem", letterSpacing:"0.08em", marginBottom:8, paddingLeft:2 },
   menuGrid:      { display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 },
-  cartPanel:     { background:"#ffffff", borderTop:"1px solid #e7ded3", padding:"10px 14px", flexShrink:0 },
-  cartRow:       { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid #e7ded3" },
-  cartBadge:     { position:"absolute", top:4, right:4, background:"#e8b96a", color:"#3d3630", borderRadius:"50%", width:18, height:18, fontSize:"0.75rem", fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" },
+  cartPanel:     { background:"var(--card,#ffffff)", borderTop:"1px solid var(--line,#e7ded3)", padding:"10px 14px", flexShrink:0 },
+  cartRow:       { display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 0", borderBottom:"1px solid var(--line,#e7ded3)" },
+  cartBadge:     { position:"absolute", top:4, right:4, background:"#e8b96a", color:"var(--ink,#3d3630)", borderRadius:"50%", width:18, height:18, fontSize:"0.75rem", fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" },
   overlay:       { position:"fixed", inset:0, background:"#3d3630a8", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:100, backdropFilter:"blur(4px)" },
-  modal:         { background:"#ffffff", borderRadius:"20px 20px 0 0", padding:20, width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto" },
-  label:         { display:"block", color:"#9a8f85", fontSize:"0.75rem", marginBottom:5, letterSpacing:"0.05em" },
+  modal:         { background:"var(--card,#ffffff)", borderRadius:"20px 20px 0 0", padding:20, width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto" },
+  label:         { display:"block", color:"var(--ink3,#9a8f85)", fontSize:"0.75rem", marginBottom:5, letterSpacing:"0.05em" },
   tagUsed:       { background:"#fbebea", color:"#c94a45", border:"1px solid #e0a09b33", borderRadius:999, padding:"2px 8px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
   tagAvail:      { background:"#e9f5ec", color:"#3e9a5c", border:"1px solid #7cc39444", borderRadius:999, padding:"2px 8px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
   tagAuto:       { background:"#e9f1fa", color:"#3b7fb8", border:"1px solid #8fbde044", borderRadius:999, padding:"2px 8px", fontSize:"0.75rem", fontWeight:700, whiteSpace:"nowrap" },
@@ -4128,10 +4147,94 @@ button:active { transform:scale(0.96); }
   mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));
   animation:spin 0.9s linear infinite; }
 
+/* ══════════════════════════════════════════
+   夜のネオンガラス（お客様画面だけ）
+   ══════════════════════════════════════════
+   NightMode が body に .night を付けている間だけ効く配色。
+   色はすべて CSS変数経由なので、ここの値を差し替えるだけで
+   画面全体が夜に切り替わる。POSでは何も起きない。 */
+body.night {
+  --ink:#f2edff;         /* 主な文字 */
+  --ink-strong:#ffffff;  /* 残高など、一番濃い文字 */
+  --ink2:#c9c2ec;        /* 説明の文字 */
+  --ink3:#a49cd1;        /* さらに薄い文字 */
+  --ink4:#8b84b8;        /* 一番控えめな文字 */
+  --card:rgba(26,22,58,0.72);      /* カードの下地（ガラス板） */
+  --panel2:rgba(255,255,255,0.10); /* ボタンなどの下地 */
+  --line:rgba(255,255,255,0.16);   /* 枠線 */
+  --barbg:rgba(255,255,255,0.12);  /* 進捗バーの溝 */
+  --gold:#ffd166;                  /* 金額の金色 → 夜は明るい琥珀 */
+  background:#131029;
+}
+body.night .approot {
+  background:
+    radial-gradient(1100px 700px at 85% -10%, rgba(120,60,190,0.35), transparent 60%),
+    radial-gradient(900px 620px at -10% 110%, rgba(40,90,200,0.30), transparent 60%),
+    #131029 !important;
+  color:var(--ink);
+}
+/* 夜は、漂う色の雲が「光」になる（screen合成で背景に発光する） */
+body.night .aurora { mix-blend-mode:screen; opacity:1; filter:blur(60px) saturate(1.9); }
+/* ガラス板は夜用の濃さに */
+body.night .glass { background:rgba(20,16,46,0.68) !important; border-color:rgba(255,255,255,0.14) !important; }
+/* 入力欄 */
+body.night input { background:rgba(255,255,255,0.08) !important; border-color:rgba(255,255,255,0.22) !important; color:#ffffff !important; }
+body.night input::placeholder { color:#8b84b8; }
+/* 切り替えタブ */
+body.night .tab-btn { color:#a49cd1; }
+body.night .tab-btn.active { background:rgba(255,255,255,0.13); color:#ffd9ec;
+  box-shadow:0 0 16px rgba(255,110,199,0.35); }
+/* 商品ボタン */
+body.night .menu-item { background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.13); }
+body.night .menu-item:hover { background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.22); }
+body.night .menu-item-active { background:rgba(255,110,199,0.16) !important; border-color:rgba(255,110,199,0.55) !important;
+  box-shadow:0 0 18px rgba(255,110,199,0.28); }
+/* 数量・クリア・控えめボタン */
+body.night .qty-btn { background:rgba(255,255,255,0.10); color:#f2edff; border-color:rgba(255,255,255,0.22); }
+body.night .btn-clear { background:rgba(255,255,255,0.08); color:#c9c2ec; border-color:rgba(255,255,255,0.18); }
+body.night .btn-ghost { border-color:rgba(255,255,255,0.22); color:#c9c2ec; }
+body.night .btn-quiet { color:#8b84b8; }
+body.night .back-btn { color:#a49cd1; }
+/* ホームの入口ボタン */
+body.night .btn-crystal { background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.20); color:#d9d3f5;
+  box-shadow:0 0 28px rgba(120,90,220,0.28); }
+body.night .btn-rainbow { box-shadow:0 6px 34px rgba(255,110,199,0.45); }
+/* 会員カード：夜は黒いガラスに虹の光沢が最高に映える */
+body.night .ticket-card { box-shadow:0 12px 44px rgba(0,0,0,0.5), 0 0 34px rgba(255,110,199,0.14) !important;
+  border-color:rgba(255,255,255,0.14) !important; }
+body.night .holo-layer { mix-blend-mode:screen; }
+
+/* ── ネオン看板 ─────────────────────────────
+   白い芯の文字に、色つきの光を何重にも重ねる（本物のネオン管と同じ構造）。
+   点灯アニメは「パチ…パチ…ポワッ」の順で1文字ずつ。 */
+.neon-ch { color:#fff8f4;
+  text-shadow:
+    0 0 4px rgba(255,255,255,0.8),
+    0 0 12px var(--nc,#ff6ec7),
+    0 0 28px var(--nc,#ff6ec7),
+    0 0 56px var(--nc,#ff6ec7);
+  animation:neonOn 1.1s both; }
+@keyframes neonOn {
+  0%   { opacity:0.08; text-shadow:none; }
+  50%  { opacity:0.08; text-shadow:none; }
+  58%  { opacity:0.9; }
+  64%  { opacity:0.15; text-shadow:none; }
+  72%  { opacity:1; }
+  80%  { opacity:0.4; }
+  100% { opacity:1; }
+}
+.neon-flicker { animation:neonOn 1.1s both, neonBuzz 7s 4s ease-in-out infinite; }
+@keyframes neonBuzz {
+  0%, 93%, 100% { opacity:1; }
+  94% { opacity:0.45; } 95% { opacity:1; } 97% { opacity:0.6; } 98% { opacity:1; }
+}
+/* 昼の画面（万一 night 無しでロゴが出た場合）でも読めるようにしておく */
+body:not(.night) .neon-ch { color:#c98ab0; text-shadow:0 0 10px var(--nc,#ff6ec7); }
+
 /* 「視差効果を減らす」設定の端末では、飾りの動きを全部止める */
 @media (prefers-reduced-motion: reduce) {
   .aurora, .rise, .bar-fill::after, .gem-pulse, .confetti-box i, .pop, .dot-wave,
-  .btn-rainbow, .spinner { animation:none !important; }
+  .btn-rainbow, .spinner, .neon-ch, .neon-flicker { animation:none !important; }
   .tilt { transform:none !important; }
   .holo-layer { display:none; }
   ::view-transition-old(root), ::view-transition-new(root) { animation:none; }
