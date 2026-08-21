@@ -80,10 +80,35 @@ export function readToken(token) {
   }
 }
 
+// ── パスワードの保存形式 ─────────────────────────
+// スタッフ／マネージャーのパスワードは、素の文字列ではなく
+// 「h1$（塩）$（ハッシュ値）」の形で保存する。
+// ハッシュ値から元のパスワードは計算できないので、
+// 万一データベースの中身が漏れても、パスワード自体は知られない。
+//
+// ※ お客様の暗証番号（PIN）はこの対象にしていない。理由は2つ：
+//   1. マネージャーが画面で確認できる必要がある（お客様が忘れたときのため）
+//   2. 4桁の数字は総当たりが1万通りしかなく、ハッシュ化しても実質守れない
+export function hashSecret(plain) {
+  const salt = crypto.randomBytes(9).toString("hex");
+  const h = crypto.createHash("sha256").update(salt + String(plain)).digest("hex");
+  return `h1${salt}${h}`;
+}
+export const looksHashed = (s) => typeof s === "string" && s.startsWith("h1$");
+
 // パスワード・暗証番号の比較（時間差から中身を推測されないように）
-export function sameSecret(a, b) {
-  const x = Buffer.from(String(a ?? ""), "utf8");
-  const y = Buffer.from(String(b ?? ""), "utf8");
+// 保存されている方がハッシュ形式なら、入力を同じ方法で変換してから比べる。
+// まだ素の文字列で保存されている古いものとも比べられる（移行中のため）。
+export function sameSecret(stored, given) {
+  let a = String(stored ?? "");
+  let b = String(given ?? "");
+  if (looksHashed(a)) {
+    const parts = a.split("$");           // ["h1", 塩, ハッシュ値]
+    a = parts[2] || "";
+    b = crypto.createHash("sha256").update((parts[1] || "") + b).digest("hex");
+  }
+  const x = Buffer.from(a, "utf8");
+  const y = Buffer.from(b, "utf8");
   if (x.length !== y.length) return false;
   return crypto.timingSafeEqual(x, y);
 }
