@@ -811,23 +811,52 @@ function NightMode() {
 // ══════════════════════════════════════════
 //  HOME
 // ══════════════════════════════════════════
+// 開くたびに変わるあいさつ。ちょっとした「今日も来たな」感のため
+const TAGLINES = [
+  "きょうも、いつもの一杯を",
+  "こんばんは、ようこそ ☕",
+  "夜カフェ、はじまるよ 🌙",
+  "今日もおつかれさま！",
+  "甘いの？ すっきり系？",
+  "おかえりなさい 🌈",
+];
+
 function Home({ setScreen }) {
+  const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
   return (
     <div style={S.homeOuter}>
       <NightMode/>
+
+      {/* 星空。位置は計算式で散らしてある（毎回同じ配置なのでチラつかない） */}
+      {[...Array(26)].map((_, i) => (
+        <span key={"s"+i} className="star" style={{
+          left:`${(i * 41 + 7) % 100}%`, top:`${(i * 29 + 3) % 90}%`,
+          width:`${2 + (i % 3)}px`, height:`${2 + (i % 3)}px`,
+          animationDelay:`${(i % 7) * 0.45}s`}}/>
+      ))}
+
+      {/* ぷかぷか浮かんで夜空へのぼっていく、夜カフェの住人たち */}
+      {["☕","🧋","⭐","🌙","🍩","🍓"].map((e, i) => (
+        <span key={e} className="float-emoji" style={{
+          left:`${6 + i * 16}%`,
+          animationDuration:`${15 + (i % 3) * 6}s`,
+          animationDelay:`${i * 2.5}s`}}>{e}</span>
+      ))}
       {/* 背景の虹グラデーション装飾。それぞれ違う周期でゆっくり漂う */}
       <div className="aurora" style={S.homeBgCircle1}/>
       <div className="aurora" style={{...S.homeBgCircle2, animationDelay:"-3.5s"}}/>
       <div className="aurora" style={{...S.homeBgCircle3, animationDelay:"-7s"}}/>
 
       <div style={S.homeWrap}>
-        {/* ロゴ */}
-        <div style={S.rainbowLogoWrap}>
-          <div style={S.rainbowLogoInner}>
-            <span style={{fontSize:52}}>🌈</span>
+        {/* ロゴ。押すと絵文字がはじける（役には立たないが、押したくなる） */}
+        <TapBurst emojis={["☕","⭐","🧋","🌈","💜","🍩"]}>
+          <div style={S.rainbowLogoWrap}>
+            <div style={S.rainbowLogoInner}>
+              <span style={{fontSize:52}}>🌈</span>
+            </div>
+            <div style={S.rainbowGlow}/>
           </div>
-          <div style={S.rainbowGlow}/>
-        </div>
+        </TapBurst>
 
         {/* ブランド名 ＝ ネオン看板。
             開いた瞬間、文字が「パチ…パチ…ポワッ」と1文字ずつ順に点灯する。
@@ -845,7 +874,7 @@ function Home({ setScreen }) {
           <div style={S.brandUnderline}/>
         </div>
 
-        <p style={S.taglineRainbow}>きょうも、いつもの一杯を</p>
+        <p style={S.taglineRainbow}>{tagline}</p>
 
         {/* ボタン */}
         <div style={S.homeBtns}>
@@ -920,6 +949,34 @@ function HoloCard({ className, style, children }) {
 }
 
 // ══════════════════════════════════════════
+//  タップすると絵文字がはじける小さな花火
+// ══════════════════════════════════════════
+// ロゴやランクの宝石を押すと、絵文字が放射状にはじけて消える。
+// 何の役にも立たないが、押したくなる。そういうおもちゃ。
+function TapBurst({ emojis, children, className, style }) {
+  const [bursts, setBursts] = useState([]);
+  const fire = () => {
+    const id = Date.now() + Math.random();
+    setBursts((b) => [...b, id]);
+    setTimeout(() => setBursts((b) => b.filter((x) => x !== id)), 900);
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
+  };
+  return (
+    <span className={className} style={{position:"relative",display:"inline-block",cursor:"pointer",...style}} onClick={fire}>
+      {children}
+      {bursts.map((id) => (
+        <span key={id} className="burst" aria-hidden="true">
+          {emojis.map((e, i) => (
+            <span key={i} className="burst-p"
+              style={{"--a":`${i * (360 / emojis.length)}deg`, animationDelay:`${i * 0.02}s`}}>{e}</span>
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// ══════════════════════════════════════════
 //  数字がカラカラと巻き上がる表示
 // ══════════════════════════════════════════
 // チケットを開いた瞬間、残高が0からすっと伸びる。
@@ -960,6 +1017,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [cvTab,        setCvTab]        = useState("ticket");
   const [cart,         setCart]         = useState([]);
   const [ordered,      setOrdered]      = useState(false);
+  // 注文完了のメッセージは毎回変わる（同じ言葉より、ちょっと嬉しい）
+  const [okMsg,        setOkMsg]        = useState("注文を受け付けました！");
   const [benefitItems, setBenefitItems] = useState([]); // 無料特典アイテム
   const [benefitUsed,  setBenefitUsed]  = useState(false); // この注文で特典使用
   const [busy,         setBusy]         = useState(false);
@@ -1164,6 +1223,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       saveC(customers.map(c=>c.id===found.id ? updated : c));
       setFound(updated);
     }
+    const OK = ["注文を受け付けました！","うけたまわりました〜！","ありがとうございます♪","ただいまお作りします！","ナイスチョイス！✨"];
+    setOkMsg(OK[Math.floor(Math.random() * OK.length)]);
     setCart([]); setBenefitItems([]); setBenefitUsed(false); setOrdered(true);
     // 対応している端末（主にAndroid）では、注文完了を指先にも「トン・トン」と伝える
     try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
@@ -1232,7 +1293,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
                   <span style={{fontSize:"1.15rem",fontWeight:700,color:"var(--ink,#3d3630)"}}>{found.name}</span>
                   <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>
-                    <span className="gem-pulse">{rank.gem}</span> {rank.name}
+                    {/* 宝石を押すとキラキラがはじける */}
+                    <TapBurst emojis={["✨","💖","⭐","✨"]}>
+                      <span className="gem-pulse">{rank.gem}</span>
+                    </TapBurst> {rank.name}
                   </span>
                 </div>
                 {/* 残高はランクに関係なく、いつも一番はっきり読める濃さにする。
@@ -1356,7 +1420,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     ))}
                   </div>
                   <div className="pop" style={{fontSize:"3rem",marginBottom:12}}>✅</div>
-                  <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.15rem",marginBottom:6}}>注文を受け付けました！</div>
+                  <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.15rem",marginBottom:6}}>{okMsg}</div>
                   <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
                   <button className="btn-ghost" style={{marginTop:20}} onClick={()=>setOrdered(false)}>続けて注文する</button>
                 </div>
@@ -1769,6 +1833,8 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
 function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
   const categories = [...new Set(menu.map(m=>m.category))];
   const [activeTab, setActiveTab] = useState(categories[0] || "");
+  // 直前に追加した商品（「+1」の飛び出しを出す場所）
+  const [lastAdd, setLastAdd] = useState(null);
 
   return (
     <div>
@@ -1794,11 +1860,14 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
           {menu.filter(m=>m.category===activeTab).map(item=>{
             const inCart=cart.find(c=>c.id===item.id);
             return (
-              <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
-                <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+              <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`}
+                onClick={()=>{ addToCart(item); setLastAdd({id:item.id, n:Date.now()}); }}>
+                {/* 押した瞬間、絵文字がぷるんと弾んで「+1」が飛び出す */}
+                <span className="m-emoji" style={{fontSize:"1.4rem"}}>{item.emoji}</span>
                 <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
-                {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
+                {inCart&&<div key={inCart.qty} className="pop" style={S.cartBadge}>{inCart.qty}</div>}
+                {lastAdd && lastAdd.id===item.id && <span key={lastAdd.n} className="plus-one">+1</span>}
               </button>
             );
           })}
@@ -4231,10 +4300,53 @@ body.night .holo-layer { mix-blend-mode:screen; }
 /* 昼の画面（万一 night 無しでロゴが出た場合）でも読めるようにしておく */
 body:not(.night) .neon-ch { color:#c98ab0; text-shadow:0 0 10px var(--nc,#ff6ec7); }
 
+/* ── ポップな夜の住人たち ────────────────────── */
+/* またたく星 */
+.star { position:absolute; border-radius:50%; background:#fff; pointer-events:none;
+  box-shadow:0 0 6px rgba(255,255,255,0.6);
+  animation:twinkle 3.2s ease-in-out infinite; }
+@keyframes twinkle { 0%,100% { opacity:0.12; } 50% { opacity:0.85; } }
+
+/* 下からぷかぷか夜空へのぼっていく絵文字 */
+.float-emoji { position:absolute; bottom:-48px; font-size:1.35rem; opacity:0; pointer-events:none;
+  animation:floatUp linear infinite; }
+@keyframes floatUp {
+  0%   { transform:translateY(0) rotate(-10deg); opacity:0; }
+  10%  { opacity:0.8; }
+  85%  { opacity:0.8; }
+  100% { transform:translateY(-108vh) rotate(12deg); opacity:0; }
+}
+
+/* タップで絵文字がはじける花火 */
+.burst { position:absolute; left:50%; top:50%; pointer-events:none; z-index:6; }
+.burst-p { position:absolute; left:-8px; top:-8px; font-size:0.95rem; opacity:0;
+  animation:burstFly 0.8s ease-out forwards; }
+@keyframes burstFly {
+  0%   { opacity:1; transform:rotate(var(--a,0deg)) translateY(-6px) scale(0.5); }
+  100% { opacity:0; transform:rotate(var(--a,0deg)) translateY(-52px) scale(1.25); }
+}
+
+/* 商品を押した瞬間：絵文字がぷるん、「+1」が飛び出す */
+.menu-item .m-emoji { display:inline-block; transition:transform 0.18s cubic-bezier(0.34,1.56,0.64,1); }
+.menu-item:active .m-emoji { transform:scale(1.35) rotate(-8deg); }
+.plus-one { position:absolute; top:4px; left:8px; font-size:0.85rem; font-weight:800; color:#ff6ec7;
+  text-shadow:0 0 8px rgba(255,110,199,0.6); pointer-events:none;
+  animation:plusUp 0.7s ease-out forwards; }
+@keyframes plusUp {
+  0%   { opacity:0; transform:translateY(4px) scale(0.7); }
+  25%  { opacity:1; }
+  100% { opacity:0; transform:translateY(-18px) scale(1.2); }
+}
+
+/* 夜は「注文する」ボタンがやわらかく光る */
+body.night .btn-pay { box-shadow:0 0 20px rgba(255,209,102,0.35); }
+
 /* 「視差効果を減らす」設定の端末では、飾りの動きを全部止める */
 @media (prefers-reduced-motion: reduce) {
   .aurora, .rise, .bar-fill::after, .gem-pulse, .confetti-box i, .pop, .dot-wave,
-  .btn-rainbow, .spinner, .neon-ch, .neon-flicker { animation:none !important; }
+  .btn-rainbow, .spinner, .neon-ch, .neon-flicker,
+  .star, .float-emoji, .burst-p, .plus-one { animation:none !important; }
+  .star, .float-emoji { display:none; }
   .tilt { transform:none !important; }
   .holo-layer { display:none; }
   ::view-transition-old(root), ::view-transition-new(root) { animation:none; }
