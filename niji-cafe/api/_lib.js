@@ -92,7 +92,10 @@ export function readToken(token) {
 export function hashSecret(plain) {
   const salt = crypto.randomBytes(9).toString("hex");
   const h = crypto.createHash("sha256").update(salt + String(plain)).digest("hex");
-  return `h1${salt}${h}`;
+  // ※ 必ず普通の文字列連結で組み立てること。
+  //    テンプレート文字列で書いたとき、区切りの $ が変数展開に飲み込まれて
+  //    消えてしまう事故が実際に起きた（2026-08-22）。
+  return "h1$" + salt + "$" + h;
 }
 export const looksHashed = (s) => typeof s === "string" && s.startsWith("h1$");
 
@@ -106,6 +109,13 @@ export function sameSecret(stored, given) {
     const parts = a.split("$");           // ["h1", 塩, ハッシュ値]
     a = parts[2] || "";
     b = crypto.createHash("sha256").update((parts[1] || "") + b).digest("hex");
+  } else if (/^h1[0-9a-f]{82}$/.test(a)) {
+    // 2026-08-22の不具合で、区切りの$が抜けて保存された形式（h1＋塩18桁＋ハッシュ64桁）。
+    // 塩とハッシュの長さは固定なので、位置で切り出せば同じように照合できる。
+    // この形式の人がログインに成功すると正しい形式に書き直されるため、いずれ使われなくなる。
+    const salt = a.slice(2, 20);
+    b = crypto.createHash("sha256").update(salt + b).digest("hex");
+    a = a.slice(20);
   }
   const x = Buffer.from(a, "utf8");
   const y = Buffer.from(b, "utf8");
