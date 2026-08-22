@@ -1375,42 +1375,48 @@ function DrinkRoulette({ menu, onPick }) {
   );
 }
 
-// ☕ 今日のひとこと。日付と会員番号で決まる、その日のあなたへのあたたかい言葉。
-// 占いや運勢ではない。ただのねぎらいと、今日のおすすめの一杯。
-const WORDS_OF_DAY = [
-  "今日もおつかれさま。ゆっくりしていってね",
-  "よく来てくれました。ここはあなたの席です",
-  "がんばった日も、そうでない日も、一杯どうぞ",
-  "あたたかいものを飲むと、心もあたたまります",
-  "急がなくて大丈夫。ここでは時間はゆっくり流れます",
-  "誰かと一緒に飲む一杯は、もっとおいしい",
-  "たまには新しい一杯に挑戦してみるのもいいかも",
-  "窓の外を眺めながらの一杯も、いいものです",
-  "あなたが元気だと、お店もうれしいです",
-  "小さな休憩が、明日の力になりますように",
-  "今日という日が、良い一日になりますように",
-  "ここに来てくれて、ありがとう",
+// 📖 今日の一節。聖書 新改訳2017 から、その日の一節を全員に同じものとして届ける。
+// 日付から決まるので、お店のみんなが同じ「今日のみことば」を見る。
+// ※ 本文はのあさんの聖書（新改訳2017）で必ず校正すること。
+//    引用は新日本聖書刊行会の規定（250節以内・著作権表記つき）の範囲内。
+const VERSES = [
+  { t: "主は私の羊飼い。私は乏しいことがありません。", r: "詩篇 23:1" },
+  { t: "すべて疲れた人、重荷を負っている人はわたしのもとに来なさい。わたしがあなたがたを休ませてあげます。", r: "マタイの福音書 11:28" },
+  { t: "いつも喜んでいなさい。絶えず祈りなさい。すべてのことにおいて感謝しなさい。", r: "テサロニケ人への手紙 第一 5:16–18" },
+  { t: "恐れるな。わたしはあなたとともにいる。たじろぐな。わたしがあなたの神だから。", r: "イザヤ書 41:10" },
+  { t: "神は われらの避け所 また力。苦しむとき そこにある強き助け。", r: "詩篇 46:1" },
+  { t: "私を強くしてくださる方によって、私はどんなことでもできるのです。", r: "ピリピ人への手紙 4:13" },
+  { t: "これは主が設けられた日。この日を楽しみ喜ぼう。", r: "詩篇 118:24" },
+  { t: "あなたのみことばは 私の足のともしび 私の道の光です。", r: "詩篇 119:105" },
+  { t: "主の恵みは尽きることがない。そのあわれみは絶えることがない。それは朝ごとに新しい。", r: "哀歌 3:22–23" },
+  { t: "何をするにも、人にではなく、主に対してするように、心から行いなさい。", r: "コロサイ人への手紙 3:23" },
+  { t: "主があなたを祝福し、あなたを守られますように。", r: "民数記 6:24" },
+  { t: "わたしは世の光です。わたしに従う者は、決して闇の中を歩むことがなく、いのちの光を持ちます。", r: "ヨハネの福音書 8:12" },
 ];
-function TodayWord({ found, menu }) {
+function TodayVerse({ menu }) {
   const [open, setOpen] = useState(false);
-  const seed = (String(found.id) + new Date().toLocaleDateString("ja-JP"))
+  // 日付だけから決める＝この日に開いた全員が同じ一節を受け取る
+  const seed = new Date().toLocaleDateString("ja-JP")
     .split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const msg = WORDS_OF_DAY[seed % WORDS_OF_DAY.length];
+  const v = VERSES[seed % VERSES.length];
   const pick = menu.length ? menu[seed % menu.length] : null;
   return (
     <div className="toy-panel" style={{textAlign:"center"}}>
       {!open ? (
         <button className="toy-btn" onClick={()=>{ setOpen(true); try{navigator.vibrate&&navigator.vibrate(10);}catch{} }}>
-          ☕ 今日のひとこと
+          📖 今日の一節
         </button>
       ) : (
         <div className="pop">
-          <div style={{fontSize:"1.6rem",marginBottom:6}}>☕✨</div>
-          <div style={{fontWeight:700,marginBottom:6}}>{msg}</div>
+          <div style={{fontSize:"1.6rem",marginBottom:8}}>📖</div>
+          <div style={{fontWeight:700,lineHeight:1.8,marginBottom:8}}>{v.t}</div>
+          <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:8}}>— {v.r}</div>
           {pick && <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>
             今日のおすすめ：{pick.emoji} {pick.name}
           </div>}
-          <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.72rem",marginTop:6}}>（日付ごとに変わります）</div>
+          <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.68rem",marginTop:8}}>
+            聖書 新改訳2017 ©2017 新日本聖書刊行会
+          </div>
         </div>
       )}
     </div>
@@ -2028,8 +2034,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 })}
               </div>
               )}
-              {/* 見て遊べるもの：今日のひとことと、実績バッジの棚 */}
-              <TodayWord found={found} menu={menu}/>
+              {/* 今日の一節（聖書 新改訳2017）と、実績バッジの棚 */}
+              <TodayVerse menu={menu}/>
               <BadgeShelf found={found} orders={orders}/>
               <RankingBoard customers={customers} myId={found.id}/>
               {/* めったに使わない操作なので、一番下で控えめに */}
@@ -4945,12 +4951,22 @@ body.night {
   --gold:#ffd166;                  /* 金額の金色 → 夜は明るい琥珀 */
   background:#131029;
 }
+/* 背景の色つきの光は ::before に分けてある。
+   こうすると hue-rotate（きせかえ🎨）が背景の光だけに効いて、
+   文字やカードの色は変わらない。以前は色替えがホームの雲にしか効いておらず、
+   きせかえボタンを押しても何も変わらないように見えていた。 */
 body.night .approot {
-  background:
-    radial-gradient(1100px 700px at 85% -10%, rgba(120,60,190,0.35), transparent 60%),
-    radial-gradient(900px 620px at -10% 110%, rgba(40,90,200,0.30), transparent 60%),
-    #131029 !important;
+  background:transparent !important;
   color:var(--ink);
+}
+body.night .approot::before {
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(1100px 700px at 85% -10%, rgba(140,60,210,0.5), transparent 60%),
+    radial-gradient(900px 620px at -10% 110%, rgba(40,100,220,0.45), transparent 60%),
+    radial-gradient(700px 500px at 50% 50%, rgba(90,50,160,0.18), transparent 70%);
+  filter:hue-rotate(var(--nh,0deg)) saturate(1.15);
+  transition:filter 0.6s ease;
 }
 /* 夜は、漂う色の雲が「光」になる（screen合成で背景に発光する） */
 body.night .aurora { mix-blend-mode:screen; opacity:1; filter:blur(60px) saturate(1.9); }
