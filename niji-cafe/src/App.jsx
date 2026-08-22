@@ -774,7 +774,7 @@ export default function App() {
     }
   };
 
-  // 50回に1回だけ、読み込みの虹リングが🍩になる（気づいた人はラッキー）
+  // 50回に1回だけ、読み込みの虹リングが🍩になる（気づいた人だけのお楽しみ）
   const [donutLuck] = useState(() => Math.random() < 0.02);
   // キーボードで↑↑↓↓←→←→BAと打つと…（ゲーム好きへのご褒美）
   useKonami();
@@ -813,7 +813,12 @@ function NightMode() {
     // 時間帯で夜空の色味が少し変わる：夕方はピンク寄り、深夜は青寄り。
     // 毎晩同じではない空。気づかなくても、なんとなく雰囲気が変わる。
     const h = new Date().getHours();
-    const hue = (h >= 17 && h <= 20) ? "-25deg" : (h >= 2 && h <= 5) ? "35deg" : "0deg";
+    let hue = (h >= 17 && h <= 20) ? "-25deg" : (h >= 2 && h <= 5) ? "35deg" : "0deg";
+    // きせかえ（🎨）で選んだ色があれば、そちらを優先する
+    try {
+      const saved = localStorage.getItem("niji_theme");
+      if (saved !== null && NIGHT_THEMES[Number(saved)]) hue = NIGHT_THEMES[Number(saved)].h;
+    } catch {}
     document.body.style.setProperty("--nh", hue);
     return () => document.body.classList.remove("night");
   }, []);
@@ -882,6 +887,7 @@ function Home({ setScreen }) {
       logoTaps.current.n = 0;
       setFireworks(Date.now());
       setTimeout(() => setFireworks(null), 3600);
+      try { localStorage.setItem("niji_ach_fw", "1"); } catch {}   // 実績「花火師」解放
       try { navigator.vibrate && navigator.vibrate([20, 50, 20, 50, 20, 50, 60]); } catch {}
     }
   };
@@ -899,6 +905,7 @@ function Home({ setScreen }) {
       discoTaps.current.n = 0;
       document.body.classList.add("disco");
       setTimeout(() => document.body.classList.remove("disco"), 6000);
+      try { localStorage.setItem("niji_ach_disco", "1"); } catch {}   // 実績「ディスコ王」解放
     }
   };
 
@@ -924,7 +931,10 @@ function Home({ setScreen }) {
   const [wave, setWave] = useState(0);
   const tapDot = (i) => {
     if (i === dotStep) {
-      if (i === 5) { setDotStep(0); setWave(Date.now()); setTimeout(() => setWave(0), 1700); }
+      if (i === 5) {
+        setDotStep(0); setWave(Date.now()); setTimeout(() => setWave(0), 1700);
+        try { localStorage.setItem("niji_ach_dots", "1"); } catch {}   // 実績「虹の点コンプ」解放
+      }
       else setDotStep(i + 1);
     } else setDotStep(i === 0 ? 1 : 0);
   };
@@ -1000,7 +1010,7 @@ function Home({ setScreen }) {
       {/* 流れ星 */}
       {shoot && <span key={shoot.id} className="shooting-star" style={{top:`${shoot.top}%`, left:`${shoot.left}%`}}/>}
 
-      {/* 季節の飾り（12月は雪、ハロウィンは🎃、春は🌸。日付で勝手に切り替わる） */}
+      {/* 季節の飾り（12月は雪、秋は🍁、春は🌸。日付で勝手に切り替わる） */}
       {season && season.bits.map((b, i) => (
         <span key={"f"+i} className="fall-bit" style={{
           left:`${5 + i * 17}%`, fontSize:`${0.9 + (i % 3) * 0.25}rem`,
@@ -1092,7 +1102,7 @@ function Home({ setScreen }) {
         </div>
 
         {/* お正月（1/1〜1/3）だけの一言 */}
-        {isNewYear() && <div className="newyear">あけましておめでとう 🎍</div>}
+        {isNewYear() && <div className="newyear">あけましておめでとう 🎉</div>}
       </div>
     </div>
   );
@@ -1169,7 +1179,7 @@ function moonEmoji() {
 function seasonBits() {
   const d = new Date(), m = d.getMonth() + 1, day = d.getDate();
   if (m === 12 && day <= 25) return { bits:["❄","❄","❅","❄","❆","❄"], name:"snow" };
-  if (m === 10 && day >= 15) return { bits:["🎃","🦇","🎃","🦇","👻","🦇"], name:"halloween" };
+  if ((m === 10 && day >= 15) || m === 11) return { bits:["🍁","🍂","🍁","🍂","🍁","🍂"], name:"autumn" };
   if ((m === 3 && day >= 25) || (m === 4 && day <= 15)) return { bits:["🌸","🌸","🌸","💮","🌸","🌸"], name:"sakura" };
   return null;
 }
@@ -1205,6 +1215,7 @@ function useKonami() {
         i = 0;
         document.body.classList.add("rainbow-mode");
         setTimeout(() => document.body.classList.remove("rainbow-mode"), 10000);
+        try { localStorage.setItem("niji_ach_konami", "1"); } catch {}   // 実績「謎のコマンド」解放
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1311,6 +1322,219 @@ function SparkleRain({ emoji }) {
           animationDuration: `${3 + (i % 3)}s`}}>{emoji}</span>
       ))}
     </span>
+  );
+}
+
+// ══════════════════════════════════════════
+//  見て遊べるおもちゃたち（隠しではなく、堂々と置いてある）
+// ══════════════════════════════════════════
+// 🎡 おまかせシャッフル。高速で入れ替わり、だんだん減速して、1杯に決まる
+function DrinkRoulette({ menu, onPick }) {
+  const [spin, setSpin] = useState(null);   // { item, done }
+  const timer = useRef(null);
+  const start = () => {
+    if (!menu.length) return;
+    clearTimeout(timer.current);
+    let speed = 55, elapsed = 0;
+    const tick = () => {
+      const item = menu[Math.floor(Math.random() * menu.length)];
+      elapsed += speed;
+      speed = Math.min(280, speed * 1.14);   // だんだんゆっくりに
+      if (elapsed < 2600) {
+        setSpin({ item, done: false });
+        timer.current = setTimeout(tick, speed);
+      } else {
+        setSpin({ item, done: true });
+        try { navigator.vibrate && navigator.vibrate([15, 40, 30]); } catch {}
+      }
+    };
+    tick();
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return (
+    <div className="toy-panel">
+      {!spin ? (
+        <button className="toy-btn" onClick={start}>🎡 迷ったらおまかせシャッフル</button>
+      ) : (
+        <div style={{textAlign:"center"}}>
+          <div className={"roulette-item" + (spin.done ? " pop" : "")}>
+            <span style={{fontSize:"2rem"}}>{spin.item.emoji}</span>
+            <div style={{fontWeight:700,marginTop:2}}>{spin.item.name}</div>
+            <div style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{spin.item.price}</div>
+          </div>
+          {spin.done && (
+            <div style={{display:"flex",gap:8,marginTop:10,justifyContent:"center"}}>
+              <button className="toy-btn" style={{flex:"none"}} onClick={()=>{ onPick(spin.item); setSpin(null); }}>これにする！</button>
+              <button className="toy-btn toy-dim" style={{flex:"none"}} onClick={start}>もう一回</button>
+              <button className="toy-btn toy-dim" style={{flex:"none"}} onClick={()=>setSpin(null)}>やめる</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ☕ 今日のひとこと。日付と会員番号で決まる、その日のあなたへのあたたかい言葉。
+// 占いや運勢ではない。ただのねぎらいと、今日のおすすめの一杯。
+const WORDS_OF_DAY = [
+  "今日もおつかれさま。ゆっくりしていってね",
+  "よく来てくれました。ここはあなたの席です",
+  "がんばった日も、そうでない日も、一杯どうぞ",
+  "あたたかいものを飲むと、心もあたたまります",
+  "急がなくて大丈夫。ここでは時間はゆっくり流れます",
+  "誰かと一緒に飲む一杯は、もっとおいしい",
+  "たまには新しい一杯に挑戦してみるのもいいかも",
+  "窓の外を眺めながらの一杯も、いいものです",
+  "あなたが元気だと、お店もうれしいです",
+  "小さな休憩が、明日の力になりますように",
+  "今日という日が、良い一日になりますように",
+  "ここに来てくれて、ありがとう",
+];
+function TodayWord({ found, menu }) {
+  const [open, setOpen] = useState(false);
+  const seed = (String(found.id) + new Date().toLocaleDateString("ja-JP"))
+    .split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const msg = WORDS_OF_DAY[seed % WORDS_OF_DAY.length];
+  const pick = menu.length ? menu[seed % menu.length] : null;
+  return (
+    <div className="toy-panel" style={{textAlign:"center"}}>
+      {!open ? (
+        <button className="toy-btn" onClick={()=>{ setOpen(true); try{navigator.vibrate&&navigator.vibrate(10);}catch{} }}>
+          ☕ 今日のひとこと
+        </button>
+      ) : (
+        <div className="pop">
+          <div style={{fontSize:"1.6rem",marginBottom:6}}>☕✨</div>
+          <div style={{fontWeight:700,marginBottom:6}}>{msg}</div>
+          {pick && <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>
+            今日のおすすめ：{pick.emoji} {pick.name}
+          </div>}
+          <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.72rem",marginTop:6}}>（日付ごとに変わります）</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 🏆 実績バッジ棚。来店の記録から自動で解放されるものと、
+// 隠しギミック（花火・ディスコ・虹の点・コナミ）を見つけると解放されるものがある。
+// まだの物は「？？？」。集めたくなるやつ。
+function BadgeShelf({ found, orders }) {
+  const ls = (k) => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
+  const mine = (orders || []).filter((o) => o && String(o.customerId) === String(found.id));
+  const cups = Math.max(mine.length, (found.history || []).filter((h) => h && h.type === "use").length);
+  const hourOf = (s) => parseInt(String(s || "").split(" ")[1]) || 12;
+  const defs = [
+    { e:"☕", n:"はじめての一杯", ok: cups >= 1 },
+    { e:"🔟", n:"10杯クラブ",     ok: cups >= 10 },
+    { e:"🌟", n:"常連さん",       ok: (found.currentYearPurchases || 0) >= 5 },
+    { e:"💎", n:"ランク持ち",     ok: (found.rankBasis || 0) >= 2 },
+    { e:"🌙", n:"夜カフェ勢",     ok: mine.some((o) => hourOf(o.createdAt) >= 21) },
+    { e:"🌅", n:"朝活マスター",   ok: mine.some((o) => hourOf(o.createdAt) <= 10) },
+    { e:"🎆", n:"花火師",         ok: ls("niji_ach_fw") },
+    { e:"🪩", n:"ディスコ王",     ok: ls("niji_ach_disco") },
+    { e:"🌈", n:"虹の点コンプ",   ok: ls("niji_ach_dots") },
+    { e:"🎮", n:"謎のコマンド",   ok: ls("niji_ach_konami") },
+  ];
+  const got = defs.filter((d) => d.ok).length;
+  return (
+    <div className="toy-panel">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+        <span style={{fontWeight:700}}>🏆 実績バッジ</span>
+        <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.8rem"}}>{got} / {defs.length}</span>
+      </div>
+      <div className="badge-grid">
+        {defs.map((d, i) => (
+          <div key={i} className={"badge" + (d.ok ? " badge-on" : "")}>
+            <span style={{fontSize:"1.3rem"}}>{d.ok ? d.e : "❔"}</span>
+            <span className="badge-name">{d.ok ? d.n : "？？？"}</span>
+          </div>
+        ))}
+      </div>
+      {got < defs.length &&
+        <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.72rem",marginTop:8}}>
+          ❔はアプリのどこかに隠れている遊びを見つけると解放されます
+        </div>}
+    </div>
+  );
+}
+
+// 🐈 看板猫。カードの隅に住んでいて、なでると返事をする
+function NekoMascot() {
+  const [say, setSay] = useState(null);
+  const WORDS = ["にゃ〜","いらっしゃい🌈","今日も来てくれた！","☕ いる？","ごゆっくり〜","✨✨","なでた？"];
+  const tap = (e) => {
+    e.stopPropagation();
+    setSay({ t: WORDS[Math.floor(Math.random() * WORDS.length)], id: Date.now() });
+    try { navigator.vibrate && navigator.vibrate(8); } catch {}
+    setTimeout(() => setSay(null), 1600);
+  };
+  return (
+    <span className="neko" onClick={tap} role="button" aria-label="看板猫">
+      🐈‍⬛
+      {say && <span key={say.id} className="neko-say">{say.t}</span>}
+    </span>
+  );
+}
+
+// 🎨 きせかえ。夜空の色味を4種類から選べる（端末に記憶される）
+const NIGHT_THEMES = [
+  { n: "よる",     h: "0deg"   },
+  { n: "ゆうやけ", h: "-45deg" },
+  { n: "うみ",     h: "70deg"  },
+  { n: "もり",     h: "150deg" },
+];
+function ThemeButton() {
+  const [i, setI] = useState(() => { try { return Number(localStorage.getItem("niji_theme") || 0) % NIGHT_THEMES.length; } catch { return 0; } });
+  const next = () => {
+    const j = (i + 1) % NIGHT_THEMES.length;
+    setI(j);
+    try { localStorage.setItem("niji_theme", String(j)); } catch {}
+    document.body.style.setProperty("--nh", NIGHT_THEMES[j].h);
+  };
+  return <button className="theme-btn" onClick={next}>🎨 {NIGHT_THEMES[i].n}</button>;
+}
+
+// 気分で選ぶ。「さっぱり」を押すとそれっぽい一杯だけが並ぶ
+const MOODS = [
+  ["さっぱり", "🍋", /美酢|お酢|ザクロ|マスカット|グレープ|パイナップル|アセロラ|シトラス|アサイー|ライチ|カシス|リンゴ|メロン|ブドウ|あまおう|ピーチ/],
+  ["あまい",   "🍓", /ミルク|練乳|アイスクリーム|かき氷|ヘーゼルナッツ/],
+  ["ほっと",   "☕", /ホット|しょうが/],
+  ["ひんやり", "🧊", /アイス|かき氷/],
+];
+function MoodPicker({ menu, onAdd }) {
+  const [sel, setSel] = useState(null);
+  const items = sel ? menu.filter((m) => sel[2].test(m.name) || sel[2].test(m.category)) : [];
+  return (
+    <div style={{marginBottom:10}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {MOODS.map((m) => (
+          <button key={m[0]} className={"mood-chip" + (sel === m ? " mood-on" : "")}
+            onClick={() => setSel(sel === m ? null : m)}>
+            {m[1]} {m[0]}
+          </button>
+        ))}
+      </div>
+      {sel && (
+        <div className="toy-panel" style={{marginTop:8}}>
+          <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.8rem",marginBottom:8}}>
+            {sel[1]} 「{sel[0]}」な気分のあなたへ（{items.length}品）
+          </div>
+          {items.length === 0
+            ? <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.85rem"}}>いまは該当なし……ごめんね</div>
+            : <div className="menu-grid-auto">
+                {items.map((item) => (
+                  <button key={item.id} className="menu-item" onClick={() => onAdd(item)}>
+                    <span className="m-emoji" style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                    <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
+                    <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
+                  </button>
+                ))}
+              </div>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1647,7 +1871,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   return (
     <div style={S.page}>
       <NightMode/>
-      <button className="back-btn" onClick={()=>{setScreen("home");setFound(null);setInput("");}}>← 戻る</button>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <button className="back-btn" onClick={()=>{setScreen("home");setFound(null);setInput("");}}>← 戻る</button>
+        {/* きせかえ：夜空の色を4種類から選べる */}
+        <ThemeButton/>
+      </div>
       <h2 style={S.title}>チケット確認</h2>
 
       {!found ? (
@@ -1693,6 +1921,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
                 {/* 開いた瞬間、光の帯がカードを一度だけ横切る */}
                 <div className="card-sheen" aria-hidden="true"/>
+                {/* カードの隅に住んでいる看板猫。なでると返事をする */}
+                <NekoMascot/>
                 {/* 残高1万円以上は✨が、777は🪙が、カードの中で静かに降り続ける */}
                 {found.balance >= 10000 && <SparkleRain emoji="✨"/>}
                 {String(found.balance).includes("777") && <SparkleRain emoji="🪙"/>}
@@ -1718,7 +1948,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     ¥<CountUp value={found.balance}/>
                     {delta && <span key={delta.id} className="delta-up">+¥{delta.v.toLocaleString()}</span>}
                     {String(found.balance).includes("777") &&
-                      <span className="chip-pop">ラッキーセブン！🎰</span>}
+                      <span className="chip-pop">777！✨</span>}
                     {found.balance >= 111 && /^(\d)\1+$/.test(String(found.balance)) && !String(found.balance).includes("777") &&
                       <span className="chip-pop">ゾロ目！✨</span>}
                     {coinBurst !== 0 && (
@@ -1798,6 +2028,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 })}
               </div>
               )}
+              {/* 見て遊べるもの：今日のひとことと、実績バッジの棚 */}
+              <TodayWord found={found} menu={menu}/>
+              <BadgeShelf found={found} orders={orders}/>
               <RankingBoard customers={customers} myId={found.id}/>
               {/* めったに使わない操作なので、一番下で控えめに */}
               <button className="btn-quiet" style={{marginTop:10}} onClick={()=>{setFound(null);setInput("");}}>別の番号を確認する</button>
@@ -1916,6 +2149,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       availableTopping={availableTopping}
                     />
                   )}
+
+                  {/* 気分で選ぶチップと、迷ったとき用のシャッフル（見て遊べるおもちゃ） */}
+                  <MoodPicker menu={menu} onAdd={(it)=>{ addToCart(it); popSound(); }}/>
+                  <DrinkRoulette menu={menu} onPick={(it)=>{ addToCart(it); popSound(); }}/>
 
                   {/* カートを空にした直後だけ、ひとこと */}
                   {cleared !== 0 && <div key={cleared} className="cleared-note">また選んでね〜</div>}
@@ -5046,6 +5283,50 @@ body.disco .dot-wave { animation-duration:0.5s !important; }
   transform:skewX(-15deg); animation:sheenSweep 1.1s 0.4s ease both; }
 @keyframes sheenSweep { to { left:120%; } }
 
+/* ── 見て遊べるおもちゃたち ────────────────────── */
+/* おもちゃの共通パネル */
+.toy-panel { background:var(--card,#ffffff); border:1px solid var(--line,#e7ded3);
+  border-radius:16px; padding:14px 16px; margin-top:10px; }
+.toy-btn { width:100%; background:var(--panel2,#f6f1ea); color:var(--ink,#3d3630);
+  border:1px solid var(--line,#e7ded3); border-radius:12px; padding:12px 16px;
+  font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit; }
+.toy-btn:hover { filter:brightness(1.06); }
+.toy-dim { opacity:0.7; font-weight:500; }
+body.night .toy-btn { box-shadow:0 0 14px rgba(178,141,255,0.15); }
+
+/* シャッフルの表示枠 */
+.roulette-item { padding:8px 0; min-height:86px; }
+
+/* 実績バッジの棚 */
+.badge-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px; }
+.badge { display:flex; flex-direction:column; align-items:center; gap:2px;
+  background:var(--panel2,#f6f1ea); border:1px solid var(--line,#e7ded3);
+  border-radius:12px; padding:8px 4px; opacity:0.45; }
+.badge-on { opacity:1; border-color:rgba(255,209,102,0.55);
+  box-shadow:0 0 12px rgba(255,209,102,0.18); }
+.badge-name { font-size:0.68rem; color:var(--ink2,#8a7f76); font-weight:700; text-align:center; }
+
+/* 看板猫 */
+.neko { position:absolute; top:8px; right:12px; font-size:1.5rem; cursor:pointer; z-index:4;
+  display:inline-block; animation:nekoBob 4s ease-in-out infinite; }
+@keyframes nekoBob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
+.neko-say { position:absolute; right:0; top:-34px; white-space:nowrap; font-size:0.75rem; font-weight:700;
+  background:var(--card,#ffffff); color:var(--ink,#3d3630); border:1px solid var(--line,#e7ded3);
+  border-radius:999px; padding:4px 10px; animation:popIn 0.35s cubic-bezier(0.34,1.56,0.64,1) both, clearFade 1.6s ease forwards; }
+
+/* きせかえボタン */
+.theme-btn { background:var(--panel2,#f6f1ea); color:var(--ink2,#8a7f76);
+  border:1px solid var(--line,#e7ded3); border-radius:999px; padding:6px 14px;
+  font-size:0.8rem; font-weight:700; cursor:pointer; font-family:inherit; }
+
+/* 気分チップ */
+.mood-chip { background:var(--panel2,#f6f1ea); color:var(--ink2,#8a7f76);
+  border:1px solid var(--line,#e7ded3); border-radius:999px; padding:8px 14px;
+  font-size:0.85rem; font-weight:700; cursor:pointer; font-family:inherit; }
+.mood-on { color:#ff6ec7; border-color:rgba(255,110,199,0.6);
+  background:rgba(255,110,199,0.12); box-shadow:0 0 12px rgba(255,110,199,0.2); }
+body:not(.night) .mood-on { color:#c2447e; background:#fdeaf3; }
+
 /* カードの中に降り続けるキラキラ */
 .srain-p { position:absolute; top:-14px; font-size:0.8rem; opacity:0; pointer-events:none; z-index:2;
   animation:srainFall linear infinite; }
@@ -5066,7 +5347,7 @@ body.disco .dot-wave { animation-duration:0.5s !important; }
   .confetti-box .confetti-e, .tilt.flip,
   .welcome-toast, .rankup-ov, .rankup-gem, .rankup-txt, .rankup-name, .fw-p,
   .big-moon, .lightning, .ripple, .rainbow-big, .rays, .cannon,
-  .card-in, .card-sheen, .srain-p { animation:none !important; }
+  .card-in, .card-sheen, .srain-p, .neko, .neko-say, .roulette-item { animation:none !important; }
   .star, .float-emoji, .shooting-star, .fall-bit, .stardust,
   .fw, .lightning, .ripple, .rays, .cannon, .card-sheen, .srain-p { display:none; }
   body.rainbow-mode .approot, body.disco .approot { animation:none !important; }
