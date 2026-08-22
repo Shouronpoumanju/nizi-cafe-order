@@ -840,17 +840,76 @@ function Home({ setScreen }) {
   const [tagline] = useState(pickTagline);
   const season = seasonBits();
 
-  // 流れ星。1分に1回あるかないか。気づいた人は今日いいことがある
+  // 流れ星。1分に1回あるかないか。気づいた人は今日いいことがある。
+  // ……そして、ごくまれに（7%）流星群になる。
   const [shoot, setShoot] = useState(null);
+  const [shower, setShower] = useState(null);
   useEffect(() => {
     const t = setInterval(() => {
-      if (Math.random() < 0.4) {
+      const r = Math.random();
+      if (r < 0.07) {
+        setShower(Date.now());
+        setTimeout(() => setShower(null), 3500);
+      } else if (r < 0.4) {
         setShoot({ id: Date.now(), top: 5 + Math.random() * 35, left: 30 + Math.random() * 55 });
         setTimeout(() => setShoot(null), 1300);
       }
     }, 30000);
     return () => clearInterval(t);
   }, []);
+
+  // 雷。ごくまれに（45秒ごとに5%）夜空が2回光る
+  const [bolt, setBolt] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (Math.random() < 0.05) {
+        setBolt(Date.now());
+        setTimeout(() => setBolt(0), 700);
+        try { navigator.vibrate && navigator.vibrate([40, 80, 60]); } catch {}
+      }
+    }, 45000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ロゴを4秒以内に10連打すると、花火大会が始まる
+  const logoTaps = useRef({ n: 0, t: 0 });
+  const [fireworks, setFireworks] = useState(null);
+  const countLogoTap = () => {
+    const now = Date.now();
+    if (now - logoTaps.current.t > 4000) logoTaps.current.n = 0;
+    logoTaps.current.t = now;
+    if (++logoTaps.current.n >= 10) {
+      logoTaps.current.n = 0;
+      setFireworks(Date.now());
+      setTimeout(() => setFireworks(null), 3600);
+      try { navigator.vibrate && navigator.vibrate([20, 50, 20, 50, 20, 50, 60]); } catch {}
+    }
+  };
+
+  // ネオン看板を押すと、点灯ショーをもう一度最初から
+  const [neonKey, setNeonKey] = useState(0);
+
+  // あいさつ文を1.5秒以内に3回押すと、6秒だけディスコになる
+  const discoTaps = useRef({ n: 0, t: 0 });
+  const tapTagline = () => {
+    const now = Date.now();
+    if (now - discoTaps.current.t > 1500) discoTaps.current.n = 0;
+    discoTaps.current.t = now;
+    if (++discoTaps.current.n >= 3) {
+      discoTaps.current.n = 0;
+      document.body.classList.add("disco");
+      setTimeout(() => document.body.classList.remove("disco"), 6000);
+    }
+  };
+
+  // 何もない所を押すと、虹の波紋がふわっと広がる
+  const [ripples, setRipples] = useState([]);
+  const makeRipple = (e) => {
+    if (e.target.closest("button")) return;
+    const id = Date.now() + Math.random();
+    setRipples((r) => [...r.slice(-4), { id, x: e.clientX, y: e.clientY }]);
+    setTimeout(() => setRipples((r) => r.filter((p) => p.id !== id)), 950);
+  };
 
   // ロゴを3秒長押しすると出てくる、隠しメッセージ
   const [secret, setSecret] = useState(false);
@@ -889,8 +948,40 @@ function Home({ setScreen }) {
   }, []);
 
   return (
-    <div style={S.homeOuter}>
+    <div style={S.homeOuter} onPointerDown={makeRipple}>
       <NightMode/>
+
+      {/* 満月の夜だけ、大きな月がのぼっている（本物の月齢と連動） */}
+      {moonEmoji() === "🌕" && <div className="big-moon" aria-hidden="true">🌕</div>}
+
+      {/* 雷（ごくまれ） */}
+      {bolt !== 0 && <div key={bolt} className="lightning" aria-hidden="true"/>}
+
+      {/* 流星群（もっとまれ） */}
+      {shower && [...Array(8)].map((_, i) => (
+        <span key={shower + "-" + i} className="shooting-star" style={{
+          top: `${3 + (i * 11) % 40}%`, left: `${25 + (i * 17) % 70}%`,
+          animationDelay: `${i * 0.35}s`}}/>
+      ))}
+
+      {/* 花火大会（ロゴ10連打のご褒美） */}
+      {fireworks && [...Array(6)].map((_, b) => (
+        <div key={fireworks + "-" + b} className="fw" style={{
+          left: `${15 + (b * 31) % 70}%`, top: `${12 + (b * 23) % 45}%`,
+          animationDelay: `${b * 0.45}s`}}>
+          {[...Array(10)].map((_, i) => (
+            <span key={i} className="fw-p" style={{
+              "--fa": `${i * 36}deg`,
+              background: ["#ff6ec7","#ffd166","#74f7a1","#4deeea","#b28dff"][i % 5],
+              animationDelay: `${b * 0.45}s`}}/>
+          ))}
+        </div>
+      ))}
+
+      {/* 虹の波紋（何もない所を押した場所から広がる） */}
+      {ripples.map((p) => (
+        <span key={p.id} className="ripple" style={{left: p.x, top: p.y}}/>
+      ))}
 
       {/* 星空。位置は計算式で散らしてある（毎回同じ配置なのでチラつかない）。
           13番目だけは本物の✨で、押すとはじける */}
@@ -916,8 +1007,13 @@ function Home({ setScreen }) {
           animationDuration:`${9 + (i % 4) * 3}s`, animationDelay:`${i * 1.8}s`}}>{b}</span>
       ))}
 
-      {/* 虹色の波（6色の点を順番に全部押せた人だけが見られる） */}
-      {wave !== 0 && <div key={wave} className="rainbow-wave" aria-hidden="true"/>}
+      {/* 虹色の波（6色の点を順番に全部押せた人だけが見られる）＋大きな🌈 */}
+      {wave !== 0 && (
+        <div key={wave} aria-hidden="true">
+          <div className="rainbow-wave"/>
+          <div className="rainbow-big">🌈</div>
+        </div>
+      )}
 
       {/* 星屑の尾（パソコンのみ） */}
       {dust.map((p) => (
@@ -937,8 +1033,8 @@ function Home({ setScreen }) {
       <div className="aurora" style={{...S.homeBgCircle3, animationDelay:"-7s"}}/>
 
       <div style={S.homeWrap}>
-        {/* ロゴ。押すと絵文字がはじける。3秒長押しで隠しメッセージ */}
-        <div onPointerDown={pressStart} onPointerUp={pressEnd} onPointerLeave={pressEnd}>
+        {/* ロゴ。押すと絵文字がはじける。3秒長押しで隠しメッセージ。10連打で花火大会 */}
+        <div onPointerDown={pressStart} onPointerUp={pressEnd} onPointerLeave={pressEnd} onClick={countLogoTap}>
           <TapBurst emojis={["☕","⭐","🧋","🌈","💜","🍩"]}>
             <div style={S.rainbowLogoWrap}>
               <div style={S.rainbowLogoInner}>
@@ -954,7 +1050,9 @@ function Home({ setScreen }) {
             開いた瞬間、文字が「パチ…パチ…ポワッ」と1文字ずつ順に点灯する。
             3文字目の「フ」だけ、ときどき電気の切れかけみたいに瞬く（本物の看板の癖）。 */}
         <div style={{position:"relative",marginTop:6}}>
-          <h1 className="neon-sign" style={S.brandRainbow}>
+          {/* 看板を押すと、点灯ショーがもう一度最初から始まる */}
+          <h1 key={neonKey} className="neon-sign" style={{...S.brandRainbow,cursor:"pointer"}}
+            onClick={()=>setNeonKey(k=>k+1)}>
             {"虹カフェ".split("").map((ch, i) => (
               <span key={i} className={"neon-ch" + (i === 2 ? " neon-flicker" : "")}
                 style={{"--nc":["#ff6ec7","#4deeea","#ffd166","#b28dff"][i % 4],
@@ -966,7 +1064,8 @@ function Home({ setScreen }) {
           <div style={S.brandUnderline}/>
         </div>
 
-        <p style={S.taglineRainbow}>{tagline}</p>
+        {/* あいさつ文を3回連打すると…（ディスコタイム） */}
+        <p style={{...S.taglineRainbow,cursor:"pointer"}} onClick={tapTagline}>{tagline}</p>
 
         {/* ボタン */}
         <div style={S.homeBtns}>
@@ -1136,6 +1235,80 @@ function TapBurst({ emojis, children, className, style }) {
               style={{"--a":`${i * (360 / emojis.length)}deg`, animationDelay:`${i * 0.02}s`}}>{e}</span>
           ))}
         </span>
+      ))}
+    </span>
+  );
+}
+
+// ══════════════════════════════════════════
+//  ド派手な演出の部品たち
+// ══════════════════════════════════════════
+// ログイン成功の瞬間、虹のカーテンが画面を横切って「ようこそ」と迎える
+function WelcomeSweep({ found }) {
+  const [show, setShow] = useState(0);
+  const lastId = useRef(null);
+  useEffect(() => {
+    if (!found || found.id === lastId.current) return;
+    lastId.current = found.id;
+    setShow(Date.now());
+    const t = setTimeout(() => setShow(0), 2000);
+    return () => clearTimeout(t);
+  }, [found && found.id]);
+  if (!show) return null;
+  return (
+    <div key={show} aria-hidden="true">
+      <div className="rainbow-wave"/>
+      <div className="welcome-toast">ようこそ、{found.name}さん 🌈</div>
+    </div>
+  );
+}
+
+// ランクが上がっていたら、全画面でお祝いする。
+// 「前に見たときのランク」を端末に覚えておき、上がった瞬間に一度だけ発動する。
+function RankUpShow({ found, rank }) {
+  const [show, setShow] = useState(null);
+  useEffect(() => {
+    if (!found || !rank || rank.name === "ランクなし") return;
+    try {
+      const key = "niji_rank_" + found.id;
+      const prev = localStorage.getItem(key);
+      const prevIdx = RANKS.findIndex((r) => r.name === prev);
+      const nowIdx = RANKS.findIndex((r) => r.name === rank.name);
+      if (prev && nowIdx > prevIdx) {
+        setShow({ id: Date.now(), gem: rank.gem, name: rank.name, color: rank.color });
+        setTimeout(() => setShow(null), 3400);
+        try { navigator.vibrate && navigator.vibrate([30, 60, 30, 60, 80]); } catch {}
+      }
+      localStorage.setItem(key, rank.name);
+    } catch {}
+  }, [found && found.id, rank && rank.name]);
+  if (!show) return null;
+  return (
+    <div key={show.id} className="rankup-ov" aria-hidden="true">
+      {[...Array(14)].map((_, i) => (
+        <span key={i} className="rankup-gem" style={{
+          left: `${(i * 37 + 11) % 100}%`,
+          animationDelay: `${(i % 7) * 0.22}s`,
+          animationDuration: `${2 + (i % 3) * 0.5}s`}}>{show.gem}</span>
+      ))}
+      <div className="rankup-box">
+        <div className="rankup-big pop">{show.gem}</div>
+        <div className="rankup-txt" style={{color: show.color}}>ランクアップ！</div>
+        <div className="rankup-name">{show.name} になりました</div>
+      </div>
+    </div>
+  );
+}
+
+// カードの中に、キラキラ（や🪙）が静かに降り続ける
+function SparkleRain({ emoji }) {
+  return (
+    <span aria-hidden="true">
+      {[...Array(6)].map((_, i) => (
+        <span key={i} className="srain-p" style={{
+          left: `${8 + i * 15}%`,
+          animationDelay: `${i * 0.7}s`,
+          animationDuration: `${3 + (i % 3)}s`}}>{emoji}</span>
       ))}
     </span>
   );
@@ -1506,15 +1679,23 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             ))}
           </div>
 
+          {/* 入場の虹カーテンと、ランクアップの祝祭（条件が揃った時だけ出る） */}
+          <WelcomeSweep found={found}/>
           {cvTab==="ticket" && (
             <div>
+              <RankUpShow found={found} rank={rank}/>
               {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
                   一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
-              <HoloCard className="ticket-card rise" style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#ece4d9)",
+              <HoloCard className="ticket-card card-in" style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#ece4d9)",
                 boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
+                {/* 開いた瞬間、光の帯がカードを一度だけ横切る */}
+                <div className="card-sheen" aria-hidden="true"/>
+                {/* 残高1万円以上は✨が、777は🪙が、カードの中で静かに降り続ける */}
+                {found.balance >= 10000 && <SparkleRain emoji="✨"/>}
+                {String(found.balance).includes("777") && <SparkleRain emoji="🪙"/>}
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
                   <span style={{fontSize:"1.15rem",fontWeight:700,color:"var(--ink,#3d3630)"}}>{found.name}</span>
                   <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>
@@ -1672,7 +1853,25 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                         animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}/>
                     ))}
                   </div>
-                  <div className="pop" style={{fontSize:"3rem",marginBottom:12}}>{okIcon}</div>
+                  {/* ✅の後ろから光線が放射され、「今日の一杯目」は両脇から大砲も撃つ */}
+                  <div style={{position:"relative",display:"inline-block"}}>
+                    <div className="rays" aria-hidden="true"/>
+                    <div className="pop" style={{fontSize:"3rem",marginBottom:12,position:"relative"}}>{okIcon}</div>
+                  </div>
+                  {okExtra === "今日の一杯目！" && (
+                    <div aria-hidden="true">
+                      {[...Array(7)].map((_,i)=>(
+                        <span key={"l"+i} className="cannon cannon-l" style={{animationDelay:`${i*0.07}s`,"--cx":`${40+i*22}px`,"--cy":`${-90-(i%4)*30}px`}}>
+                          {(okEmojis&&okEmojis[i%okEmojis.length])||"🎉"}
+                        </span>
+                      ))}
+                      {[...Array(7)].map((_,i)=>(
+                        <span key={"r"+i} className="cannon cannon-r" style={{animationDelay:`${i*0.07}s`,"--cx":`${-40-i*22}px`,"--cy":`${-90-(i%4)*30}px`}}>
+                          {(okEmojis&&okEmojis[i%okEmojis.length])||"🎉"}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {okExtra && <div className="chip-pop" style={{position:"static",display:"inline-block",marginBottom:8}}>{okExtra}</div>}
                   <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.15rem",marginBottom:6}}>{okMsg}</div>
                   <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
@@ -4738,6 +4937,125 @@ body:not(.night) .chip-pop { color:#a9791a; background:#faf0dc; border-color:#e8
 /* 夜空の色味が時間で変わる */
 body.night .aurora { filter:blur(60px) saturate(1.9) hue-rotate(var(--nh,0deg)); }
 
+/* ── ド派手な演出たち ────────────────────── */
+/* ようこそのトースト（虹カーテンと一緒に出る） */
+.welcome-toast { position:fixed; top:18%; left:50%; transform:translateX(-50%); z-index:100;
+  padding:12px 26px; border-radius:999px; font-size:1.05rem; font-weight:700; white-space:nowrap;
+  background:rgba(20,16,46,0.8); color:#fff; border:1px solid rgba(255,255,255,0.3);
+  box-shadow:0 0 30px rgba(255,110,199,0.4); backdrop-filter:blur(8px);
+  animation:toastInOut 1.9s ease both; pointer-events:none; }
+@keyframes toastInOut {
+  0% { opacity:0; transform:translateX(-50%) translateY(-14px); }
+  15%,80% { opacity:1; transform:translateX(-50%) translateY(0); }
+  100% { opacity:0; transform:translateX(-50%) translateY(-8px); }
+}
+
+/* ランクアップの祝祭 */
+.rankup-ov { position:fixed; inset:0; z-index:120; pointer-events:none;
+  background:rgba(10,8,26,0.55); animation:clearFade 3.4s ease forwards; }
+.rankup-gem { position:absolute; top:-40px; font-size:1.5rem;
+  animation:fallDown linear forwards; }
+.rankup-box { position:absolute; top:38%; left:50%; transform:translate(-50%,-50%); text-align:center; }
+.rankup-big { font-size:4.5rem; filter:drop-shadow(0 0 24px rgba(255,255,255,0.6)); }
+.rankup-txt { font-size:1.8rem; font-weight:800; letter-spacing:0.1em; margin-top:6px;
+  text-shadow:0 0 18px currentColor; animation:popIn 0.6s 0.2s cubic-bezier(0.34,1.56,0.64,1) both; }
+.rankup-name { color:#fff; font-size:1rem; margin-top:6px; font-weight:700;
+  animation:popIn 0.6s 0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+/* 花火 */
+.fw { position:absolute; width:0; height:0; z-index:60; pointer-events:none; }
+.fw-p { position:absolute; left:-4px; top:-4px; width:8px; height:8px; border-radius:50%;
+  opacity:0; animation:fwFly 1.3s ease-out forwards; box-shadow:0 0 10px currentColor; }
+@keyframes fwFly {
+  0%   { opacity:0; transform:rotate(var(--fa,0deg)) translateY(0) scale(0.4); }
+  8%   { opacity:1; }
+  100% { opacity:0; transform:rotate(var(--fa,0deg)) translateY(-86px) scale(1.1); }
+}
+
+/* 満月 */
+.big-moon { position:absolute; top:6%; right:8%; font-size:5rem; pointer-events:none;
+  filter:drop-shadow(0 0 40px rgba(255,236,170,0.55));
+  animation:moonRise 3s ease both, moonGlow 5s 3s ease-in-out infinite alternate; }
+@keyframes moonRise { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:none; } }
+@keyframes moonGlow { from { filter:drop-shadow(0 0 30px rgba(255,236,170,0.4)); }
+  to { filter:drop-shadow(0 0 55px rgba(255,236,170,0.75)); } }
+
+/* 雷（2回ぴかっと光る） */
+.lightning { position:fixed; inset:0; z-index:110; pointer-events:none;
+  background:rgba(255,255,255,0.9); mix-blend-mode:screen;
+  animation:flash 0.7s ease-out forwards; }
+@keyframes flash {
+  0% { opacity:0; } 6% { opacity:0.9; } 14% { opacity:0.05; }
+  22% { opacity:0.6; } 40% { opacity:0; } 100% { opacity:0; }
+}
+
+/* ディスコタイム（あいさつ3連打で6秒） */
+body.disco .approot { animation:hueSpin 1.2s linear infinite; }
+body.disco .aurora { animation-duration:1.4s !important; opacity:1 !important; }
+body.disco .star { animation-duration:0.35s !important; }
+body.disco .dot-wave { animation-duration:0.5s !important; }
+
+/* 虹の波紋（何もない所を押した場所から広がる） */
+.ripple { position:fixed; z-index:50; pointer-events:none; width:12px; height:12px;
+  margin-left:-6px; margin-top:-6px; border-radius:50%;
+  border:2px solid rgba(255,255,255,0.7);
+  box-shadow:0 0 14px rgba(255,110,199,0.6), inset 0 0 14px rgba(77,238,234,0.6);
+  animation:rippleGrow 0.9s ease-out forwards; }
+@keyframes rippleGrow {
+  0% { opacity:0.9; transform:scale(0.4); }
+  100% { opacity:0; transform:scale(9); }
+}
+
+/* 大きな🌈（6点コンプリートのご褒美に追加） */
+.rainbow-big { position:fixed; top:40%; left:50%; z-index:100; font-size:5rem; pointer-events:none;
+  transform:translate(-50%,-50%);
+  animation:bigPop 1.5s cubic-bezier(0.34,1.56,0.64,1) both; }
+@keyframes bigPop {
+  0% { opacity:0; transform:translate(-50%,-50%) scale(0.2) rotate(-15deg); }
+  30% { opacity:1; transform:translate(-50%,-50%) scale(1.15) rotate(5deg); }
+  55% { transform:translate(-50%,-50%) scale(1) rotate(0); }
+  80% { opacity:1; }
+  100% { opacity:0; transform:translate(-50%,-50%) scale(1.1); }
+}
+
+/* ✅の後ろの放射光線 */
+.rays { position:absolute; left:50%; top:45%; width:150px; height:150px; z-index:0;
+  transform:translate(-50%,-50%); pointer-events:none; border-radius:50%;
+  background:repeating-conic-gradient(rgba(255,209,102,0.25) 0deg 12deg, transparent 12deg 30deg);
+  -webkit-mask:radial-gradient(circle, #000 30%, transparent 70%);
+  mask:radial-gradient(circle, #000 30%, transparent 70%);
+  animation:raysSpin 2.4s linear forwards, clearFade 2.4s ease forwards; }
+@keyframes raysSpin { to { transform:translate(-50%,-50%) rotate(120deg); } }
+
+/* 今日の一杯目：両脇からの祝砲 */
+.cannon { position:absolute; bottom:0; font-size:1.2rem; opacity:0; pointer-events:none;
+  animation:cannonFly 1.1s ease-out forwards; }
+.cannon-l { left:4%; }
+.cannon-r { right:4%; }
+@keyframes cannonFly {
+  0%   { opacity:0; transform:translate(0,0) rotate(0); }
+  10%  { opacity:1; }
+  100% { opacity:0; transform:translate(var(--cx,60px), var(--cy,-120px)) rotate(200deg); }
+}
+
+/* カードの入場：ぽんっと弾んで、光の帯が一度だけ横切る */
+.card-in { animation:cardIn 0.55s cubic-bezier(0.34,1.56,0.64,1) both; }
+@keyframes cardIn { 0% { opacity:0; transform:scale(0.85) translateY(18px); } 100% { opacity:1; transform:none; } }
+.card-sheen { position:absolute; top:0; bottom:0; left:-40%; width:35%; pointer-events:none; z-index:3;
+  background:linear-gradient(105deg, transparent, rgba(255,255,255,0.35), transparent);
+  transform:skewX(-15deg); animation:sheenSweep 1.1s 0.4s ease both; }
+@keyframes sheenSweep { to { left:120%; } }
+
+/* カードの中に降り続けるキラキラ */
+.srain-p { position:absolute; top:-14px; font-size:0.8rem; opacity:0; pointer-events:none; z-index:2;
+  animation:srainFall linear infinite; }
+@keyframes srainFall {
+  0% { opacity:0; transform:translateY(0) rotate(0); }
+  12% { opacity:0.8; }
+  85% { opacity:0.8; }
+  100% { opacity:0; transform:translateY(230px) rotate(50deg); }
+}
+
 /* 「視差効果を減らす」設定の端末では、飾りの動きを全部止める */
 @media (prefers-reduced-motion: reduce) {
   .aurora, .rise, .bar-fill::after, .gem-pulse, .confetti-box i, .pop, .dot-wave,
@@ -4745,9 +5063,13 @@ body.night .aurora { filter:blur(60px) saturate(1.9) hue-rotate(var(--nh,0deg));
   .star, .float-emoji, .burst-p, .plus-one,
   .shooting-star, .star-real, .fall-bit, .rainbow-wave, .stardust, .spinner-donut,
   .chip-pop, .delta-up, .bar-rainbow, .sleepy, .wiggle, .hot-tag, .cleared-note,
-  .confetti-box .confetti-e, .tilt.flip { animation:none !important; }
-  .star, .float-emoji, .shooting-star, .fall-bit, .stardust { display:none; }
-  body.rainbow-mode .approot { animation:none !important; }
+  .confetti-box .confetti-e, .tilt.flip,
+  .welcome-toast, .rankup-ov, .rankup-gem, .rankup-txt, .rankup-name, .fw-p,
+  .big-moon, .lightning, .ripple, .rainbow-big, .rays, .cannon,
+  .card-in, .card-sheen, .srain-p { animation:none !important; }
+  .star, .float-emoji, .shooting-star, .fall-bit, .stardust,
+  .fw, .lightning, .ripple, .rays, .cannon, .card-sheen, .srain-p { display:none; }
+  body.rainbow-mode .approot, body.disco .approot { animation:none !important; }
   .tilt { transform:none !important; }
   .holo-layer { display:none; }
   ::view-transition-old(root), ::view-transition-new(root) { animation:none; }
