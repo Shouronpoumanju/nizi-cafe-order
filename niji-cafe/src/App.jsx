@@ -1393,13 +1393,12 @@ const VERSES = [
   { t: "主があなたを祝福し、あなたを守られますように。", r: "民数記 6:24" },
   { t: "わたしは世の光です。わたしに従う者は、決して闇の中を歩むことがなく、いのちの光を持ちます。", r: "ヨハネの福音書 8:12" },
 ];
-function TodayVerse({ menu }) {
+function TodayVerse() {
   const [open, setOpen] = useState(false);
   // 日付だけから決める＝この日に開いた全員が同じ一節を受け取る
   const seed = new Date().toLocaleDateString("ja-JP")
     .split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const v = VERSES[seed % VERSES.length];
-  const pick = menu.length ? menu[seed % menu.length] : null;
   return (
     <div className="toy-panel" style={{textAlign:"center"}}>
       {!open ? (
@@ -1411,9 +1410,6 @@ function TodayVerse({ menu }) {
           <div style={{fontSize:"1.6rem",marginBottom:8}}>📖</div>
           <div style={{fontWeight:700,lineHeight:1.8,marginBottom:8}}>{v.t}</div>
           <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:8}}>— {v.r}</div>
-          {pick && <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>
-            今日のおすすめ：{pick.emoji} {pick.name}
-          </div>}
           <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.68rem",marginTop:8}}>
             聖書 新改訳2017 ©2017 新日本聖書刊行会
           </div>
@@ -2035,7 +2031,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               </div>
               )}
               {/* 今日の一節（聖書 新改訳2017）と、実績バッジの棚 */}
-              <TodayVerse menu={menu}/>
+              <TodayVerse/>
               <BadgeShelf found={found} orders={orders}/>
               <RankingBoard customers={customers} myId={found.id}/>
               {/* めったに使わない操作なので、一番下で控えめに */}
