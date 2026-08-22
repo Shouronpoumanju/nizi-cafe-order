@@ -774,9 +774,16 @@ export default function App() {
     }
   };
 
+  // 50回に1回だけ、読み込みの虹リングが🍩になる（気づいた人はラッキー）
+  const [donutLuck] = useState(() => Math.random() < 0.02);
+  // キーボードで↑↑↓↓←→←→BAと打つと…（ゲーム好きへのご褒美）
+  useKonami();
+
   if (!loaded) return (
     <div style={S.loading}>
-      <div className="spinner" aria-hidden="true"/>
+      {donutLuck
+        ? <div className="spinner-donut" aria-hidden="true">🍩</div>
+        : <div className="spinner" aria-hidden="true"/>}
       読み込み中...
     </div>
   );
@@ -803,6 +810,11 @@ export default function App() {
 function NightMode() {
   useEffect(() => {
     document.body.classList.add("night");
+    // 時間帯で夜空の色味が少し変わる：夕方はピンク寄り、深夜は青寄り。
+    // 毎晩同じではない空。気づかなくても、なんとなく雰囲気が変わる。
+    const h = new Date().getHours();
+    const hue = (h >= 17 && h <= 20) ? "-25deg" : (h >= 2 && h <= 5) ? "35deg" : "0deg";
+    document.body.style.setProperty("--nh", hue);
     return () => document.body.classList.remove("night");
   }, []);
   return null;
@@ -811,28 +823,105 @@ function NightMode() {
 // ══════════════════════════════════════════
 //  HOME
 // ══════════════════════════════════════════
-// 開くたびに変わるあいさつ。ちょっとした「今日も来たな」感のため
-const TAGLINES = [
-  "きょうも、いつもの一杯を",
-  "こんばんは、ようこそ ☕",
-  "夜カフェ、はじまるよ 🌙",
-  "今日もおつかれさま！",
-  "甘いの？ すっきり系？",
-  "おかえりなさい 🌈",
-];
+// あいさつは時間帯で変わり、🌙は今夜の本当の月の形になる。
+// 朝は「おはよう」、深夜は「そろそろおやすみ」。アプリがこちらの時間を知っている感じ。
+function pickTagline() {
+  const h = new Date().getHours();
+  const moon = moonEmoji();
+  const pool =
+    h >= 5 && h <= 10 ? ["おはようございます ☀️","朝の一杯、いかが？","今日もいい日に 🌈"] :
+    h >= 11 && h <= 16 ? ["こんにちは！","甘いの？ すっきり系？","きょうも、いつもの一杯を"] :
+    h >= 2 && h <= 4  ? [`そろそろおやすみ ${moon}`,"夜ふかしさん、いらっしゃい"] :
+    [`こんばんは、ようこそ ${moon}`,`夜カフェ、はじまるよ ${moon}`,"今日もおつかれさま！","おかえりなさい 🌈"];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 
 function Home({ setScreen }) {
-  const [tagline] = useState(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)]);
+  const [tagline] = useState(pickTagline);
+  const season = seasonBits();
+
+  // 流れ星。1分に1回あるかないか。気づいた人は今日いいことがある
+  const [shoot, setShoot] = useState(null);
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (Math.random() < 0.4) {
+        setShoot({ id: Date.now(), top: 5 + Math.random() * 35, left: 30 + Math.random() * 55 });
+        setTimeout(() => setShoot(null), 1300);
+      }
+    }, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ロゴを3秒長押しすると出てくる、隠しメッセージ
+  const [secret, setSecret] = useState(false);
+  const pressT = useRef(null);
+  const pressStart = () => { pressT.current = setTimeout(() => {
+    setSecret(true); setTimeout(() => setSecret(false), 3000);
+  }, 3000); };
+  const pressEnd = () => clearTimeout(pressT.current);
+
+  // 虹の6色の点を、左から順に全部押せたら…（知っている人だけの花火）
+  const [dotStep, setDotStep] = useState(0);
+  const [wave, setWave] = useState(0);
+  const tapDot = (i) => {
+    if (i === dotStep) {
+      if (i === 5) { setDotStep(0); setWave(Date.now()); setTimeout(() => setWave(0), 1700); }
+      else setDotStep(i + 1);
+    } else setDotStep(i === 0 ? 1 : 0);
+  };
+
+  // パソコンだけ：カーソルの後ろに星屑の尾がつく
+  const [dust, setDust] = useState([]);
+  useEffect(() => {
+    if (!window.matchMedia || !window.matchMedia("(pointer:fine)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let last = 0;
+    const onMove = (e) => {
+      const now = Date.now();
+      if (now - last < 70) return;
+      last = now;
+      const id = now + Math.random();
+      setDust((d) => [...d.slice(-14), { id, x: e.clientX, y: e.clientY }]);
+      setTimeout(() => setDust((d) => d.filter((p) => p.id !== id)), 700);
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
+
   return (
     <div style={S.homeOuter}>
       <NightMode/>
 
-      {/* 星空。位置は計算式で散らしてある（毎回同じ配置なのでチラつかない） */}
+      {/* 星空。位置は計算式で散らしてある（毎回同じ配置なのでチラつかない）。
+          13番目だけは本物の✨で、押すとはじける */}
       {[...Array(26)].map((_, i) => (
-        <span key={"s"+i} className="star" style={{
-          left:`${(i * 41 + 7) % 100}%`, top:`${(i * 29 + 3) % 90}%`,
-          width:`${2 + (i % 3)}px`, height:`${2 + (i % 3)}px`,
-          animationDelay:`${(i % 7) * 0.45}s`}}/>
+        i === 13
+          ? <TapBurst key={"s"+i} emojis={["✨","💫","⭐"]}
+              style={{position:"absolute", left:`${(i * 41 + 7) % 100}%`, top:`${(i * 29 + 3) % 90}%`, fontSize:"0.8rem", zIndex:2}}>
+              <span className="star-real">✨</span>
+            </TapBurst>
+          : <span key={"s"+i} className="star" style={{
+              left:`${(i * 41 + 7) % 100}%`, top:`${(i * 29 + 3) % 90}%`,
+              width:`${2 + (i % 3)}px`, height:`${2 + (i % 3)}px`,
+              animationDelay:`${(i % 7) * 0.45}s`}}/>
+      ))}
+
+      {/* 流れ星 */}
+      {shoot && <span key={shoot.id} className="shooting-star" style={{top:`${shoot.top}%`, left:`${shoot.left}%`}}/>}
+
+      {/* 季節の飾り（12月は雪、ハロウィンは🎃、春は🌸。日付で勝手に切り替わる） */}
+      {season && season.bits.map((b, i) => (
+        <span key={"f"+i} className="fall-bit" style={{
+          left:`${5 + i * 17}%`, fontSize:`${0.9 + (i % 3) * 0.25}rem`,
+          animationDuration:`${9 + (i % 4) * 3}s`, animationDelay:`${i * 1.8}s`}}>{b}</span>
+      ))}
+
+      {/* 虹色の波（6色の点を順番に全部押せた人だけが見られる） */}
+      {wave !== 0 && <div key={wave} className="rainbow-wave" aria-hidden="true"/>}
+
+      {/* 星屑の尾（パソコンのみ） */}
+      {dust.map((p) => (
+        <span key={p.id} className="stardust" style={{left:p.x, top:p.y}}>✦</span>
       ))}
 
       {/* ぷかぷか浮かんで夜空へのぼっていく、夜カフェの住人たち */}
@@ -848,15 +937,18 @@ function Home({ setScreen }) {
       <div className="aurora" style={{...S.homeBgCircle3, animationDelay:"-7s"}}/>
 
       <div style={S.homeWrap}>
-        {/* ロゴ。押すと絵文字がはじける（役には立たないが、押したくなる） */}
-        <TapBurst emojis={["☕","⭐","🧋","🌈","💜","🍩"]}>
-          <div style={S.rainbowLogoWrap}>
-            <div style={S.rainbowLogoInner}>
-              <span style={{fontSize:52}}>🌈</span>
+        {/* ロゴ。押すと絵文字がはじける。3秒長押しで隠しメッセージ */}
+        <div onPointerDown={pressStart} onPointerUp={pressEnd} onPointerLeave={pressEnd}>
+          <TapBurst emojis={["☕","⭐","🧋","🌈","💜","🍩"]}>
+            <div style={S.rainbowLogoWrap}>
+              <div style={S.rainbowLogoInner}>
+                <span style={{fontSize:52}}>🌈</span>
+              </div>
+              <div style={S.rainbowGlow}/>
             </div>
-            <div style={S.rainbowGlow}/>
-          </div>
-        </TapBurst>
+          </TapBurst>
+        </div>
+        {secret && <div className="secret-toast">虹カフェ v4 — いつもありがとう 🌈</div>}
 
         {/* ブランド名 ＝ ネオン看板。
             開いた瞬間、文字が「パチ…パチ…ポワッ」と1文字ずつ順に点灯する。
@@ -888,14 +980,20 @@ function Home({ setScreen }) {
           </button>
         </div>
 
-        {/* 虹の点。順番に小さくはねる（音の無いメトロノームのように） */}
+        {/* 虹の点。順番に小さくはねる。
+            そして——左から順に6個ぜんぶ押せた人には、いいことがある */}
         <div style={S.decoRow}>
           {["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4"].map((c,i)=>(
-            <span key={i} className="dot-wave"
+            <span key={i} className="dot-wave" onClick={()=>tapDot(i)}
               style={{width:9,height:9,borderRadius:"50%",background:c,display:"inline-block",
+                cursor:"pointer", padding:0,
+                boxShadow: i < dotStep ? `0 0 8px ${c}` : "none",
                 animationDelay:`${i*0.18}s`}}/>
           ))}
         </div>
+
+        {/* お正月（1/1〜1/3）だけの一言 */}
+        {isNewYear() && <div className="newyear">あけましておめでとう 🎍</div>}
       </div>
     </div>
   );
@@ -910,6 +1008,14 @@ function Home({ setScreen }) {
 // 「視差効果を減らす」設定の端末では何もしない。
 function HoloCard({ className, style, children }) {
   const ref = useRef(null);
+  // ダブルタップでカードがくるっと一回転する（トレカを裏返す癖のある人へ）
+  const [flip, setFlip] = useState(false);
+  const doFlip = () => {
+    if (flip) return;
+    setFlip(true);
+    setTimeout(() => setFlip(false), 900);
+    try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
   useEffect(() => {
     if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const el = ref.current;
@@ -941,11 +1047,70 @@ function HoloCard({ className, style, children }) {
     };
   }, []);
   return (
-    <div ref={ref} className={"tilt " + (className || "")} style={style}>
+    <div ref={ref} className={"tilt " + (flip ? "flip " : "") + (className || "")} style={style}
+      onDoubleClick={doFlip}>
       {children}
       <div className="holo-layer" aria-hidden="true"/>
     </div>
   );
+}
+
+// ══════════════════════════════════════════
+//  隠れた遊び心のための小道具たち
+// ══════════════════════════════════════════
+// 今夜の月の形。2000年1月6日の新月を起点に、月の満ち欠け周期（29.53日）で計算する。
+// あいさつ文の🌙が、実際の空の月と同じ形になる。気づいた人だけが得をする。
+function moonEmoji() {
+  const days = (Date.now() - Date.UTC(2000, 0, 6, 18, 14)) / 86400000;
+  const phase = ((days / 29.53059) % 1 + 1) % 1;
+  return ["🌑","🌒","🌓","🌔","🌕","🌖","🌗","🌘"][Math.floor(phase * 8) % 8];
+}
+
+// 季節の飾り。日付だけで自動で切り替わる（誰も設定しなくていい）
+function seasonBits() {
+  const d = new Date(), m = d.getMonth() + 1, day = d.getDate();
+  if (m === 12 && day <= 25) return { bits:["❄","❄","❅","❄","❆","❄"], name:"snow" };
+  if (m === 10 && day >= 15) return { bits:["🎃","🦇","🎃","🦇","👻","🦇"], name:"halloween" };
+  if ((m === 3 && day >= 25) || (m === 4 && day <= 15)) return { bits:["🌸","🌸","🌸","💮","🌸","🌸"], name:"sakura" };
+  return null;
+}
+const isNewYear = () => { const d = new Date(); return d.getMonth() === 0 && d.getDate() <= 3; };
+
+// 「ぽっ」という小さな効果音。音源ファイル無しで、その場で音を作る。
+// 初期はオフ。注文画面の🔕ボタンでオンにできる（端末のマナーモードには従う）。
+let _audioCtx = null;
+function popSound() {
+  try {
+    if (localStorage.getItem("niji_snd") !== "on") return;
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(620, _audioCtx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(180, _audioCtx.currentTime + 0.09);
+    g.gain.setValueAtTime(0.12, _audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.1);
+    o.connect(g); g.connect(_audioCtx.destination);
+    o.start(); o.stop(_audioCtx.currentTime + 0.11);
+  } catch {}
+}
+
+// コナミコマンド（↑↑↓↓←→←→BA）。成功すると10秒だけ世界が虹色に回る。
+function useKonami() {
+  useEffect(() => {
+    const SEQ = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","b","a"];
+    let i = 0;
+    const onKey = (e) => {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      i = (k === SEQ[i]) ? i + 1 : (k === SEQ[0] ? 1 : 0);
+      if (i === SEQ.length) {
+        i = 0;
+        document.body.classList.add("rainbow-mode");
+        setTimeout(() => document.body.classList.remove("rainbow-mode"), 10000);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 }
 
 // ══════════════════════════════════════════
@@ -1019,6 +1184,53 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [ordered,      setOrdered]      = useState(false);
   // 注文完了のメッセージは毎回変わる（同じ言葉より、ちょっと嬉しい）
   const [okMsg,        setOkMsg]        = useState("注文を受け付けました！");
+  const [okIcon,       setOkIcon]       = useState("✅");   // 20回に1回だけ🎉や⭐になる
+  const [okExtra,      setOkExtra]      = useState("");     // 「今日の一杯目！」などのお祝い
+  const [okEmojis,     setOkEmojis]     = useState(null);   // 紙吹雪の代わりに降る、頼んだ物の絵文字
+  const [errN,         setErrN]         = useState(0);      // 暗証番号を間違えた回数（入力欄がぷるぷるする用）
+  const [cleared,      setCleared]      = useState(0);      // カートを空にした直後の「また選んでね〜」
+  // 残高の数字を2秒以内に5回連打すると🪙がはじける（隠し）
+  const coinTaps = useRef({ n:0, t:0 });
+  const [coinBurst, setCoinBurst] = useState(0);
+  const tapBalance = () => {
+    const now = Date.now();
+    if (now - coinTaps.current.t > 2000) coinTaps.current.n = 0;
+    coinTaps.current.t = now;
+    if (++coinTaps.current.n >= 5) {
+      coinTaps.current.n = 0;
+      setCoinBurst(now);
+      setTimeout(() => setCoinBurst(0), 900);
+    }
+  };
+  // 前回より残高が増えていたら「+¥◯◯」がふわっと浮かぶ（チャージ直後のお祝い）
+  const prevBal = useRef(null);
+  const [delta, setDelta] = useState(null);
+  useEffect(() => {
+    if (!found) { prevBal.current = null; return; }
+    const b = found.balance;
+    if (prevBal.current !== null && b > prevBal.current) {
+      setDelta({ v: b - prevBal.current, id: Date.now() });
+      setTimeout(() => setDelta(null), 1800);
+    }
+    prevBal.current = b;
+  }, [found && found.balance]);
+  // 60秒さわらないと、カードのそばに💤が浮かぶ（居眠り）
+  const [sleepy, setSleepy] = useState(false);
+  const lastActive = useRef(Date.now());
+  useEffect(() => {
+    const wake = () => { lastActive.current = Date.now(); setSleepy(false); };
+    const timer = setInterval(() => {
+      if (Date.now() - lastActive.current > 60000) setSleepy(true);
+    }, 5000);
+    window.addEventListener("pointerdown", wake);
+    window.addEventListener("scroll", wake, true);
+    return () => { clearInterval(timer); window.removeEventListener("pointerdown", wake); window.removeEventListener("scroll", wake, true); };
+  }, []);
+  // 注文が準備中のあいだ、ブラウザのタブ名も一緒に待ってくれる
+  useEffect(() => {
+    document.title = myPendingOrder ? "☕ 準備中… | 虹カフェ" : "虹カフェ";
+    return () => { document.title = "虹カフェ"; };
+  });
   const [benefitItems, setBenefitItems] = useState([]); // 無料特典アイテム
   const [benefitUsed,  setBenefitUsed]  = useState(false); // この注文で特典使用
   const [busy,         setBusy]         = useState(false);
@@ -1045,13 +1257,13 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       setBusy(false);
       return;
     } catch (e) {
-      if (e.rejected) { setErr("暗証番号が一致しませんでした"); setBusy(false); return; }
+      if (e.rejected) { setErr("暗証番号が一致しませんでした。もう一回！"); setErrN(n=>n+1); setBusy(false); return; }
       // サーバーに繋がらないときは、お店が止まらないよう今までの方法で探す
       console.warn("サーバーに繋がらないため、従来の方法で確認します", e);
     }
     const c = (allCustomers || []).find(c => c && c.pin === v);
     if (c) { setBoot(null); custToken.current = null; setFound(c); reset(); }
-    else setErr("暗証番号が一致しませんでした");
+    else { setErr("暗証番号が一致しませんでした。もう一回！"); setErrN(n=>n+1); }
     setBusy(false);
   };
 
@@ -1225,6 +1437,16 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     }
     const OK = ["注文を受け付けました！","うけたまわりました〜！","ありがとうございます♪","ただいまお作りします！","ナイスチョイス！✨"];
     setOkMsg(OK[Math.floor(Math.random() * OK.length)]);
+    // ✅は20回に1回だけ🎉か⭐になる（当たり）
+    setOkIcon(Math.random() < 0.05 ? (Math.random() < 0.5 ? "🎉" : "⭐") : "✅");
+    // 紙吹雪の代わりに、頼んだドリンクの絵文字が降ってくる
+    setOkEmojis([...cart.map(c => c.emoji), ...benefitItems.map(b => b.emoji)].filter(Boolean));
+    // 節目のお祝い：10杯ごと／その日の最初の注文
+    const mine = (orders || []).filter(o => o && String(o.customerId) === String(found.id));
+    const nth = mine.length + 1;
+    const todayKey = new Date().toLocaleDateString("ja-JP");
+    const firstToday = !mine.some(o => String(o.createdAt || "").indexOf(todayKey + " ") === 0);
+    setOkExtra(nth % 10 === 0 ? `☕ これで${nth}杯目のご注文！` : firstToday ? "今日の一杯目！" : "");
     setCart([]); setBenefitItems([]); setBenefitUsed(false); setOrdered(true);
     // 対応している端末（主にAndroid）では、注文完了を指先にも「トン・トン」と伝える
     try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
@@ -1258,7 +1480,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       {!found ? (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <p style={S.hint}>暗証番号を入力してください</p>
+          {/* 間違えると入力欄がぷるぷる震える（クラスを交互に付け替えて毎回震わせる） */}
           <input style={S.input} type="password" placeholder="暗証番号" value={input}
+            className={errN ? `wobble-${errN % 2}` : ""}
             onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()}/>
           {err && <p style={S.err}>{err}</p>}
           <button className="btn-gold" onClick={search}>確認する</button>
@@ -1269,7 +1493,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             {[
               ["ticket","🎫 チケット"],
               ["order","🛒 注文する"],
-              ...(found.isVIP ? [["present","🎁 プレゼント"]] : []),
+              // 🎁はときどきもぞもぞ動く（中身が気になっているらしい）
+              ...(found.isVIP ? [["present", <span key="p"><span className="wiggle">🎁</span> プレゼント</span>]] : []),
             ].map(([k,l])=>(
               <button key={k} className={`tab-btn ${cvTab===k?"active":""}`} onClick={()=>setCvTab(k)}
                 style={{position:"relative"}}>
@@ -1300,12 +1525,31 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   </span>
                 </div>
                 {/* 残高はランクに関係なく、いつも一番はっきり読める濃さにする。
-                    この画面を開く理由がこれなので、色よりも読みやすさを優先する。 */}
-                <div style={{marginBottom:16}}>
-                  <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:2}}>のこり</div>
-                  <div style={{color:"var(--ink-strong,#2f2925)",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,fontVariantNumeric:"tabular-nums"}}>
-                    ¥<CountUp value={found.balance}/>
+                    この画面を開く理由がこれなので、色よりも読みやすさを優先する。
+                    隠し：5回連打で🪙／ゾロ目や777だとお祝いが付く */}
+                <div style={{marginBottom:16,position:"relative"}}>
+                  <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:2}}>
+                    のこり
+                    {sleepy && <span className="sleepy" aria-hidden="true">💤</span>}
                   </div>
+                  <div onClick={tapBalance}
+                    style={{color:"var(--ink-strong,#2f2925)",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,fontVariantNumeric:"tabular-nums"}}>
+                    ¥<CountUp value={found.balance}/>
+                    {delta && <span key={delta.id} className="delta-up">+¥{delta.v.toLocaleString()}</span>}
+                    {String(found.balance).includes("777") &&
+                      <span className="chip-pop">ラッキーセブン！🎰</span>}
+                    {found.balance >= 111 && /^(\d)\1+$/.test(String(found.balance)) && !String(found.balance).includes("777") &&
+                      <span className="chip-pop">ゾロ目！✨</span>}
+                    {coinBurst !== 0 && (
+                      <span key={coinBurst} className="burst" aria-hidden="true">
+                        {["🪙","🪙","🪙","🪙","🪙","🪙","🪙","🪙"].map((e,i)=>(
+                          <span key={i} className="burst-p" style={{"--a":`${i*45}deg`}}>{e}</span>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                  {found.balance === 0 &&
+                    <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.8rem",marginTop:4}}>また来てね ☕</div>}
                 </div>
                 <div style={{...S.benefitBox,borderColor:rank.color+"55",background:rank.color+"11"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1334,7 +1578,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     ? <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>あと{next.min-cyp}回で <span style={{color:next.color,fontWeight:700}}>{next.gem}{next.name}</span></span>
                     : <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>最高ランクです</span>}
                 </div>
-                {next && <div style={S.bar}><div className="bar-fill" style={{width:`${pct}%`,background:rank.color}}/></div>}
+                {/* ランクアップまであと1回のときだけ、バーが虹色に脈打つ（もうすぐの高鳴り） */}
+                {next && <div style={S.bar}>
+                  <div className={`bar-fill${next.min - cyp === 1 ? " bar-rainbow" : ""}`}
+                    style={{width:`${pct}%`,background:rank.color}}/>
+                </div>}
               </HoloCard>
               {/* ランク一覧は9行あり、毎回見る情報ではない。
                   常に開いていると本題（残高と特典）が画面外に押し出されるので、
@@ -1411,15 +1659,21 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 </div>
               ) : ordered ? (
                 <div style={{textAlign:"center",padding:"32px 16px"}}>
-                  {/* 紙吹雪。注文は小さなお祝い。1.5秒で消えて、あとは静かに戻る */}
+                  {/* 紙吹雪——ではなく、いま頼んだドリンクの絵文字が降ってくる */}
                   <div className="confetti-box" aria-hidden="true">
-                    {["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4",
+                    {okEmojis && okEmojis.length ? [...Array(12)].map((_,i)=>(
+                      <span key={i} className="confetti-e" style={{left:`${6+i*8}%`,
+                        animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}>
+                        {okEmojis[i % okEmojis.length]}
+                      </span>
+                    )) : ["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4",
                       "#e8759b","#5fa878","#5b93c9","#d9a821","#8a7cc4","#e8944a"].map((c,i)=>(
                       <i key={i} style={{left:`${6+i*8}%`,background:c,
                         animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}/>
                     ))}
                   </div>
-                  <div className="pop" style={{fontSize:"3rem",marginBottom:12}}>✅</div>
+                  <div className="pop" style={{fontSize:"3rem",marginBottom:12}}>{okIcon}</div>
+                  {okExtra && <div className="chip-pop" style={{position:"static",display:"inline-block",marginBottom:8}}>{okExtra}</div>}
                   <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.15rem",marginBottom:6}}>{okMsg}</div>
                   <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
                   <button className="btn-ghost" style={{marginTop:20}} onClick={()=>setOrdered(false)}>続けて注文する</button>
@@ -1463,6 +1717,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       availableTopping={availableTopping}
                     />
                   )}
+
+                  {/* カートを空にした直後だけ、ひとこと */}
+                  {cleared !== 0 && <div key={cleared} className="cleared-note">また選んでね〜</div>}
 
                   {/* ── メニュー（カテゴリタブ） ── */}
                   <OrderMenuTabs
@@ -1530,10 +1787,12 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                           </div>
                           <span style={{color:"var(--ink-strong,#2f2925)",fontWeight:800,fontSize:"1.7rem",letterSpacing:"-0.02em"}}>¥{total.toLocaleString()}</span>
                         </div>
+                        {/* ちょうど500円なら「ワンコイン！」 */}
+                        {total === 500 && <div className="chip-pop" style={{position:"static",display:"inline-block",marginBottom:8}}>ワンコイン！🪙</div>}
                         {/* 「クリア」は間違って押されると全部消える操作なので、小さく端に置く */}
                         <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
                           <button className="btn-clear" style={{flexShrink:0,padding:"13px 14px",fontSize:"0.85rem"}}
-                            onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false);}}>クリア</button>
+                            onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false); setCleared(Date.now()); setTimeout(()=>setCleared(0),1600);}}>クリア</button>
                           <button className="btn-pay"
                             disabled={(cart.length===0 && benefitItems.length===0) || total>found.balance}
                             style={{opacity:(cart.length>0||benefitItems.length>0)&&total<=found.balance?1:0.35,fontSize:"1rem"}}
@@ -1835,6 +2094,14 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
   const [activeTab, setActiveTab] = useState(categories[0] || "");
   // 直前に追加した商品（「+1」の飛び出しを出す場所）
   const [lastAdd, setLastAdd] = useState(null);
+  // 効果音のオン・オフ（初期はオフ。設定は端末に記憶される）
+  const [sndOn, setSndOn] = useState(() => { try { return localStorage.getItem("niji_snd") === "on"; } catch { return false; } });
+  const toggleSnd = () => {
+    const next = !sndOn;
+    setSndOn(next);
+    try { localStorage.setItem("niji_snd", next ? "on" : "off"); } catch {}
+    if (next) popSound();   // オンにした瞬間に一度鳴らして、音量を確かめられるように
+  };
 
   return (
     <div>
@@ -1853,6 +2120,12 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
             {cat}
           </button>
         ))}
+        {/* 効果音の切り替え（押すと「ぽっ」と鳴る。初期はオフ） */}
+        <button onClick={toggleSnd} title="効果音"
+          style={{marginLeft:"auto",flexShrink:0,background:"transparent",border:"none",
+            padding:"9px 12px",cursor:"pointer",fontSize:"0.95rem",opacity:sndOn?1:0.45}}>
+          {sndOn ? "🔔" : "🔕"}
+        </button>
       </div>
       {/* 選択カテゴリのメニュー */}
       <div style={{background:"var(--card,#ffffff)",borderRadius:"0 0 10px 10px",padding:"10px 8px",marginBottom:8}}>
@@ -1861,12 +2134,13 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
             const inCart=cart.find(c=>c.id===item.id);
             return (
               <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`}
-                onClick={()=>{ addToCart(item); setLastAdd({id:item.id, n:Date.now()}); }}>
+                onClick={()=>{ addToCart(item); setLastAdd({id:item.id, n:Date.now()}); popSound(); }}>
                 {/* 押した瞬間、絵文字がぷるんと弾んで「+1」が飛び出す */}
                 <span className="m-emoji" style={{fontSize:"1.4rem"}}>{item.emoji}</span>
                 <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                 {inCart&&<div key={inCart.qty} className="pop" style={S.cartBadge}>{inCart.qty}</div>}
+                {inCart&&inCart.qty>=5&&<span className="hot-tag">大人気！</span>}
                 {lastAdd && lastAdd.id===item.id && <span key={lastAdd.n} className="plus-one">+1</span>}
               </button>
             );
@@ -4341,12 +4615,139 @@ body:not(.night) .neon-ch { color:#c98ab0; text-shadow:0 0 10px var(--nc,#ff6ec7
 /* 夜は「注文する」ボタンがやわらかく光る */
 body.night .btn-pay { box-shadow:0 0 20px rgba(255,209,102,0.35); }
 
+/* ── 隠れた遊び心たち ────────────────────── */
+/* 流れ星：光の尾を引いて斜めに流れる */
+.shooting-star { position:absolute; width:2px; height:2px; border-radius:50%; background:#fff;
+  box-shadow:0 0 8px 2px rgba(255,255,255,0.7); pointer-events:none;
+  animation:shootStar 1.1s ease-out forwards; }
+.shooting-star::after { content:""; position:absolute; right:0; top:0; width:90px; height:1.5px;
+  background:linear-gradient(90deg, rgba(255,255,255,0.85), transparent);
+  transform:rotate(0deg); transform-origin:right center; }
+@keyframes shootStar {
+  0%   { opacity:0; transform:translate(0,0) rotate(-30deg); }
+  10%  { opacity:1; }
+  100% { opacity:0; transform:translate(-190px,110px) rotate(-30deg); }
+}
+
+/* 星空の中の「本物の星」 */
+.star-real { display:inline-block; animation:twinkle 2.4s ease-in-out infinite; }
+
+/* 季節の飾り：ひらひら落ちてくる */
+.fall-bit { position:absolute; top:-40px; pointer-events:none; opacity:0;
+  animation:fallDown linear infinite; }
+@keyframes fallDown {
+  0%   { transform:translateY(0) rotate(-12deg); opacity:0; }
+  8%   { opacity:0.9; }
+  90%  { opacity:0.9; }
+  100% { transform:translateY(108vh) rotate(14deg); opacity:0; }
+}
+
+/* 虹色の波（6色の点コンプリートのご褒美） */
+.rainbow-wave { position:fixed; inset:0; z-index:99; pointer-events:none;
+  background:linear-gradient(105deg, transparent 20%,
+    rgba(232,117,155,0.5), rgba(255,221,130,0.5), rgba(159,220,174,0.5),
+    rgba(143,194,238,0.5), rgba(184,172,224,0.5), transparent 80%);
+  mix-blend-mode:screen; transform:translateX(-110%);
+  animation:waveSweep 1.5s ease-in-out forwards; }
+@keyframes waveSweep { to { transform:translateX(110%); } }
+
+/* コナミコマンド成功中：世界が虹色に回る */
+body.rainbow-mode .approot { animation:hueSpin 2.2s linear infinite; }
+@keyframes hueSpin { to { filter:hue-rotate(360deg); } }
+
+/* 星屑の尾（パソコンのカーソル用） */
+.stardust { position:fixed; z-index:98; pointer-events:none; color:#fff;
+  font-size:0.6rem; transform:translate(-50%,-50%);
+  text-shadow:0 0 6px rgba(255,255,255,0.8);
+  animation:dustFade 0.7s ease-out forwards; }
+@keyframes dustFade { to { opacity:0; transform:translate(-50%,-160%) scale(0.4); } }
+
+/* ロゴ長押しの隠しメッセージ */
+.secret-toast { margin-top:10px; padding:8px 16px; border-radius:999px; font-size:0.85rem;
+  background:rgba(255,255,255,0.12); color:#f2edff; border:1px solid rgba(255,255,255,0.25);
+  animation:rise 0.4s ease both; }
+
+/* お正月のひとこと */
+.newyear { margin-top:12px; font-size:0.9rem; color:#ffd166;
+  text-shadow:0 0 10px rgba(255,209,102,0.5); animation:rise 0.6s ease both; }
+
+/* 読み込みの当たり（🍩） */
+.spinner-donut { font-size:34px; margin:0 auto 12px; width:40px; text-align:center;
+  animation:spin 0.9s linear infinite; }
+
+/* ゾロ目・ワンコイン・節目のお祝いチップ */
+.chip-pop { position:absolute; top:-10px; right:-4px; font-size:0.72rem; font-weight:800;
+  background:rgba(255,209,102,0.18); color:#ffd166; border:1px solid rgba(255,209,102,0.5);
+  border-radius:999px; padding:3px 10px; white-space:nowrap;
+  animation:popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
+body:not(.night) .chip-pop { color:#a9791a; background:#faf0dc; border-color:#e8c14a88; }
+
+/* チャージのお祝い（+¥◯◯がふわっと浮かぶ） */
+.delta-up { position:absolute; margin-left:8px; font-size:1rem; font-weight:800; color:#74f7a1;
+  text-shadow:0 0 10px rgba(116,247,161,0.5);
+  animation:deltaFloat 1.7s ease-out forwards; }
+@keyframes deltaFloat {
+  0% { opacity:0; transform:translateY(6px); } 20% { opacity:1; }
+  100% { opacity:0; transform:translateY(-22px); }
+}
+
+/* ランクアップまであと1回：バーが虹色に脈打つ */
+.bar-rainbow { background:linear-gradient(90deg,#ff6ec7,#ffd166,#74f7a1,#4deeea,#b28dff,#ff6ec7) !important;
+  background-size:300% 100% !important;
+  animation:rainbowShift 2.4s linear infinite, barPulse 1.6s ease-in-out infinite; }
+@keyframes barPulse { 0%,100% { opacity:1; } 50% { opacity:0.65; } }
+
+/* 暗証番号を間違えたとき、入力欄がぷるぷる震える（2つで交互に鳴らして毎回動かす） */
+@keyframes wobbleA { 0%,100%{transform:translateX(0);} 20%{transform:translateX(-7px);} 40%{transform:translateX(6px);} 60%{transform:translateX(-4px);} 80%{transform:translateX(2px);} }
+@keyframes wobbleB { 0%,100%{transform:translateX(0);} 20%{transform:translateX(-7px);} 40%{transform:translateX(6px);} 60%{transform:translateX(-4px);} 80%{transform:translateX(2px);} }
+.wobble-0 { animation:wobbleA 0.4s ease; }
+.wobble-1 { animation:wobbleB 0.4s ease; }
+
+/* 居眠りの💤 */
+.sleepy { display:inline-block; margin-left:6px; animation:sleepFloat 2.4s ease-in-out infinite; }
+@keyframes sleepFloat { 0%,100% { transform:translateY(0); opacity:0.5; } 50% { transform:translateY(-5px); opacity:1; } }
+
+/* 🎁のもぞもぞ */
+.wiggle { display:inline-block; animation:wiggleMove 10s ease-in-out infinite; }
+@keyframes wiggleMove {
+  0%,92%,100% { transform:rotate(0); }
+  93% { transform:rotate(-12deg); } 95% { transform:rotate(10deg); } 97% { transform:rotate(-6deg); }
+}
+
+/* 「大人気！」タグ */
+.hot-tag { position:absolute; bottom:6px; right:6px; font-size:0.65rem; font-weight:800;
+  color:#ff6ec7; background:rgba(255,110,199,0.14); border:1px solid rgba(255,110,199,0.5);
+  border-radius:999px; padding:2px 8px; animation:popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+/* カートを空にした直後のひとこと */
+.cleared-note { text-align:center; color:var(--ink3,#9a8f85); font-size:0.85rem; padding:6px 0;
+  animation:clearFade 1.6s ease forwards; }
+@keyframes clearFade { 0% { opacity:0; } 15% { opacity:1; } 75% { opacity:1; } 100% { opacity:0; } }
+
+/* 注文した物が降ってくる紙吹雪 */
+.confetti-box .confetti-e { position:absolute; top:-6px; font-size:1.1rem;
+  animation:confettiFall 1.5s ease-in forwards; }
+
+/* カードのくるっと一回転（ダブルタップ） */
+.tilt.flip { animation:cardFlip 0.85s cubic-bezier(0.3,0.7,0.3,1); }
+@keyframes cardFlip {
+  0% { transform:perspective(900px) rotateY(0); }
+  100% { transform:perspective(900px) rotateY(360deg); }
+}
+
+/* 夜空の色味が時間で変わる */
+body.night .aurora { filter:blur(60px) saturate(1.9) hue-rotate(var(--nh,0deg)); }
+
 /* 「視差効果を減らす」設定の端末では、飾りの動きを全部止める */
 @media (prefers-reduced-motion: reduce) {
   .aurora, .rise, .bar-fill::after, .gem-pulse, .confetti-box i, .pop, .dot-wave,
   .btn-rainbow, .spinner, .neon-ch, .neon-flicker,
-  .star, .float-emoji, .burst-p, .plus-one { animation:none !important; }
-  .star, .float-emoji { display:none; }
+  .star, .float-emoji, .burst-p, .plus-one,
+  .shooting-star, .star-real, .fall-bit, .rainbow-wave, .stardust, .spinner-donut,
+  .chip-pop, .delta-up, .bar-rainbow, .sleepy, .wiggle, .hot-tag, .cleared-note,
+  .confetti-box .confetti-e, .tilt.flip { animation:none !important; }
+  .star, .float-emoji, .shooting-star, .fall-bit, .stardust { display:none; }
+  body.rainbow-mode .approot { animation:none !important; }
   .tilt { transform:none !important; }
   .holo-layer { display:none; }
   ::view-transition-old(root), ::view-transition-new(root) { animation:none; }
