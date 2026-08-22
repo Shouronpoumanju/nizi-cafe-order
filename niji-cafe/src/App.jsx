@@ -879,15 +879,19 @@ function Home({ setScreen }) {
     return () => clearInterval(t);
   }, []);
 
-  // 満月の夜に来た実績（本物の月齢と連動）
+  // 満月の夜・真夜中・早起きの実績（開いた時刻と本物の月齢で決まる）
   useEffect(() => {
     if (moonEmoji() === "🌕") unlockAch("niji_ach_moon", "満月の夜に来た");
+    const h = new Date().getHours();
+    if (h <= 4) unlockAch("niji_ach_midnight", "真夜中の来訪者");
+    if (h >= 5 && h <= 7) unlockAch("niji_ach_dawn", "早起きさん");
   }, []);
 
   // ロゴを4秒以内に10連打すると、花火大会が始まる
   const logoTaps = useRef({ n: 0, t: 0 });
   const [fireworks, setFireworks] = useState(null);
   const countLogoTap = () => {
+    bumpAch("niji_cnt_logo", 50, "niji_ach_logo50", "🌈の親友");
     const now = Date.now();
     if (now - logoTaps.current.t > 4000) logoTaps.current.n = 0;
     logoTaps.current.t = now;
@@ -896,6 +900,7 @@ function Home({ setScreen }) {
       setFireworks(Date.now());
       setTimeout(() => setFireworks(null), 3600);
       unlockAch("niji_ach_fw", "花火師");
+      bumpAch("niji_cnt_fwshow", 3, "niji_ach_fw3", "花火大会の常連");
       try { navigator.vibrate && navigator.vibrate([20, 50, 20, 50, 20, 50, 60]); } catch {}
     }
   };
@@ -914,6 +919,7 @@ function Home({ setScreen }) {
       document.body.classList.add("disco");
       setTimeout(() => document.body.classList.remove("disco"), 6000);
       unlockAch("niji_ach_disco", "ディスコ王");
+      bumpAch("niji_cnt_discoN", 3, "niji_ach_disco3", "おどりあかした");
     }
   };
 
@@ -925,6 +931,7 @@ function Home({ setScreen }) {
     setRipples((r) => [...r.slice(-4), { id, x: e.clientX, y: e.clientY }]);
     setTimeout(() => setRipples((r) => r.filter((p) => p.id !== id)), 950);
     bumpAch("niji_cnt_ripple", 10, "niji_ach_ripple", "波紋あそび");
+    bumpAch("niji_cnt_rippleB", 50, "niji_ach_ripple50", "池のぬし");
   };
 
   // ロゴを3秒長押しすると出てくる、隠しメッセージ
@@ -1215,6 +1222,7 @@ function popSound() {
     g.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.1);
     o.connect(g); g.connect(_audioCtx.destination);
     o.start(); o.stop(_audioCtx.currentTime + 0.11);
+    bumpAch("niji_cnt_pop", 10, "niji_ach_pop10", "音と一緒に");
   } catch {}
 }
 
@@ -1250,6 +1258,7 @@ function TapBurst({ emojis, children, className, style }) {
     setBursts((b) => [...b, id]);
     setTimeout(() => setBursts((b) => b.filter((x) => x !== id)), 900);
     try { navigator.vibrate && navigator.vibrate(8); } catch {}
+    bumpAch("niji_cnt_burst", 20, "niji_ach_burst20", "はじけ職人");
   };
   return (
     <span className={className} style={{position:"relative",display:"inline-block",cursor:"pointer",...style}} onClick={fire}>
@@ -1375,6 +1384,7 @@ function DrinkRoulette({ menu, onPick }) {
   const timer = useRef(null);
   const start = () => {
     if (!menu.length) return;
+    bumpAch("niji_cnt_spin", 10, "niji_ach_spin10", "まわして10回");
     clearTimeout(timer.current);
     let speed = 55, elapsed = 0;
     const tick = () => {
@@ -1447,6 +1457,7 @@ function TodayVerse() {
           setOpen(true);
           try { navigator.vibrate && navigator.vibrate(10); } catch {}
           unlockAch("niji_ach_verse", "一節を開いた");
+          bumpAch("niji_cnt_verseN", 10, "niji_ach_verse10", "みことば愛読");
           // 7日ぶん（別々の日付）読んだら「みことばの習慣」
           try {
             const today = new Date().toLocaleDateString("ja-JP");
@@ -1475,6 +1486,127 @@ function TodayVerse() {
 // 🏆 実績バッジ棚。来店の記録から自動で解放されるものと、
 // 隠しギミック（花火・ディスコ・虹の点・コナミ）を見つけると解放されるものがある。
 // まだの物は「？？？」。集めたくなるやつ。
+// 🏆 実績バッジ棚（100個）。来店の記録・注文の中身・時間帯・遊びの発見・
+// やりこみ度から自動で解放されていく。まだの物は「？？？」。
+// ヒントは付けない——探すのも遊びのうち。
+function BadgeShelf100({ found, orders }) {
+  const ls  = (k) => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
+  const dset = (k) => { try { return (localStorage.getItem(k) || "").split(",").filter(Boolean).length; } catch { return 0; } };
+  const mine = (orders || []).filter((o) => o && String(o.customerId) === String(found.id));
+  const cups = Math.max(mine.length, (found.history || []).filter((h) => h && h.type === "use").length);
+  const hourOf = (s) => parseInt(String(s || "").split(" ")[1]) || 12;
+  const dayOf = (s) => { const m = String(s || "").match(/(\d+)\/(\d+)\/(\d+)/); return m ? new Date(+m[1], +m[2] - 1, +m[3]).getDay() : 3; };
+  const names = mine.map((o) => [...(o.items || []), ...(o.benefitItems || [])].map((i) => i && i.name).join("、")).join("、");
+  const has = (re) => re.test(names);
+  const totals = mine.map((o) => Number(o.total || 0));
+  const qtyMax = mine.reduce((m, o) => Math.max(m, 0, ...(o.items || []).map((i) => i.qty || 1)), 0);
+  const sizeMax = mine.reduce((m, o) => Math.max(m, (o.items || []).reduce((s, i) => s + (i.qty || 1), 0)), 0);
+  const y = found.currentYearPurchases || 0, rb = found.rankBasis || 0, bal = found.balance || 0;
+  const anyHour = (f) => mine.some((o) => f(hourOf(o.createdAt)));
+  const vdays = Math.max(dset("niji_verse_days"), ls("niji_ach_verse7") ? 7 : 0);
+
+  // [絵文字, 名前, 解放条件] をジャンルごとに
+  const SEC = [
+    ["☕ 一杯のあゆみ", [
+      ["☕","はじめての一杯",cups>=1],["🍪","3杯め",cups>=3],["🧇","5杯め",cups>=5],
+      ["🔟","10杯クラブ",cups>=10],["🎯","15杯",cups>=15],["✨","20杯",cups>=20],
+      ["🏆","30杯マスター",cups>=30],["🚀","40杯",cups>=40],["👑","50杯レジェンド",cups>=50],
+      ["🌟","70杯",cups>=70],["💯","100杯伝説",cups>=100],
+    ]],
+    ["🎫 チャージのあゆみ", [
+      ["🎫","はじめてのチャージ",y>=1],["🌱","ふたたび",y>=2],["🌿","みたび",y>=3],
+      ["🌟","常連さん",y>=5],["🧭","たしかな常連",y>=7],["📅","今年10回",y>=10],
+      ["⛰","その先へ",y>=13],["🗻","高みへ",y>=16],["🎖","二十回",y>=20],["🏅","二十五回",y>=25],
+    ]],
+    ["💎 ランクのあゆみ", [
+      ["🟫","ブロンズ到達",rb>=2],["⬜","シルバー到達",rb>=5],["🟨","ゴールド到達",rb>=7],
+      ["🔘","プラチナ到達",rb>=10],["🩶","チタン到達",rb>=13],["🔷","サファイア到達",rb>=16],
+      ["🟥","ルビー到達",rb>=20],["🟩","エメラルド到達",rb>=35],["💎","ダイヤモンド到達",rb>=50],
+    ]],
+    ["🪙 おさいふ", [
+      ["💰","残高1,000",bal>=1000],["💵","残高3,000",bal>=3000],["💴","残高5,000",bal>=5000],
+      ["🪙","まんたん(1万)",bal>=10000],["🏦","2万円の蓄え",bal>=20000],
+      ["🧾","使いきった",bal===0&&cups>=1],["✨","777",String(bal).includes("777")],
+      ["🎉","ゾロ目",bal>=111&&/^(\d)\1+$/.test(String(bal))],
+    ]],
+    ["🕒 時間と曜日", [
+      ["🌅","朝の注文",anyHour(h=>h<=10)],["🍽","昼の注文",anyHour(h=>h>=11&&h<=14)],
+      ["☀️","午後の注文",anyHour(h=>h>=15&&h<=17)],["🌆","夕方の注文",anyHour(h=>h>=18&&h<=20)],
+      ["🌙","夜の注文",anyHour(h=>h>=21)],
+      ["🛋","週末の注文",mine.some(o=>{const d=dayOf(o.createdAt);return d===0||d===6;})],
+    ]],
+    ["🍹 味のぼうけん", [
+      ["🫘","コーヒー派",has(/コーヒー|カフェラテ/)],["🍵","お茶派",has(/緑茶|烏龍|しょうが/)],
+      ["🍎","フルーツビネガー派",has(/ザクロ|マスカット|グレープ|パイナップル|アセロラ|シトラス|アサイー|ライチ|カシス|リンゴ|メロン|ブドウ|あまおう|ピーチ/)],
+      ["🍧","かき氷デビュー",has(/かき氷/)],["🥛","ミルク党",has(/ミルク/)],
+      ["🍨","アイスクリーム",has(/アイスクリーム/)],["♨️","ホット派",has(/ホット/)],
+      ["🧊","アイス派",has(/アイス/)],["🛍","3品まとめて",sizeMax>=3],["📦","5品どっさり",sizeMax>=5],
+      ["🔁","おかわり(同じ物×2)",qtyMax>=2],["🖐","まとめて5個",qtyMax>=5],
+      ["💮","ワンコイン会計",totals.includes(500)],["🍱","ごちそうの日(千円超)",totals.some(t=>t>=1000)],
+    ]],
+    ["📖 みことば", [
+      ["📖","一節を開いた",ls("niji_ach_verse")],["🕯","3日読んだ",vdays>=3],
+      ["🕊","7日の習慣",vdays>=7],["🌾","14日読んだ",vdays>=14],["🌳","30日読んだ",vdays>=30],
+    ]],
+    ["🎪 あそびの発見", [
+      ["🎆","花火師",ls("niji_ach_fw")],["🪩","ディスコ王",ls("niji_ach_disco")],
+      ["🌈","虹の点コンプ",ls("niji_ach_dots")],["🎮","謎のコマンド",ls("niji_ach_konami")],
+      ["🐈‍⬛","猫の友だち",ls("niji_ach_neko")],["🎨","きせかえ名人",ls("niji_ach_theme")],
+      ["🎡","おまかせの人",ls("niji_ach_shuffle")],["🍋","気分の探検家",ls("niji_ach_mood")],
+      ["🪞","カードをなでた",ls("niji_ach_holo")],["🔄","くるりん",ls("niji_ach_flip")],
+      ["🌠","流れ星を見た",ls("niji_ach_star")],["🌕","満月の夜",ls("niji_ach_moon")],
+      ["⚡","雷の夜",ls("niji_ach_bolt")],["🤫","隠しメッセージ",ls("niji_ach_secret")],
+      ["🔔","効果音デビュー",ls("niji_ach_snd")],["🫧","波紋あそび",ls("niji_ach_ripple")],
+      ["💫","本物の星",ls("niji_ach_realstar")],
+    ]],
+    ["🏅 やりこみ", [
+      ["🐾","猫と親友",ls("niji_ach_neko30")],["🎠","まわして10回",ls("niji_ach_spin10")],
+      ["🤝","🌈の親友",ls("niji_ach_logo50")],["🎇","花火大会の常連",ls("niji_ach_fw3")],
+      ["🕺","おどりあかした",ls("niji_ach_disco3")],["🌊","池のぬし",ls("niji_ach_ripple50")],
+      ["👗","きせかえ10回",ls("niji_ach_theme10")],["📚","みことば愛読",ls("niji_ach_verse10")],
+      ["💥","はじけ職人",ls("niji_ach_burst20")],["🌃","真夜中の来訪者",ls("niji_ach_midnight")],
+      ["🐓","早起きさん",ls("niji_ach_dawn")],["🎵","音と一緒に",ls("niji_ach_pop10")],
+      ["🗓","3日来てくれた",ls("niji_ach_visit3")],["🪴","7日の常連",ls("niji_ach_visit7")],
+      ["🏡","30日のなかま",ls("niji_ach_visit30")],
+    ]],
+  ];
+  // コレクター（他のバッジの獲得数で解放されるメタバッジ）
+  const base = SEC.flatMap((s) => s[1]);
+  const baseGot = base.filter((b) => b[2]).length;
+  SEC.push(["🎖 コレクター", [
+    ["🎗","実績10個",baseGot>=10],["🥉","実績25個",baseGot>=25],["🥈","実績50個",baseGot>=50],
+    ["🥇","実績75個",baseGot>=75],["🏵","実績90個",baseGot>=90],
+  ]]);
+  const all = SEC.flatMap((s) => s[1]);
+  const got = all.filter((b) => b[2]).length;
+  return (
+    <div className="toy-panel">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+        <span style={{fontWeight:700}}>🏆 実績バッジ</span>
+        <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.8rem"}}>{got} / {all.length}</span>
+      </div>
+      {got === all.length && (
+        <div className="pop" style={{textAlign:"center",color:"#ffd166",fontWeight:800,marginBottom:8,
+          textShadow:"0 0 12px rgba(255,209,102,0.5)"}}>🎉 全実績コンプリート！すごい！</div>
+      )}
+      {SEC.map(([title, items]) => (
+        <div key={title}>
+          <div className="badge-sec">{title}　<span style={{opacity:0.6}}>{items.filter(b=>b[2]).length}/{items.length}</span></div>
+          <div className="badge-grid">
+            {items.map((b, i) => (
+              <div key={i} className={"badge" + (b[2] ? " badge-on" : "")}>
+                <span style={{fontSize:"1.2rem"}}>{b[2] ? b[0] : "❔"}</span>
+                <span className="badge-name">{b[2] ? b[1] : "？？？"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// （旧・33個版。100個版に置き換えたため未使用）
 function BadgeShelf({ found, orders }) {
   const ls = (k) => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
   const mine = (orders || []).filter((o) => o && String(o.customerId) === String(found.id));
@@ -1562,6 +1694,7 @@ function NekoMascot() {
     try { navigator.vibrate && navigator.vibrate(8); } catch {}
     setTimeout(() => setSay(null), 1600);
     bumpAch("niji_cnt_neko", 5, "niji_ach_neko", "猫の友だち");
+    bumpAch("niji_cnt_nekoB", 30, "niji_ach_neko30", "猫と親友");
   };
   return (
     <span className="neko" onClick={tap} role="button" aria-label="看板猫">
@@ -1590,6 +1723,7 @@ function ThemeButton() {
       seen.add(String(j));
       localStorage.setItem("niji_theme_seen", [...seen].join(","));
       if (seen.size >= NIGHT_THEMES.length) unlockAch("niji_ach_theme", "きせかえ名人");
+      bumpAch("niji_cnt_themeN", 10, "niji_ach_theme10", "きせかえ10回");
     } catch {}
     document.body.style.setProperty("--nh", NIGHT_THEMES[j].h);
   };
@@ -1720,6 +1854,19 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     }
     prevBal.current = b;
   }, [found && found.balance]);
+  // 来てくれた日数を数える（3日・7日・30日で実績。日付の集合を端末に記録）
+  useEffect(() => {
+    if (!found) return;
+    try {
+      const today = new Date().toLocaleDateString("ja-JP");
+      const days = new Set((localStorage.getItem("niji_visit_days") || "").split(",").filter(Boolean));
+      days.add(today);
+      localStorage.setItem("niji_visit_days", [...days].slice(-60).join(","));
+      if (days.size >= 3)  unlockAch("niji_ach_visit3",  "3日来てくれた");
+      if (days.size >= 7)  unlockAch("niji_ach_visit7",  "7日の常連");
+      if (days.size >= 30) unlockAch("niji_ach_visit30", "30日のなかま");
+    } catch {}
+  }, [found && found.id]);
   // 60秒さわらないと、カードのそばに💤が浮かぶ（居眠り）
   const [sleepy, setSleepy] = useState(false);
   const lastActive = useRef(Date.now());
@@ -2139,7 +2286,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               )}
               {/* 今日の一節（聖書 新改訳2017）と、実績バッジの棚 */}
               <TodayVerse/>
-              <BadgeShelf found={found} orders={orders}/>
+              <BadgeShelf100 found={found} orders={orders}/>
               <RankingBoard customers={customers} myId={found.id}/>
               {/* めったに使わない操作なので、一番下で控えめに */}
               <button className="btn-quiet" style={{marginTop:10}} onClick={()=>{setFound(null);setInput("");}}>別の番号を確認する</button>
@@ -5425,6 +5572,8 @@ body.night .toy-btn { box-shadow:0 0 14px rgba(178,141,255,0.15); }
   box-shadow:0 0 12px rgba(255,209,102,0.18); }
 .badge-name { font-size:0.68rem; color:var(--ink2,#8a7f76); font-weight:700; text-align:center; }
 .badge { cursor:pointer; }
+.badge-sec { margin:12px 0 6px; font-size:0.75rem; font-weight:700;
+  color:var(--ink3,#9a8f85); letter-spacing:0.04em; }
 .badge-hint { margin-top:8px; text-align:center; font-size:0.8rem; font-weight:700;
   color:var(--ink,#3d3630); background:var(--panel2,#f6f1ea);
   border:1px solid var(--line,#e7ded3); border-radius:10px; padding:8px 12px; }
