@@ -1489,7 +1489,8 @@ function TodayVerse() {
 // 🏆 実績バッジ棚（100個）。来店の記録・注文の中身・時間帯・遊びの発見・
 // やりこみ度から自動で解放されていく。まだの物は「？？？」。
 // ヒントは付けない——探すのも遊びのうち。
-function BadgeShelf100({ found, orders }) {
+// バッジの中身を組み立てる。棚の表示にも、殿堂カードや無料券の判定にも使う。
+function badgeSections({ found, orders }) {
   const ls  = (k) => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
   const dset = (k) => { try { return (localStorage.getItem(k) || "").split(",").filter(Boolean).length; } catch { return 0; } };
   const mine = (orders || []).filter((o) => o && String(o.customerId) === String(found.id));
@@ -1577,6 +1578,96 @@ function BadgeShelf100({ found, orders }) {
     ["🎗","実績10個",baseGot>=10],["🥉","実績25個",baseGot>=25],["🥈","実績50個",baseGot>=50],
     ["🥇","実績75個",baseGot>=75],["🏵","実績90個",baseGot>=90],
   ]]);
+  return SEC;
+}
+
+// 集めた数と全体数だけを取り出す（殿堂カードの見た目や無料券の判定に使う）
+function badgeCount(props) {
+  const all = badgeSections(props).flatMap((s) => s[1]);
+  return { got: all.filter((b) => b[2]).length, total: all.length };
+}
+
+// 到達した段階（25/50/75/100）を返す。カードの縁の色が変わる。
+function hallRank(got) {
+  if (got >= 100) return { cls: "hall-legend", label: "殿堂入り",   emoji: "🌈" };
+  if (got >= 75)  return { cls: "hall-gold",   label: "ゴールド",   emoji: "🥇" };
+  if (got >= 50)  return { cls: "hall-silver", label: "シルバー",   emoji: "🥈" };
+  if (got >= 25)  return { cls: "hall-bronze", label: "ブロンズ",   emoji: "🥉" };
+  return null;
+}
+
+// 段階に到達した瞬間を見張って、全画面でお祝いする。
+// 「前に見たときの段階」を端末に覚えておき、上がった時だけ一度発動する。
+function HallWatch({ found, orders, onChange }) {
+  const [show, setShow] = useState(null);
+  useEffect(() => {
+    const { got } = badgeCount({ found, orders });
+    const h = hallRank(got);
+    try {
+      const key = "niji_hall_" + found.id;
+      const prev = Number(localStorage.getItem(key) || 0);
+      const now = got >= 100 ? 100 : got >= 75 ? 75 : got >= 50 ? 50 : got >= 25 ? 25 : 0;
+      if (now > prev) {
+        localStorage.setItem(key, String(now));
+        if (h) {
+          setShow({ id: Date.now(), ...h, got, top: now === 100 });
+          setTimeout(() => { setShow(null); onChange && onChange(); }, 4200);
+          try { navigator.vibrate && navigator.vibrate([30,60,30,60,30,60,120]); } catch {}
+        }
+      }
+    } catch {}
+  }, [found && found.id]);
+  if (!show) return null;
+  return (
+    <div key={show.id} className="rankup-ov" aria-hidden="true">
+      {[...Array(16)].map((_, i) => (
+        <span key={i} className="rankup-gem" style={{
+          left: `${(i * 31 + 9) % 100}%`,
+          animationDelay: `${(i % 8) * 0.2}s`,
+          animationDuration: `${2.2 + (i % 3) * 0.6}s`}}>{show.top ? "🌈" : show.emoji}</span>
+      ))}
+      <div className="rankup-box">
+        <div className="rankup-big pop">{show.emoji}</div>
+        <div className="rankup-txt" style={{color: show.top ? "#ff6ec7" : "#ffd166"}}>
+          {show.top ? "殿堂入り！" : show.label + "到達！"}
+        </div>
+        <div className="rankup-name">実績バッジ {show.got} 個</div>
+        {show.top && <div className="rankup-name" style={{marginTop:10,color:"#ffd166"}}>
+          🎫 1杯無料券が届きました
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+// 🎫 100個達成の人にだけ出る無料券。使うとスタッフが「使用済み」にする。
+function FreeDrinkTicket({ found }) {
+  if (found.freeDrinkUsedAt) {
+    return (
+      <div className="toy-panel" style={{textAlign:"center",opacity:0.6}}>
+        <div style={{fontSize:"0.85rem",color:"var(--ink3,#9a8f85)"}}>
+          🎫 1杯無料券は {found.freeDrinkUsedAt} に使用済みです
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="free-ticket">
+      <div style={{fontSize:"2rem",marginBottom:4}}>🎫</div>
+      <div style={{fontWeight:800,fontSize:"1.05rem",marginBottom:4}}>1杯 無料券</div>
+      <div style={{fontSize:"0.8rem",opacity:0.85,marginBottom:8}}>
+        実績バッジ100個達成おめでとうございます
+      </div>
+      <div style={{fontSize:"0.78rem",opacity:0.8}}>
+        この画面をスタッフにお見せください
+      </div>
+      <div style={{fontSize:"0.68rem",opacity:0.6,marginTop:8}}>{found.name} 様</div>
+    </div>
+  );
+}
+
+function BadgeShelf100({ found, orders }) {
+  const SEC = badgeSections({ found, orders });
   const all = SEC.flatMap((s) => s[1]);
   const got = all.filter((b) => b[2]).length;
   return (
@@ -1822,6 +1913,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [cvTab,        setCvTab]        = useState("ticket");
   const [cart,         setCart]         = useState([]);
   const [ordered,      setOrdered]      = useState(false);
+  // ご褒美の段階を数え直すための合図（実績が増えたとき用）
+  const [badgeTick,    setBadgeTick]    = useState(0);
   // 注文完了のメッセージは毎回変わる（同じ言葉より、ちょっと嬉しい）
   const [okMsg,        setOkMsg]        = useState("注文を受け付けました！");
   const [okIcon,       setOkIcon]       = useState("✅");   // 20回に1回だけ🎉や⭐になる
@@ -2168,11 +2261,13 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           {cvTab==="ticket" && (
             <div>
               <RankUpShow found={found} rank={rank}/>
+              <HallWatch found={found} orders={orders} onChange={()=>setBadgeTick(t=>t+1)}/>
               {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
                   一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
-              <HoloCard className="ticket-card card-in" style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#ece4d9)",
+              <HoloCard className={`ticket-card card-in ${(hallRank(badgeCount({found,orders}).got)||{}).cls||""}`}
+                style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#ece4d9)",
                 boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
                 {/* 開いた瞬間、光の帯がカードを一度だけ横切る */}
@@ -2184,6 +2279,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 {String(found.balance).includes("777") && <SparkleRain emoji="🪙"/>}
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
                   <span style={{fontSize:"1.15rem",fontWeight:700,color:"var(--ink,#3d3630)"}}>{found.name}</span>
+                  {/* 25個ごとの称号。集めた人だけ名前の横に付く */}
+                  {(() => { const h = hallRank(badgeCount({found,orders}).got);
+                    return h ? <span className={"hall-badge " + h.cls}>{h.emoji} {h.label}</span> : null; })()}
                   <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>
                     {/* 宝石を押すとキラキラがはじける */}
                     <TapBurst emojis={["✨","💖","⭐","✨"]}>
@@ -2284,6 +2382,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 })}
               </div>
               )}
+              {/* 100個達成の人にだけ出る1杯無料券 */}
+              {badgeCount({found,orders}).got >= 100 && <FreeDrinkTicket found={found}/>}
               {/* 今日の一節（聖書 新改訳2017）と、実績バッジの棚 */}
               <TodayVerse/>
               <BadgeShelf100 found={found} orders={orders}/>
@@ -3361,6 +3461,16 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
               {isManager && <button className="pill-btn-dim" onClick={()=>{ if(window.confirm("直前のチャージ1回分を取り消します。\n残高 -¥2,200・購入回数 -1 でよろしいですか？")) undoCharge(); }}>↩️ チャージ取消</button>}
               {isManager && <button className="pill-btn-dim" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
               {!isManager && staffIsChief && <button className="pill-btn-dim" onClick={()=>setPinEdit(true)}>🔑 暗証番号を変更</button>}
+              {/* 実績100個の1杯無料券。お客様の画面に券が出ていたら、これで使用済みにする。
+                  券の判定はお客様の端末で行われるため、スタッフが目で確認してから押す運用。 */}
+              {!customer.freeDrinkUsedAt && (
+                <button className="pill-btn-dim" onClick={()=>{
+                  if (!window.confirm(`${customer.name} さんの「🎫 1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？`)) return;
+                  const now = new Date().toLocaleString("ja-JP");
+                  saveC(customers.map(c=>c.id===customer.id ? {...c, freeDrinkUsedAt: now} : c));
+                  alert("使用済みにしました。1杯ぶんは会計から外してください。");
+                }}>🎫 無料券を使う</button>
+              )}
             </div>
           </div>
 
@@ -5574,6 +5684,37 @@ body.night .toy-btn { box-shadow:0 0 14px rgba(178,141,255,0.15); }
 .badge { cursor:pointer; }
 .badge-sec { margin:12px 0 6px; font-size:0.75rem; font-weight:700;
   color:var(--ink3,#9a8f85); letter-spacing:0.04em; }
+
+/* ── 殿堂入りカード（実績25/50/75/100で縁が変わる） ──────────── */
+.hall-bronze { border:2px solid #c08457 !important; box-shadow:0 0 18px rgba(192,132,87,0.35) !important; }
+.hall-silver { border:2px solid #b9c2d0 !important; box-shadow:0 0 20px rgba(185,194,208,0.4) !important; }
+.hall-gold   { border:2px solid #ffd166 !important; box-shadow:0 0 24px rgba(255,209,102,0.45) !important; }
+/* 100個＝虹色の縁がゆっくり回り続ける、完全な特別仕様 */
+.hall-legend { border:2px solid transparent !important; position:relative;
+  background-image:
+    linear-gradient(var(--card,#ffffff), var(--card,#ffffff)),
+    linear-gradient(120deg,#ff6ec7,#ffd166,#74f7a1,#4deeea,#b28dff,#ff6ec7) !important;
+  background-origin:border-box !important; background-clip:padding-box,border-box !important;
+  background-size:auto, 300% 300% !important;
+  animation:rainbowShift 5s linear infinite !important;
+  box-shadow:0 0 34px rgba(255,110,199,0.4) !important; }
+
+/* 名前の横に付く称号 */
+.hall-badge { font-size:0.68rem; font-weight:800; border-radius:999px; padding:3px 9px;
+  border:1px solid currentColor; white-space:nowrap; }
+.hall-badge.hall-bronze { color:#c08457; box-shadow:none !important; border-width:1px !important; }
+.hall-badge.hall-silver { color:#b9c2d0; box-shadow:none !important; border-width:1px !important; }
+.hall-badge.hall-gold   { color:#ffd166; box-shadow:none !important; border-width:1px !important; }
+.hall-badge.hall-legend { color:#ff6ec7; background-image:none !important; animation:none !important;
+  border:1px solid #ff6ec7 !important; box-shadow:0 0 10px rgba(255,110,199,0.4) !important; }
+
+/* 1杯無料券 */
+.free-ticket { margin-top:10px; text-align:center; padding:18px 16px; border-radius:16px;
+  color:#fff; position:relative; overflow:hidden;
+  background:linear-gradient(135deg,#ff6ec7,#b28dff,#4deeea);
+  background-size:250% 250%; animation:rainbowShift 6s ease infinite;
+  box-shadow:0 6px 28px rgba(255,110,199,0.45);
+  border:2px dashed rgba(255,255,255,0.7); }
 .badge-hint { margin-top:8px; text-align:center; font-size:0.8rem; font-weight:700;
   color:var(--ink,#3d3630); background:var(--panel2,#f6f1ea);
   border:1px solid var(--line,#e7ded3); border-radius:10px; padding:8px 12px; }
@@ -5632,7 +5773,8 @@ body:not(.night) .mood-on { color:#c2447e; background:#fdeaf3; }
   .confetti-box .confetti-e, .tilt.flip,
   .welcome-toast, .rankup-ov, .rankup-gem, .rankup-txt, .rankup-name, .fw-p,
   .big-moon, .lightning, .ripple, .rainbow-big, .rays, .cannon,
-  .card-in, .card-sheen, .srain-p, .neko, .neko-say, .roulette-item, .ach-toast, .badge-hint { animation:none !important; }
+  .card-in, .card-sheen, .srain-p, .neko, .neko-say, .roulette-item, .ach-toast, .badge-hint,
+  .hall-legend, .free-ticket { animation:none !important; }
   .star, .float-emoji, .shooting-star, .fall-bit, .stardust,
   .fw, .lightning, .ripple, .rays, .cannon, .card-sheen, .srain-p { display:none; }
   body.rainbow-mode .approot, body.disco .approot { animation:none !important; }
