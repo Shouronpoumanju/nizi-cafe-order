@@ -25,7 +25,38 @@ const MANAGER_ONLY = ["cafe_v4_staff_accounts", "cafe_v4_manager_accounts"];
 // スタッフが「読むだけ」できるもの。
 // 台帳（消えない記録）なので、まるごと書き換えることは誰にも許さない。
 // 追記は下の PUSH_OK 経由で1件ずつだけ。
-const STAFF_READ_ONLY = ["cafe_v4_sales_log", "cafe_v4_money_log"];
+const STAFF_READ_ONLY = ["cafe_v4_sales_log", "cafe_v4_money_log", "cafe_v4_archive_log"];
+
+// お客様ひとりぶんの「遊びの記録」（実績・回数・きせかえ等）。cafe_v4_play/<会員ID>
+// 端末の localStorage の控え。機種変更やデータ消去で殿堂入りが消えないようにするためのもの。
+// 残高やランクには一切関係しない場所なので、お客様本人が自由に書いてよい（ただし上限つき）。
+const PLAY_KEY_RE = /^cafe_v4_play\/[A-Za-z0-9_-]{1,40}$/;
+const PLAY_MAX_KEYS = 120;      // niji_* の項目数の上限
+const PLAY_MAX_BYTES = 8000;    // 全体の大きさの上限（1人分）
+// 合流のルールは画面側（App.jsx の mergePlayValue）と同じ。消す方向には動かない。
+function mergePlayValue(k, a, b) {
+  if (a == null || a === "") return b == null ? a : String(b);
+  if (b == null || b === "") return a;
+  a = String(a); b = String(b);
+  if (a === b) return a;
+  if (k.startsWith("niji_cnt_") || k.startsWith("niji_hall_")) return String(Math.max(Number(a) || 0, Number(b) || 0));
+  if (k.endsWith("_days") || k.endsWith("_seen")) {
+    return [...new Set([...a.split(","), ...b.split(",")].filter(Boolean))].slice(-60).join(",");
+  }
+  if (a === "1" || b === "1") return "1";
+  return b;
+}
+function cleanPlay(v) {
+  const out = {};
+  if (!v || typeof v !== "object") return out;
+  for (const [k, val] of Object.entries(v)) {
+    if (!/^niji_[A-Za-z0-9_]{1,40}$/.test(k)) continue;
+    if (typeof val !== "string" || val.length > 400) continue;
+    out[k] = val;
+    if (Object.keys(out).length >= PLAY_MAX_KEYS) break;
+  }
+  return out;
+}
 
 // 1件ずつ追記してよい台帳
 const PUSH_OK = ["cafe_v4_money_log", "cafe_v4_sales_log"];
@@ -55,6 +86,10 @@ export default async function handler(req, res) {
         if (isStaff && STAFF_READ_ONLY.includes(key)) {
           return send(res, 200, { value: await fbGet(key, query) });
         }
+        // スタッフは、お客様の遊びの記録を読める（無料券の確認に使う）
+        if (isStaff && PLAY_KEY_RE.test(String(key))) {
+          return send(res, 200, { value: await fbGet(key) });
+        }
         if (isStaff && (STAFF_RW.includes(key) || MANAGER_ONLY.includes(key))) {
           const v = await fbGet(key, query);
           // スタッフ一覧を返すときもパスワードは伏せる
@@ -79,13 +114,20 @@ export default async function handler(req, res) {
       // スタッフ割引は「その人に紐づいた割引率」だけを返す（スタッフ一覧は渡さない）。
       case "bootstrap": {
         if (me.r !== "customer") return send(res, 403, { error: "お客様専用の操作です" });
-        const [customers, orders, menu, dd, vip, staff, mgrs] = await Promise.all([
+        // full: ログイン直後の1回だけ true。実績の計算に使う「アーカイブ済みの自分の注文」も返す。
+        // 8秒ごとの取り直しでは付けない（アーカイブは大きいので毎回は読まない）。
+        const full = !!(value && value.full);
+        const [customers, orders, menu, dd, vip, staff, mgrs, play, archive] = await Promise.all([
           fbGet("cafe_v4_customers"), fbGet("cafe_v4_orders"), fbGet("cafe_v4_menu"),
           fbGet("cafe_v4_designated_drink"), fbGet("cafe_v4_vip_gift_drink"),
           fbGet("cafe_v4_staff_accounts"), fbGet("cafe_v4_manager_accounts"),
+          fbGet("cafe_v4_play/" + String(me.id)).catch(() => null),
+          full ? fbGet("cafe_v4_orders_archive").catch(() => null) : Promise.resolve(null),
         ]);
         const mine = arr(customers).find((c) => String(c.id) === String(me.id));
         if (!mine) return send(res, 404, { error: "会員が見つかりません" });
+        const extra = { play: cleanPlay(play) };
+        if (full) extra.myArchive = arr(archive).filter((o) => String(o.customerId) === String(me.id));
         const linked = [...arr(staff), ...arr(mgrs)]
           .find((s) => s.linkedCustomerId && String(s.linkedCustomerId) === String(me.id));
         return send(res, 200, { value: {
@@ -96,7 +138,26 @@ export default async function handler(req, res) {
           vipGiftDrink: vip || null,
           staffDiscountRate: linked ? (linked.discountRate ?? 10) : null,
           staffLinkedName: linked ? linked.name : null,
+          ...extra,
         }});
+      }
+
+      // ── お客様：自分の遊びの記録（実績・回数など）を控える ──────
+      // 端末の localStorage の内容をそのまま受け取り、サーバー側の控えと合流させて保存する。
+      // 合流は「増える方向」だけなので、古い端末から送られてきても進みが戻ることはない。
+      // 残高・暗証番号・注文には一切触れない場所（cafe_v4_play/<自分のID>）にだけ書く。
+      case "setMyPlay": {
+        if (me.r !== "customer") return send(res, 403, { error: "お客様専用の操作です" });
+        const incoming = cleanPlay(value);
+        const path = "cafe_v4_play/" + String(me.id);
+        const current = cleanPlay(await fbGet(path).catch(() => null));
+        const merged = { ...current };
+        for (const [k, v] of Object.entries(incoming)) merged[k] = mergePlayValue(k, current[k], v);
+        if (JSON.stringify(merged).length > PLAY_MAX_BYTES) {
+          return send(res, 413, { error: "記録が大きすぎます" });
+        }
+        if (JSON.stringify(merged) !== JSON.stringify(current)) await fbPut(path, merged);
+        return send(res, 200, { ok: true, value: merged });
       }
 
       // ── お客様：自分の注文だけ ────────────────────
