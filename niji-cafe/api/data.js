@@ -160,6 +160,21 @@ export default async function handler(req, res) {
         return send(res, 200, { ok: true, value: merged });
       }
 
+      // ── お客様：誕生月を登録する（未登録のときだけ・一度きり） ──────
+      // 誕生月の1杯券に使う。変更はマネージャーが POS の編集画面から行う。
+      case "setMyBirthMonth": {
+        if (me.r !== "customer") return send(res, 403, { error: "お客様専用の操作です" });
+        const m = Number(value && value.birthMonth);
+        if (!Number.isInteger(m) || m < 1 || m > 12) return send(res, 400, { error: "月が正しくありません" });
+        const list = arr(await fbGet("cafe_v4_customers"));
+        const i = list.findIndex((c) => String(c.id) === String(me.id));
+        if (i < 0) return send(res, 404, { error: "会員が見つかりません" });
+        if (list[i].birthMonth) return send(res, 409, { error: "誕生月はすでに登録されています。変更はスタッフにお伝えください" });
+        list[i] = { ...list[i], birthMonth: m };
+        await fbPut("cafe_v4_customers", list);
+        return send(res, 200, { value: list[i] });
+      }
+
       // ── お客様：自分の注文だけ ────────────────────
       case "myOrders": {
         const list = arr(await fbGet("cafe_v4_orders"));
