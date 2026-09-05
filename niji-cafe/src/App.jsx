@@ -1400,7 +1400,7 @@ function mergePlayValue(k, a, b) {
   if (a === b) return a;
   if (k.startsWith("niji_cnt_") || k.startsWith("niji_hall_")) return String(Math.max(Number(a) || 0, Number(b) || 0));
   if (k.endsWith("_days") || k.endsWith("_seen")) {
-    return [...new Set([...a.split(","), ...b.split(",")].filter(Boolean))].slice(-60).join(",");
+    return [...new Set([...a.split(","), ...b.split(",")].filter(Boolean))].slice(-400).join(",");
   }
   if (a === "1" || b === "1") return "1";
   return b;
@@ -1505,25 +1505,69 @@ function DrinkRoulette({ menu, onPick }) {
 // ※ 本文はのあさんの聖書（新改訳2017）で必ず校正すること。
 //    引用は新日本聖書刊行会の規定（250節以内・著作権表記つき）の範囲内。
 const VERSES = [
-  { t: "主は私の羊飼い。私は乏しいことがありません。", r: "詩篇 23:1" },
+  // 本文は 2026-09-06 に新日本聖書刊行会の公式「聖句検索」（新改訳2017）で1節ずつ照合済み。
+  // 詩篇などの「　」（全角スペース）は原文の改行位置。表示時に改行に直す（改行位置は変えない）。
+  // 節をまたぐものは、節の本文をそのまま順につないでいる。文言の改変・中略はしていない。
+  { t: "ダビデの賛歌。主は私の羊飼い。　私は乏しいことがありません。", r: "詩篇 23:1" },
   { t: "すべて疲れた人、重荷を負っている人はわたしのもとに来なさい。わたしがあなたがたを休ませてあげます。", r: "マタイの福音書 11:28" },
-  { t: "いつも喜んでいなさい。絶えず祈りなさい。すべてのことにおいて感謝しなさい。", r: "テサロニケ人への手紙 第一 5:16–18" },
-  { t: "恐れるな。わたしはあなたとともにいる。たじろぐな。わたしがあなたの神だから。", r: "イザヤ書 41:10" },
-  { t: "神は われらの避け所 また力。苦しむとき そこにある強き助け。", r: "詩篇 46:1" },
+  { t: "いつも喜んでいなさい。絶えず祈りなさい。すべてのことにおいて感謝しなさい。これが、キリスト・イエスにあって神があなたがたに望んでおられることです。", r: "テサロニケ人への手紙 第一 5:16–18" },
+  { t: "恐れるな。わたしはあなたとともにいる。たじろぐな。わたしがあなたの神だから。わたしはあなたを強くし、あなたを助け、わたしの義の右の手で、あなたを守る。", r: "イザヤ書 41:10" },
+  { t: "神は　われらの避け所　また力。　苦しむとき　そこにある強き助け。", r: "詩篇 46:1" },
   { t: "私を強くしてくださる方によって、私はどんなことでもできるのです。", r: "ピリピ人への手紙 4:13" },
-  { t: "これは主が設けられた日。この日を楽しみ喜ぼう。", r: "詩篇 118:24" },
-  { t: "あなたのみことばは 私の足のともしび 私の道の光です。", r: "詩篇 119:105" },
-  { t: "主の恵みは尽きることがない。そのあわれみは絶えることがない。それは朝ごとに新しい。", r: "哀歌 3:22–23" },
-  { t: "何をするにも、人にではなく、主に対してするように、心から行いなさい。", r: "コロサイ人への手紙 3:23" },
-  { t: "主があなたを祝福し、あなたを守られますように。", r: "民数記 6:24" },
-  { t: "わたしは世の光です。わたしに従う者は、決して闇の中を歩むことがなく、いのちの光を持ちます。", r: "ヨハネの福音書 8:12" },
+  { t: "これは主が設けられた日。　この日を楽しみ喜ぼう。", r: "詩篇 118:24" },
+  { t: "あなたのみことばは　私の足のともしび　私の道の光です。", r: "詩篇 119:105" },
+  { t: "何をするにも、人に対してではなく、主に対してするように、心から行いなさい。", r: "コロサイ人への手紙 3:23" },
+  { t: "主があなたを祝福し、あなたを守られますように。主が御顔をあなたに照らし、あなたを恵まれますように。主が御顔をあなたに向け、あなたに平安を与えられますように。", r: "民数記 6:24–26" },
+  { t: "イエスは再び人々に語られた。「わたしは世の光です。わたしに従う者は、決して闇の中を歩むことがなく、いのちの光を持ちます。」", r: "ヨハネの福音書 8:12" },
+  { t: "神は、実に、そのひとり子をお与えになったほどに世を愛された。それは御子を信じる者が、一人として滅びることなく、永遠のいのちを持つためである。", r: "ヨハネの福音書 3:16" },
+  { t: "心を尽くして主に拠り頼め。自分の悟りに頼るな。あなたの行く道すべてにおいて、主を知れ。主があなたの進む道をまっすぐにされる。", r: "箴言 3:5–6" },
+  { t: "わたし自身、あなたがたのために立てている計画をよく知っている──主のことば──。それはわざわいではなく平安を与える計画であり、あなたがたに将来と希望を与えるためのものだ。", r: "エレミヤ書 29:11" },
+  { t: "神を愛する人たち、すなわち、神のご計画にしたがって召された人たちのためには、すべてのことがともに働いて益となることを、私たちは知っています。", r: "ローマ人への手紙 8:28" },
+  { t: "あなたの道を主にゆだねよ。　主に信頼せよ。主が成し遂げてくださる。", r: "詩篇 37:5" },
+  { t: "しかし、主を待ち望む者は新しく力を得、鷲のように、翼を広げて上ることができる。走っても力衰えず、歩いても疲れない。", r: "イザヤ書 40:31" },
+  { t: "まず神の国と神の義を求めなさい。そうすれば、これらのものはすべて、それに加えて与えられます。", r: "マタイの福音書 6:33" },
+  { t: "わたしはあなたに命じたではないか。強くあれ。雄々しくあれ。恐れてはならない。おののいてはならない。あなたが行くところどこででも、あなたの神、主があなたとともにいるのだから。」", r: "ヨシュア記 1:9" },
+  { t: "都上りの歌。私は山に向かって目を上げる。　私の助けは　どこから来るのか。私の助けは主から来る。　天地を造られたお方から。", r: "詩篇 121:1–2" },
+  { t: "何も思い煩わないで、あらゆる場合に、感謝をもってささげる祈りと願いによって、あなたがたの願い事を神に知っていただきなさい。そうすれば、すべての理解を超えた神の平安が、あなたがたの心と思いをキリスト・イエスにあって守ってくれます。", r: "ピリピ人への手紙 4:6–7" },
+  { t: "望みを抱いて喜び、苦難に耐え、ひたすら祈りなさい。", r: "ローマ人への手紙 12:12" },
+  { t: "味わい　見つめよ。　主がいつくしみ深い方であることを。　幸いなことよ　主に身を避ける人は。", r: "詩篇 34:8" },
+  { t: "すべてのことには定まった時期があり、天の下のすべての営みに時がある。", r: "伝道者の書 3:1" },
+  { t: "イエス・キリストは、昨日も今日も、とこしえに変わることがありません。", r: "ヘブル人への手紙 13:8" },
+  { t: "ですから、だれでもキリストのうちにあるなら、その人は新しく造られた者です。古いものは過ぎ去って、見よ、すべてが新しくなりました。", r: "コリント人への手紙 第二 5:17" },
+  { t: "わたしはあなたがたに平安を残します。わたしの平安を与えます。わたしは、世が与えるのと同じようには与えません。あなたがたは心を騒がせてはなりません。ひるんではなりません。", r: "ヨハネの福音書 14:27" },
+  { t: "わがたましいよ　主をほめたたえよ。　主が良くしてくださったことを何一つ忘れるな。", r: "詩篇 103:2" },
+  { t: "どうか、希望の神が、信仰によるすべての喜びと平安であなたがたを満たし、聖霊の力によって希望にあふれさせてくださいますように。", r: "ローマ人への手紙 15:13" },
+  { t: "わたしがあなたがたに命じておいた、すべてのことを守るように教えなさい。見よ。わたしは世の終わりまで、いつもあなたがたとともにいます。」", r: "マタイの福音書 28:20" },
+  { t: "わたしの目には、あなたは高価で尊い。わたしはあなたを愛している。だから、わたしは人をあなたの代わりにし、国民をあなたのいのちの代わりにする。", r: "イザヤ書 43:4" },
+  { t: "ダビデによる。主は私の光　私の救い。だれを私は恐れよう。　主は私のいのちの砦。だれを私は怖がろう。", r: "詩篇 27:1" },
+  { t: "こういうわけで、いつまでも残るのは信仰と希望と愛、これら三つです。その中で一番すぐれているのは愛です。", r: "コリント人への手紙 第一 13:13" },
+  { t: "しかし、御霊の実は、愛、喜び、平安、寛容、親切、善意、誠実、柔和、自制です。このようなものに反対する律法はありません。", r: "ガラテヤ人への手紙 5:22–23" },
+  { t: "主はあなたに告げられた。人よ、何が良いことなのか、主があなたに何を求めておられるのかを。それは、ただ公正を行い、誠実を愛し、へりくだって、あなたの神とともに歩むことではないか。", r: "ミカ書 6:8" },
+  { t: "わたしはあなたがたに新しい戒めを与えます。互いに愛し合いなさい。わたしがあなたがたを愛したように、あなたがたも互いに愛し合いなさい。", r: "ヨハネの福音書 13:34" },
+  { t: "私たちは自分たちに対する神の愛を知り、また信じています。神は愛です。愛のうちにとどまる人は神のうちにとどまり、神もその人のうちにとどまっておられます。", r: "ヨハネの手紙 第一 4:16" },
+  { t: "わたしのくびきは負いやすく、わたしの荷は軽いからです。」", r: "マタイの福音書 11:30" },
 ];
+// みことばの連続日数（きょう、または きのうまで続いている連続）を数える
+function verseStreak() {
+  try {
+    const days = (localStorage.getItem("niji_verse_days") || "").split(",").filter(Boolean);
+    const set = new Set(days.map((d) => { const m = d.match(/(\d+)\/(\d+)\/(\d+)/); return m ? `${m[1]}/${+m[2]}/${+m[3]}` : d; }));
+    const key = (dt) => `${dt.getFullYear()}/${dt.getMonth() + 1}/${dt.getDate()}`;
+    const cur = new Date(); cur.setHours(0, 0, 0, 0);
+    if (!set.has(key(cur))) cur.setDate(cur.getDate() - 1);   // きょう未読なら、きのうまでの連続を数える
+    let n = 0;
+    while (set.has(key(cur))) { n++; cur.setDate(cur.getDate() - 1); }
+    return n;
+  } catch { return 0; }
+}
+
 function TodayVerse() {
   const [open, setOpen] = useState(false);
   // 日付だけから決める＝この日に開いた全員が同じ一節を受け取る
-  const seed = new Date().toLocaleDateString("ja-JP")
-    .split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  // 日付の通し番号で順送り（毎日ちがう節になり、一周してから同じ節に戻る）
+  const seed = Math.floor((Date.now() + 9 * 3600 * 1000) / 86400000);
   const v = VERSES[seed % VERSES.length];
+  const streak = open ? verseStreak() : 0;
   return (
     <div className="toy-panel" style={{textAlign:"center"}}>
       {!open ? (
@@ -1537,7 +1581,7 @@ function TodayVerse() {
             const today = new Date().toLocaleDateString("ja-JP");
             const days = new Set((localStorage.getItem("niji_verse_days") || "").split(",").filter(Boolean));
             days.add(today);
-            lsSet("niji_verse_days", [...days].slice(-30).join(","));
+            lsSet("niji_verse_days", [...days].slice(-400).join(","));
             if (days.size >= 7) unlockAch("niji_ach_verse7", "みことばの習慣");
           } catch {}
         }}>
@@ -1546,8 +1590,13 @@ function TodayVerse() {
       ) : (
         <div className="pop">
           <div style={{fontSize:"1.6rem",marginBottom:8}}>📖</div>
-          <div style={{fontWeight:700,lineHeight:1.8,marginBottom:8}}>{v.t}</div>
+          <div style={{fontWeight:700,lineHeight:1.8,marginBottom:8,whiteSpace:"pre-line"}}>{v.t.replace(/　/g, "\n")}</div>
           <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:8}}>— {v.r}</div>
+          {streak >= 2 && (
+            <div style={{color:"#e8944a",fontSize:"0.8rem",fontWeight:700,marginBottom:4}}>
+              🔥 {streak}日つづけて読んでいます
+            </div>
+          )}
           <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.68rem",marginTop:8}}>
             聖書 新改訳2017 ©2017 新日本聖書刊行会
           </div>
@@ -1738,6 +1787,50 @@ function FreeDrinkTicket({ found }) {
         この画面をスタッフにお見せください
       </div>
       <div style={{fontSize:"0.68rem",opacity:0.6,marginTop:8}}>{found.name} 様</div>
+    </div>
+  );
+}
+
+// 🎂 誕生月の1杯券。誕生月の間だけチケット画面に出て、年に1回使える。
+// 誕生月は本人が一度だけ登録できる（変更はマネージャーのみ）。
+const THIS_MONTH = () => new Date().getMonth() + 1;
+function isBirthdayTicketActive(c) {
+  if (!c || !c.birthMonth) return false;
+  if (Number(c.birthMonth) !== THIS_MONTH()) return false;
+  return String(c.birthdayUsedYear || "") !== String(new Date().getFullYear());
+}
+function BirthdayTicket({ found, onSetMonth }) {
+  const [pick, setPick] = useState(null);
+  if (!found.birthMonth) {
+    return (
+      <div className="toy-panel" style={{textAlign:"center"}}>
+        <div style={{fontWeight:700,marginBottom:6}}>🎂 お誕生月を教えてください</div>
+        <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.78rem",marginBottom:10}}>
+          誕生月には「1杯無料券」が届きます（登録は一度だけ。あとから変える時はスタッフへ）
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center"}}>
+          {[...Array(12)].map((_, i) => (
+            <button key={i} className={"pill-btn-dim" + (pick === i + 1 ? " badge-on" : "")}
+              style={pick === i + 1 ? {borderColor:"#e8944a",color:"#e8944a"} : {}}
+              onClick={() => setPick(i + 1)}>{i + 1}月</button>
+          ))}
+        </div>
+        {pick && (
+          <button className="toy-btn" style={{marginTop:10}} onClick={() => {
+            if (window.confirm(`お誕生月を ${pick}月 で登録します。よろしいですか？`)) onSetMonth(pick);
+          }}>🎂 {pick}月で登録する</button>
+        )}
+      </div>
+    );
+  }
+  if (!isBirthdayTicketActive(found)) return null;
+  return (
+    <div className="free-ticket" style={{background:"linear-gradient(135deg,#ff9a9e22,#fad0c422,#ffd1ff22)"}}>
+      <div style={{fontSize:"2rem",marginBottom:4}}>🎂</div>
+      <div style={{fontWeight:800,fontSize:"1.05rem",marginBottom:4}}>お誕生月おめでとうございます</div>
+      <div style={{fontSize:"0.85rem",fontWeight:700,marginBottom:8}}>🎫 1杯 無料券（{found.birthMonth}月）</div>
+      <div style={{fontSize:"0.78rem",opacity:0.8}}>この画面をスタッフにお見せください</div>
+      <div style={{fontSize:"0.68rem",opacity:0.6,marginTop:8}}>{found.name} 様　※ {new Date().getFullYear()}年分・お一人1回</div>
     </div>
   );
 }
@@ -2133,6 +2226,20 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     }
   };
 
+  // 誕生月の登録（本人が一度だけ。サーバー側で「未登録のときだけ」を確認する）
+  const saveMyBirthMonth = async (month) => {
+    if (!custToken.current) { alert("いまは登録できません。スタッフにお伝えください。"); return; }
+    try {
+      const r = await apiData("setMyBirthMonth", { value: { birthMonth: month } }, custToken.current);
+      setBoot(b => b ? { ...b, customer: r.value } : b);
+      setFound(r.value);
+    } catch (e) {
+      console.error("誕生月の登録に失敗しました", e);
+      alert(e.message || "登録に失敗しました。もう一度お試しください。");
+      refresh();
+    }
+  };
+
   // 注文の作成・取り消し。増えていれば作成、減っていれば取り消しとして扱う。
   const saveMyOrders = async (list) => {
     const prev = (boot && boot.myOrders) || [];
@@ -2470,6 +2577,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 })}
               </div>
               )}
+              {/* 誕生月の1杯券（未登録なら誕生月の登録ボタン） */}
+              <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth}/>
               {/* 100個達成の人にだけ出る1杯無料券 */}
               {badgeCount({found,orders:badgeOrders}).got >= 100 && <FreeDrinkTicket found={found}/>}
               {/* 今日の一節（聖書 新改訳2017）と、実績バッジの棚 */}
@@ -3566,6 +3675,14 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                   alert("使用済みにしました。1杯ぶんは会計から外してください。");
                 }}>🎫 無料券を使う</button>
               )}
+              {/* 誕生月の1杯券。誕生月で、今年まだ使っていない人にだけ出る */}
+              {isBirthdayTicketActive(customer) && (
+                <button className="pill-btn-dim" onClick={()=>{
+                  if (!window.confirm(`${customer.name} さんの「🎂 誕生月の1杯無料券」を使用済みにします。\n（${customer.birthMonth}月生まれ・${new Date().getFullYear()}年分）よろしいですか？`)) return;
+                  saveC(customers.map(c=>c.id===customer.id ? {...c, birthdayUsedYear: String(new Date().getFullYear())} : c));
+                  alert("使用済みにしました。1杯ぶんは会計から外してください。");
+                }}>🎂 誕生月券を使う</button>
+              )}
             </div>
           </div>
 
@@ -3713,6 +3830,9 @@ function BackupPanel({ customers }) {
         isVIP:                c.isVIP || false,
         isSpecial:            c.isSpecial || false,
         joined:               c.joined,
+        birthMonth:           c.birthMonth ?? null,
+        birthdayUsedYear:     c.birthdayUsedYear ?? null,
+        freeDrinkUsedAt:      c.freeDrinkUsedAt ?? null,
         benefitUsedMonth:     c.benefitUsedMonth || null,
         toppingRemaining:     c.toppingRemaining ?? null,
         toppingRemainingMonth:c.toppingRemainingMonth || null,
@@ -4939,6 +5059,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
   const [isVIP,    setIsVIP]    = useState(!!customer.isVIP);
   const [isSpecial,setIsSpecial]= useState(!!customer.isSpecial);
   const [resetBenefit, setResetBenefit] = useState(false);
+  const [birthMonth, setBirthMonth] = useState(String(customer.birthMonth || ""));
   const rankPreview = getRank(parseInt(rb)||0);
 
   const pinOwner = findPinOwner(pin, customers, customer.id);
@@ -4969,6 +5090,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
       rankBasis:            newRb,
       isVIP,
       isSpecial,
+      birthMonth:           birthMonth ? Number(birthMonth) : null,
       dataYear:             new Date().getFullYear(),
       benefitUsedMonth:     resetBenefit ? null : customer.benefitUsedMonth,
       history: [...logs, ...(customer.history||[])].slice(0,60),
@@ -5028,6 +5150,17 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
             </label>
           </div>
         )}
+        {/* 誕生月（誕生月の1杯券に使う） */}
+        <div style={{marginBottom:14}}>
+          <label style={S.label}>誕生月（誕生月に1杯無料券が出ます）</label>
+          <select style={S.input} value={birthMonth} onChange={e=>setBirthMonth(e.target.value)}>
+            <option value="">未登録</option>
+            {[...Array(12)].map((_, i) => <option key={i} value={String(i + 1)}>{i + 1}月</option>)}
+          </select>
+          {customer.birthdayUsedYear && (
+            <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:4}}>誕生月券：{customer.birthdayUsedYear}年分は使用済み</div>
+          )}
+        </div>
         {/* VIPステータス */}
         <div style={{marginBottom:10,background:"#e9f1fa",border:`1px solid ${isVIP?"#e8c14a55":"#e7ded3"}`,borderRadius:12,padding:"12px 14px"}}>
           <label style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
