@@ -1314,7 +1314,7 @@ function RankUpShow({ found, rank }) {
         setTimeout(() => setShow(null), 3400);
         try { navigator.vibrate && navigator.vibrate([30, 60, 30, 60, 80]); } catch {}
       }
-      localStorage.setItem(key, rank.name);
+      lsSet(key, rank.name);
     } catch {}
   }, [found && found.id, rank && rank.name]);
   if (!show) return null;
@@ -1357,7 +1357,7 @@ function SparkleRain({ emoji }) {
 function unlockAch(key, label) {
   try {
     if (localStorage.getItem(key) === "1") return;
-    localStorage.setItem(key, "1");
+    lsSet(key, "1");
     const d = document.createElement("div");
     d.className = "ach-toast";
     d.textContent = "🏆 実績解放：" + label;
@@ -1370,9 +1370,83 @@ function unlockAch(key, label) {
 function bumpAch(cntKey, target, achKey, label) {
   try {
     const n = (Number(localStorage.getItem(cntKey)) || 0) + 1;
-    localStorage.setItem(cntKey, String(n));
+    lsSet(cntKey, String(n));
     if (n >= target) unlockAch(achKey, label);
   } catch {}
+}
+
+// ══════════════════════════════════════════
+//  遊びの記録（実績・回数・きせかえ等）をサーバーにも控える
+// ══════════════════════════════════════════
+// これまで遊び系の記録は端末の localStorage にしか無く、機種変更や
+// ブラウザのデータ消去で「殿堂入り」まで全部消えていた。
+// そこで、お客様がログインしている間は niji_* の記録をまとめてサーバー
+// （cafe_v4_play/<会員ID>）にも書く。ログイン時にはサーバーの記録を端末に合流させる。
+// 合流のルール（消す方向には決して動かない）：
+//   ・"1" の旗（実績）      … どちらかが "1" なら "1"
+//   ・回数（niji_cnt_*, niji_hall_*）… 大きい方
+//   ・日付や色の集合（*_days, *_seen）… 両方の和
+//   ・それ以外（きせかえの色・効果音の設定）… 新しく届いた方
+// 端末側はこれまでどおり localStorage が主。サーバーが不調でも遊びは止まらない。
+let _play = null;   // { token, timer } お客様がログインしている間だけ入る
+function lsSet(k, v) {
+  try { localStorage.setItem(k, v); } catch {}
+  if (String(k).startsWith("niji_")) schedulePlaySync();
+}
+function mergePlayValue(k, a, b) {
+  if (a == null || a === "") return b == null ? a : String(b);
+  if (b == null || b === "") return a;
+  a = String(a); b = String(b);
+  if (a === b) return a;
+  if (k.startsWith("niji_cnt_") || k.startsWith("niji_hall_")) return String(Math.max(Number(a) || 0, Number(b) || 0));
+  if (k.endsWith("_days") || k.endsWith("_seen")) {
+    return [...new Set([...a.split(","), ...b.split(",")].filter(Boolean))].slice(-60).join(",");
+  }
+  if (a === "1" || b === "1") return "1";
+  return b;
+}
+function playLocal() {
+  const out = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("niji_")) out[k] = localStorage.getItem(k);
+    }
+  } catch {}
+  return out;
+}
+// サーバーの記録を端末へ合流させる（増える方向だけ）
+function playMerge(server) {
+  if (!server || typeof server !== "object") return;
+  try {
+    for (const [k, v] of Object.entries(server)) {
+      if (!k.startsWith("niji_") || typeof v !== "string") continue;
+      const cur = localStorage.getItem(k);
+      const m = mergePlayValue(k, cur, v);
+      if (m !== cur && m != null) localStorage.setItem(k, m);
+    }
+  } catch {}
+}
+function schedulePlaySync() {
+  if (!_play) return;
+  clearTimeout(_play.timer);
+  _play.timer = setTimeout(pushPlay, 1500);
+}
+async function pushPlay() {
+  if (!_play) return;
+  const token = _play.token;
+  try { await apiData("setMyPlay", { value: playLocal() }, token); }
+  catch (e) { console.warn("遊びの記録の保存に失敗しました（端末には残っています）", e); }
+}
+// お客様がログインしたとき：サーバーの記録を取り込み、端末だけにあった分を送り返す
+function playAttach(token, server) {
+  _play = { token, timer: null };
+  playMerge(server);
+  schedulePlaySync();
+}
+function playDetach() {
+  if (_play) { clearTimeout(_play.timer); pushPlay(); }
+  _play = null;
 }
 
 // ══════════════════════════════════════════
@@ -1463,7 +1537,7 @@ function TodayVerse() {
             const today = new Date().toLocaleDateString("ja-JP");
             const days = new Set((localStorage.getItem("niji_verse_days") || "").split(",").filter(Boolean));
             days.add(today);
-            localStorage.setItem("niji_verse_days", [...days].slice(-30).join(","));
+            lsSet("niji_verse_days", [...days].slice(-30).join(","));
             if (days.size >= 7) unlockAch("niji_ach_verse7", "みことばの習慣");
           } catch {}
         }}>
@@ -1490,9 +1564,11 @@ function TodayVerse() {
 // やりこみ度から自動で解放されていく。まだの物は「？？？」。
 // ヒントは付けない——探すのも遊びのうち。
 // バッジの中身を組み立てる。棚の表示にも、殿堂カードや無料券の判定にも使う。
-function badgeSections({ found, orders }) {
-  const ls  = (k) => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
-  const dset = (k) => { try { return (localStorage.getItem(k) || "").split(",").filter(Boolean).length; } catch { return 0; } };
+function badgeSections({ found, orders, play }) {
+  // play を渡すと端末ではなくその記録（サーバーの控え）で判定する
+  const rd  = (k) => { try { return play ? (play[k] ?? null) : localStorage.getItem(k); } catch { return null; } };
+  const ls  = (k) => rd(k) === "1";
+  const dset = (k) => (rd(k) || "").split(",").filter(Boolean).length;
   const mine = (orders || []).filter((o) => o && String(o.customerId) === String(found.id));
   const cups = Math.max(mine.length, (found.history || []).filter((h) => h && h.type === "use").length);
   const hourOf = (s) => parseInt(String(s || "").split(" ")[1]) || 12;
@@ -1608,7 +1684,7 @@ function HallWatch({ found, orders, onChange }) {
       const prev = Number(localStorage.getItem(key) || 0);
       const now = got >= 100 ? 100 : got >= 75 ? 75 : got >= 50 ? 50 : got >= 25 ? 25 : 0;
       if (now > prev) {
-        localStorage.setItem(key, String(now));
+        lsSet(key, String(now));
         if (h) {
           setShow({ id: Date.now(), ...h, got, top: now === 100 });
           setTimeout(() => { setShow(null); onChange && onChange(); }, 4200);
@@ -1808,11 +1884,11 @@ function ThemeButton() {
     const j = (i + 1) % NIGHT_THEMES.length;
     setI(j);
     try {
-      localStorage.setItem("niji_theme", String(j));
+      lsSet("niji_theme", String(j));
       // 4色ぜんぶ見たら実績解放
       const seen = new Set((localStorage.getItem("niji_theme_seen") || "").split(",").filter(Boolean));
       seen.add(String(j));
-      localStorage.setItem("niji_theme_seen", [...seen].join(","));
+      lsSet("niji_theme_seen", [...seen].join(","));
       if (seen.size >= NIGHT_THEMES.length) unlockAch("niji_ach_theme", "きせかえ名人");
       bumpAch("niji_cnt_themeN", 10, "niji_ach_theme10", "きせかえ10回");
     } catch {}
@@ -1842,7 +1918,7 @@ function MoodPicker({ menu, onAdd }) {
               try {
                 const seen = new Set((localStorage.getItem("niji_mood_seen") || "").split(",").filter(Boolean));
                 seen.add(m[0]);
-                localStorage.setItem("niji_mood_seen", [...seen].join(","));
+                lsSet("niji_mood_seen", [...seen].join(","));
                 if (seen.size >= MOODS.length) unlockAch("niji_ach_mood", "気分の探検家");
               } catch {}
             }}>
@@ -1954,7 +2030,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       const today = new Date().toLocaleDateString("ja-JP");
       const days = new Set((localStorage.getItem("niji_visit_days") || "").split(",").filter(Boolean));
       days.add(today);
-      localStorage.setItem("niji_visit_days", [...days].slice(-60).join(","));
+      lsSet("niji_visit_days", [...days].slice(-60).join(","));
       if (days.size >= 3)  unlockAch("niji_ach_visit3",  "3日来てくれた");
       if (days.size >= 7)  unlockAch("niji_ach_visit7",  "7日の常連");
       if (days.size >= 30) unlockAch("niji_ach_visit30", "30日のなかま");
@@ -1989,6 +2065,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [showRanks, setShowRanks] = useState(false);
 
   const reset = () => { setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); };
+  // 画面を離れる／別の人に切り替わるとき、遊びの記録の同期を止める（残りは送ってから）
+  useEffect(() => () => playDetach(), []);
+  useEffect(() => { if (!found) playDetach(); }, [found && found.id]);
 
   const search = async () => {
     if (busy) return;
@@ -1998,8 +2077,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       // 暗証番号の照合はサーバーの中で行う（全会員の暗証番号をブラウザに配らない）
       const r = await apiLogin("customer", { pin: v });
       custToken.current = r.token;
-      const b = (await apiData("bootstrap", {}, r.token)).value;
+      // full: 実績の計算に使う「アーカイブ済みの自分の注文」も一度だけ受け取る
+      const b = (await apiData("bootstrap", { value: { full: true } }, r.token)).value;
       setBoot(b); setFound(b.customer); reset();
+      playAttach(r.token, b.play);   // 遊びの記録をサーバーと合流
       setBusy(false);
       return;
     } catch (e) {
@@ -2018,10 +2099,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     if (!custToken.current) return;
     try {
       const b = (await apiData("bootstrap", {}, custToken.current)).value;
-      setBoot(b); setFound(b.customer);
+      // 定期の取り直しではアーカイブは受け取らないので、ログイン時の分を引き継ぐ
+      setBoot(prev => ({ ...b, myArchive: b.myArchive || (prev && prev.myArchive) || [] }));
+      setFound(b.customer);
+      playMerge(b.play);   // 別の端末で増えた記録があれば取り込む
     } catch (e) {
       // ログイン証が切れたら、暗証番号の入力からやり直してもらう
       if (e.status === 401) {
+        playDetach();
         custToken.current = null; setBoot(null); setFound(null);
         setErr("時間が経ったため、もう一度暗証番号を入力してください");
         return;
@@ -2089,6 +2174,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // ── boot があれば「自分の分だけ」を、無ければ今までどおりの全体を使う ──
   const customers       = boot ? [boot.customer] : allCustomers;
   const orders          = boot ? (boot.myOrders || []) : allOrders;
+  // 実績の判定には、アーカイブへ移された過去の自分の注文も含める
+  // （本体は新しい60件しか残らないため、これが無いと「50杯」などに届かない）
+  const badgeOrders     = boot ? [...(boot.myOrders || []), ...(boot.myArchive || [])] : allOrders;
   const menu            = boot ? (boot.menu || menuProp) : menuProp;
   const designatedDrink = boot ? boot.designatedDrink : ddProp;
   const vipGiftDrink    = boot ? boot.vipGiftDrink : vipProp;
@@ -2261,12 +2349,12 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           {cvTab==="ticket" && (
             <div>
               <RankUpShow found={found} rank={rank}/>
-              <HallWatch found={found} orders={orders} onChange={()=>setBadgeTick(t=>t+1)}/>
+              <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
               {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
                   一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
-              <HoloCard className={`ticket-card card-in ${(hallRank(badgeCount({found,orders}).got)||{}).cls||""}`}
+              <HoloCard className={`ticket-card card-in ${(hallRank(badgeCount({found,orders:badgeOrders}).got)||{}).cls||""}`}
                 style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#ece4d9)",
                 boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
@@ -2280,7 +2368,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
                   <span style={{fontSize:"1.15rem",fontWeight:700,color:"var(--ink,#3d3630)"}}>{found.name}</span>
                   {/* 25個ごとの称号。集めた人だけ名前の横に付く */}
-                  {(() => { const h = hallRank(badgeCount({found,orders}).got);
+                  {(() => { const h = hallRank(badgeCount({found,orders:badgeOrders}).got);
                     return h ? <span className={"hall-badge " + h.cls}>{h.emoji} {h.label}</span> : null; })()}
                   <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>
                     {/* 宝石を押すとキラキラがはじける */}
@@ -2383,10 +2471,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               </div>
               )}
               {/* 100個達成の人にだけ出る1杯無料券 */}
-              {badgeCount({found,orders}).got >= 100 && <FreeDrinkTicket found={found}/>}
+              {badgeCount({found,orders:badgeOrders}).got >= 100 && <FreeDrinkTicket found={found}/>}
               {/* 今日の一節（聖書 新改訳2017）と、実績バッジの棚 */}
               <TodayVerse/>
-              <BadgeShelf100 found={found} orders={orders}/>
+              <BadgeShelf100 found={found} orders={badgeOrders}/>
               <RankingBoard customers={customers} myId={found.id}/>
               {/* めったに使わない操作なので、一番下で控えめに */}
               <button className="btn-quiet" style={{marginTop:10}} onClick={()=>{setFound(null);setInput("");}}>別の番号を確認する</button>
@@ -2891,7 +2979,7 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
   const toggleSnd = () => {
     const next = !sndOn;
     setSndOn(next);
-    try { localStorage.setItem("niji_snd", next ? "on" : "off"); } catch {}
+    try { lsSet("niji_snd", next ? "on" : "off"); } catch {}
     if (next) { popSound(); unlockAch("niji_ach_snd", "効果音デビュー"); }   // オンにした瞬間に一度鳴らして、音量を確かめられるように
   };
 
@@ -3464,8 +3552,15 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
               {/* 実績100個の1杯無料券。お客様の画面に券が出ていたら、これで使用済みにする。
                   券の判定はお客様の端末で行われるため、スタッフが目で確認してから押す運用。 */}
               {!customer.freeDrinkUsedAt && (
-                <button className="pill-btn-dim" onClick={()=>{
-                  if (!window.confirm(`${customer.name} さんの「🎫 1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？`)) return;
+                <button className="pill-btn-dim" onClick={async ()=>{
+                  // サーバーに控えてある遊びの記録で実績数を数え、参考として表示する
+                  let note = "";
+                  try {
+                    const play = await dbGet("cafe_v4_play/" + customer.id);
+                    const { got } = badgeCount({ found: customer, orders: orders || [], play: play || {} });
+                    note = `\n（サーバーの記録では実績 ${got} 個${got < 100 ? "。100個に届いていないので、お客様の画面をよく確認してください" : ""}）`;
+                  } catch {}
+                  if (!window.confirm(`${customer.name} さんの「🎫 1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？${note}`)) return;
                   const now = new Date().toLocaleString("ja-JP");
                   saveC(customers.map(c=>c.id===customer.id ? {...c, freeDrinkUsedAt: now} : c));
                   alert("使用済みにしました。1杯ぶんは会計から外してください。");
