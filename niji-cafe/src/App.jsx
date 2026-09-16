@@ -1791,6 +1791,120 @@ function FreeDrinkTicket({ found }) {
   );
 }
 
+// ══════════════════════════════════════════
+//  🎟 特典チケット（材料切れなどで使えなかった月次特典の「持ち越し」）
+// ══════════════════════════════════════════
+// マネージャーが会員ごとに「どのランクの特典を・何回分」で発行する。
+// 会員データ `bonusTickets` に積む：
+//   { id, rankName, uses, kind:"topping"|"drink", perUse, remaining, label, issuedAt, usedAt, log:[] }
+//   ・トッピング系（ブロンズ1・シルバー2・ゴールド3）… remaining は「あと何個トッピングを無料にできるか」。
+//     お客様がアプリの注文で今月の特典と同じ操作で使える（今月ぶんを先に使い、足りない分を券から引く）。
+//   ・ドリンク系（プラチナ以上）… remaining は「あと何杯」。レジでスタッフが「使う」を押して渡す。
+// 使い切ると usedAt が入る。注文の取り消しで戻る。
+const TICKET_RANKS = ["ブロンズ", "シルバー", "ゴールド", "プラチナ", "チタン", "サファイア"];
+function makeTicket(rankName, uses) {
+  const r = RANKS.find((x) => x.name === rankName);
+  if (!r || !(uses > 0)) return null;
+  const perUse = getToppingMax(r);
+  const kind = perUse > 0 ? "topping" : "drink";
+  const total = kind === "topping" ? perUse * uses : uses;
+  return { id: "tk_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+           rankName, uses, kind, perUse: kind === "topping" ? perUse : 1, remaining: total,
+           label: `${rankName}特典 ${uses}回分`, desc: r.benefit.desc, icon: r.benefit.icon, gem: r.gem, color: r.color,
+           issuedAt: new Date().toLocaleString("ja-JP"), usedAt: null, log: [] };
+}
+const unusedTickets = (c) => (Array.isArray(c && c.bonusTickets) ? c.bonusTickets : []).filter((t) => t && t.id && !t.usedAt && (Number(t.remaining) || 0) > 0);
+const ticketToppingsOf = (c) => unusedTickets(c).filter((t) => t.kind === "topping").reduce((s, t) => s + (Number(t.remaining) || 0), 0);
+// n個ぶんのトッピングを、古い券から順に引き当てる → [{id, n}]
+function allocTicketToppings(c, n) {
+  const use = [];
+  for (const t of unusedTickets(c).filter((t) => t.kind === "topping")) {
+    if (n <= 0) break;
+    const k = Math.min(n, Number(t.remaining) || 0);
+    if (k > 0) { use.push({ id: t.id, n: k }); n -= k; }
+  }
+  return use;
+}
+function applyTicketUse(c, use, orderId) {
+  const now = new Date().toLocaleString("ja-JP");
+  const map = new Map((use || []).map((u) => [String(u.id), Number(u.n) || 0]));
+  return { ...c, bonusTickets: (c.bonusTickets || []).map((t) => {
+    if (!t || !map.has(String(t.id))) return t;
+    const rem = Math.max(0, (Number(t.remaining) || 0) - map.get(String(t.id)));
+    return { ...t, remaining: rem, usedAt: rem === 0 ? now : null, log: [...(t.log || []), { orderId: orderId || null, n: map.get(String(t.id)), at: now }] };
+  }) };
+}
+function restoreTicketUse(c, use) {
+  const map = new Map((use || []).map((u) => [String(u.id), Number(u.n) || 0]));
+  return { ...c, bonusTickets: (c.bonusTickets || []).map((t) => {
+    if (!t || !map.has(String(t.id))) return t;
+    return { ...t, remaining: (Number(t.remaining) || 0) + map.get(String(t.id)), usedAt: null };
+  }) };
+}
+const ticketRemainText = (t) => t.kind === "topping" ? `🧁 トッピング無料 あと${t.remaining}個` : `${t.icon || "🍹"} ${t.desc || "1杯無料"} あと${t.remaining}杯`;
+
+// お客様のチケット画面に出る「特典チケット入れ」。ランク色の半券として並ぶ。
+// 新しい券が届いたときは、一度だけ全画面でお知らせする。
+function BonusTicketWallet({ found }) {
+  const tickets = unusedTickets(found);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!tickets.length) return;
+    try {
+      const seen = new Set((localStorage.getItem("niji_tix_seen") || "").split(",").filter(Boolean));
+      const fresh = tickets.filter((t) => !seen.has(String(t.id)));
+      if (fresh.length) {
+        setShow(true);
+        lsSet("niji_tix_seen", [...seen, ...fresh.map((t) => String(t.id))].slice(-100).join(","));
+        try { navigator.vibrate && navigator.vibrate([20, 50, 20, 50, 60]); } catch {}
+        setTimeout(() => setShow(false), 3800);
+      }
+    } catch {}
+  }, [found && found.id, tickets.length]);
+  if (!tickets.length) return null;
+  const hasTopping = tickets.some((t) => t.kind === "topping");
+  const hasDrink = tickets.some((t) => t.kind === "drink");
+  return (
+    <>
+      {show && (
+        <div className="rankup-ov" aria-hidden="true" onClick={() => setShow(false)}>
+          {[...Array(14)].map((_, i) => (
+            <span key={i} className="rankup-gem" style={{left:`${(i*37+5)%100}%`,animationDelay:`${(i%7)*0.22}s`,animationDuration:`${2.2+(i%3)*0.5}s`}}>🎟</span>
+          ))}
+          <div className="rankup-box">
+            <div className="rankup-big pop">🎟</div>
+            <div className="rankup-txt" style={{color:"#ffd166"}}>特典チケットが届いています</div>
+            <div className="rankup-name">{tickets.map((t) => t.label).join("・")}</div>
+          </div>
+        </div>
+      )}
+      <div className="tix-wallet pop">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+          <span style={{fontWeight:800,color:"#6b4a00"}}>🎟 特典チケット</span>
+          <span style={{fontSize:"0.8rem",color:"#8a6a1a"}}>{tickets.length}枚</span>
+        </div>
+        <div style={{display:"grid",gap:8}}>
+          {tickets.map((t) => (
+            <div key={t.id} className="tix-stub" style={{borderLeft:`6px solid ${t.color || "#d9a441"}`}}>
+              <div className="tix-gem">{t.gem || "🎟"}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:"0.95rem",color:"#4a3a12"}}>{t.label}</div>
+                <div style={{fontSize:"0.78rem",color:"#6b4a00",marginTop:2}}>{ticketRemainText(t)}</div>
+                <div style={{fontSize:"0.68rem",color:"#8a6a1a",marginTop:2}}>{t.issuedAt ? `${String(t.issuedAt).split(" ")[0]} 発行` : ""}</div>
+              </div>
+              <div className="tix-tag">未使用</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:"0.75rem",color:"#8a6a1a",marginTop:8,textAlign:"center",lineHeight:1.6}}>
+          {hasTopping && <div>「🛒 注文する」の 🎁 特典の欄で、今月の分と同じように選べます（今月の分を使い切ってもチケット分は選べます）</div>}
+          {hasDrink && <div>ドリンクの券は、レジでこの画面をお見せください</div>}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // 🎂 誕生月の1杯券。誕生月の間だけチケット画面に出て、年に1回使える。
 // 誕生月は本人が一度だけ登録できる（変更はマネージャーのみ）。
 const THIS_MONTH = () => new Date().getMonth() + 1;
@@ -2209,12 +2323,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   };
 
   // 特典の使用状況だけを更新する（残高や暗証番号はサーバー側で弾かれる）
-  const saveMyBenefit = async (list) => {
+  const saveMyBenefit = async (list, ticketUse) => {
     const me = (list || []).find(c => c && boot && c.id === boot.customer.id);
     if (!me) return;
     const value = {};
     ["benefitUsedMonth","toppingRemaining","toppingRemainingMonth","vipGiftUsedMonth"]
       .forEach(f => { if (f in me) value[f] = me[f] ?? null; });
+    // 特典チケットから引いた分（サーバー側で「本人の券・残数の範囲内」を確認して減らす）
+    if (Array.isArray(ticketUse) && ticketUse.length) value.ticketUse = ticketUse;
     try {
       const r = await apiData("setMyBenefit", { value }, custToken.current);
       setBoot(b => b ? { ...b, customer: r.value } : b);
@@ -2304,11 +2420,18 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const isMonthly    = rank?.benefit.type === "monthly";
   const toppingMax   = rank ? getToppingMax(rank) : 0;
   const isToppingRank = toppingMax > 0;
-  // トッピング: 残り使用回数
-  const availableTopping = (found && isToppingRank) ? getToppingAvailable(found, rank) : 0;
+  // トッピング: 残り使用回数（今月ぶん）＋ 🎟 特典チケットぶん
+  const monthlyTopping = (found && isToppingRank) ? getToppingAvailable(found, rank) : 0;
+  const ticketToppings = found ? ticketToppingsOf(found) : 0;
+  // 今月の特典がドリンク系（プラチナ以上）の人は、トッピング券はレジで使ってもらう（画面の特典欄は1種類しか持てないため）
+  const ticketToppingsHere = (isToppingRank || !isMonthly) ? ticketToppings : 0;
+  const availableTopping = monthlyTopping + ticketToppingsHere;
   const toppingFullyUsed = (found && isToppingRank) ? isToppingFullyUsed(found, rank) : false;
-  // 特典が使えるか
-  const showBenefit = isMonthly && (isToppingRank ? !toppingFullyUsed : !used);
+  // 特典が使えるか（チケットのトッピングが残っていれば、今月ぶんを使い切っていても出す）
+  const showBenefit = (isMonthly && (isToppingRank ? !toppingFullyUsed : !used)) || ticketToppingsHere > 0;
+  // ランク特典がトッピングでない人（ランクなし・自動割引）がチケットで選ぶときの、表示用の仮ランク
+  const benefitRank = (isToppingRank || (isMonthly && !isToppingRank)) ? rank
+    : { name:"特典チケット", color:"#b07c1e", gem:"🎟", benefit:{ type:"monthly", desc:"トッピング無料（特典チケット）", icon:"🧁" } };
   const cyp          = found ? (found.currentYearPurchases ?? 0) : 0;
   const nextYearRank = found ? getRank(cyp) : null;
   const pct = found && next
@@ -2355,6 +2478,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       subtotal, discount, staffDiscount: isSpecial ? 0 : staffDiscount, total,
       usedBenefit: benefitUsed,
       usedToppingCount: benefitItems.length,
+      // 特典チケットから引いたトッピング数（取り消しで戻すため）。今月ぶんを先に使う
+      ticketToppingUse: (benefitUsed && (isToppingRank || ticketToppingsHere > 0))
+        ? allocTicketToppings(found, Math.max(0, benefitItems.length - monthlyTopping)) : [],
       isSpecial: isSpecial || false,
       staffLinked: linkedStaff ? linkedStaff.name : null,
       status: "pending",
@@ -2367,13 +2493,17 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     // 書き込みの土台は同期済みの最新を使う（開きっぱなしの画面の古い残高で上書きしないため）
     let updated = { ...(customers.find(c=>c.id===found.id) || found) };
     if (benefitUsed) {
-      if (isToppingRank) {
-        const newRemaining = availableTopping - benefitItems.length;
-        updated = { ...updated, toppingRemaining: newRemaining, toppingRemainingMonth: currentMonth() };
+      if (isToppingRank || ticketToppingsHere > 0) {
+        // 今月ぶんを先に使い、足りない分を特典チケットから引く
+        const fromMonthly = Math.min(benefitItems.length, monthlyTopping);
+        const use = order.ticketToppingUse || [];
+        if (isToppingRank) updated = { ...updated, toppingRemaining: monthlyTopping - fromMonthly, toppingRemainingMonth: currentMonth() };
+        if (use.length) updated = applyTicketUse(updated, use, order.orderId);
+        saveC(customers.map(c=>c.id===found.id ? updated : c), use);
       } else {
         updated = { ...updated, benefitUsedMonth: currentMonth() };
+        saveC(customers.map(c=>c.id===found.id ? updated : c));
       }
-      saveC(customers.map(c=>c.id===found.id ? updated : c));
       setFound(updated);
     }
     const OK = ["注文を受け付けました！","うけたまわりました〜！","ありがとうございます♪","ただいまお作りします！","ナイスチョイス！✨"];
@@ -2397,11 +2527,15 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     if (!myPendingOrder) return;
     let updated = { ...(customers.find(c=>c.id===found.id) || found) };
     if (myPendingOrder.usedBenefit) {
+      const fromTickets = (myPendingOrder.ticketToppingUse || []).reduce((s,u)=>s+(Number(u.n)||0), 0);
       if (isToppingRank) {
         // 月が変わっていたら満数に戻っている扱い（先月の残りを土台にしない）
+        // 特典チケットから引いた分は、サーバー（cancelMyOrder）が券に戻すので、ここでは今月ぶんだけ戻す
         const base = (found.toppingRemainingMonth === currentMonth()) ? (found.toppingRemaining ?? toppingMax) : toppingMax;
-        const restored = base + (myPendingOrder.usedToppingCount || 0);
+        const restored = base + Math.max(0, (myPendingOrder.usedToppingCount || 0) - fromTickets);
         updated = { ...updated, toppingRemaining: Math.min(restored, toppingMax), toppingRemainingMonth: currentMonth() };
+      } else if (fromTickets > 0 && !isMonthly) {
+        // ランク特典が無い人がチケットだけで使った場合：戻すのはサーバーに任せる
       } else {
         updated = { ...updated, benefitUsedMonth: null };
       }
@@ -2457,6 +2591,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             <div>
               <RankUpShow found={found} rank={rank}/>
               <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
+              {/* 持ち越しの特典チケット。あるときだけ、カードの上に出る */}
+              <BonusTicketWallet found={found}/>
               {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
@@ -2692,7 +2828,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   {/* ── 月次特典セクション（未使用/残あり時のみ表示） ── */}
                   {showBenefit && (
                     <BenefitOrderSection
-                      rank={rank}
+                      rank={benefitRank}
+                      ticketToppings={ticketToppingsHere}
+                      monthlyTopping={monthlyTopping}
                       menu={menu}
                       benefitUsed={benefitUsed}
                       benefitItems={benefitItems}
@@ -2901,15 +3039,15 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
 }
 
 // ── BENEFIT ORDER SECTION ────────────────
-function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefitItems, setBenefitUsed, designatedDrink, availableTopping }) {
+function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefitItems, setBenefitUsed, designatedDrink, availableTopping, ticketToppings = 0, monthlyTopping = 0 }) {
   const [open, setOpen] = useState(false);
 
   const benefitName = rank.benefit.desc;
   const benefitIcon = rank.benefit.icon;
 
   const toppingMax     = getToppingMax(rank);
-  const isToppingBenefit = toppingMax > 0;
-  const selectable     = availableTopping; // 今回選べる残り回数
+  const isToppingBenefit = toppingMax > 0 || ticketToppings > 0;
+  const selectable     = availableTopping; // 今回選べる残り回数（今月ぶん＋特典チケットぶん）
   const isCoffeeBenefit  = rank.name==="プラチナ";
   const isSpecificDrink  = rank.name==="チタン";
   const isAnyDrink       = rank.name==="サファイア";
@@ -2939,11 +3077,13 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
   const clearBenefit = () => { setBenefitItems([]); setBenefitUsed(false); setOpen(false); };
 
   // ヘッダーのサブテキスト（残り回数表示）
-  const subText = isToppingBenefit && selectable < toppingMax
-    ? `（今月残り${selectable}回）`
-    : isToppingBenefit
-      ? `（${toppingMax}回分）`
-      : "";
+  const subText = ticketToppings > 0
+    ? `（今月残り${monthlyTopping}個 ＋ 🎟チケット${ticketToppings}個）`
+    : isToppingBenefit && selectable < toppingMax
+      ? `（今月残り${selectable}回）`
+      : isToppingBenefit
+        ? `（${toppingMax}回分）`
+        : "";
 
   return (
     <div style={{background:rank.color+"0e",border:`1px solid ${rank.color}44`,borderRadius:12,padding:"12px 14px",marginBottom:14}}>
@@ -3010,7 +3150,9 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
           </div>
           <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:6}}>
             {benefitItems.length}/{selectable} 選択中
-            {selectable < toppingMax && ` （今月の残り使用回数: ${selectable}回）`}
+            {ticketToppings > 0
+              ? `（今月の分 ${monthlyTopping}個を先に使い、残りは 🎟 特典チケットから）`
+              : selectable < toppingMax && ` （今月の残り使用回数: ${selectable}回）`}
           </div>
         </div>
       )}
@@ -3653,6 +3795,28 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                 </div>
               </div>
             </div>
+            {/* 🎟 特典チケット（持ち越し特典）。トッピング券はお客様がアプリで使うのが基本だが、
+                レジで渡すときはここで「1回分使う」。ドリンク券はここでしか減らせない。 */}
+            {unusedTickets(customers.find(c=>c.id===customer.id) || customer).length > 0 && (
+              <div style={{marginTop:8,background:"#fff8e6",border:"1px solid #f0d99a",borderRadius:12,padding:"8px 12px"}}>
+                <div style={{fontSize:"0.75rem",fontWeight:800,color:"#b07c1e",marginBottom:4}}>🎟 特典チケット</div>
+                {unusedTickets(customers.find(c=>c.id===customer.id) || customer).map(t => (
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:"0.8rem",padding:"3px 0"}}>
+                    <span style={{fontWeight:700,color:t.color||"#b07c1e"}}>{t.gem} {t.label}</span>
+                    <span style={{flex:1,color:"var(--ink2,#8a7f76)"}}>{ticketRemainText(t)}</span>
+                    <button className="preset-btn" onClick={()=>{
+                      const per = t.kind === "topping" ? Math.min(t.perUse || 1, t.remaining) : 1;
+                      const what = t.kind === "topping" ? `トッピング${per}個ぶん` : "1杯ぶん";
+                      if (!window.confirm(`${customer.name} さんの「${t.label}」を ${what} 使います（お店で渡す）。よろしいですか？`)) return;
+                      const base = customers.find(c=>c.id===customer.id) || customer;
+                      const upd = applyTicketUse(base, [{ id: t.id, n: per }], `pos_${Date.now()}`);
+                      upd.history = [{ type:"benefit", desc:`🎟 ${t.label}（${what}）`, performer: staffName, date: new Date().toLocaleString("ja-JP") }, ...(base.history||[])].slice(0,60);
+                      update(upd);
+                    }}>使う</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{display:"flex",gap:6,marginTop:8}}>
               {isManager && <button className="pill-btn-gold" onClick={doCharge}>🎫 +¥2,200</button>}
               {isManager && <button className="pill-btn-dim" onClick={()=>{ if(window.confirm("直前のチャージ1回分を取り消します。\n残高 -¥2,200・購入回数 -1 でよろしいですか？")) undoCharge(); }}>↩️ チャージ取消</button>}
@@ -3672,6 +3836,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                   if (!window.confirm(`${customer.name} さんの「🎫 1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？${note}`)) return;
                   const now = new Date().toLocaleString("ja-JP");
                   saveC(customers.map(c=>c.id===customer.id ? {...c, freeDrinkUsedAt: now} : c));
+                  setCustomer({...(customers.find(c=>c.id===customer.id)||customer), freeDrinkUsedAt: now});
                   alert("使用済みにしました。1杯ぶんは会計から外してください。");
                 }}>🎫 無料券を使う</button>
               )}
@@ -3680,6 +3845,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                 <button className="pill-btn-dim" onClick={()=>{
                   if (!window.confirm(`${customer.name} さんの「🎂 誕生月の1杯無料券」を使用済みにします。\n（${customer.birthMonth}月生まれ・${new Date().getFullYear()}年分）よろしいですか？`)) return;
                   saveC(customers.map(c=>c.id===customer.id ? {...c, birthdayUsedYear: String(new Date().getFullYear())} : c));
+                  setCustomer({...(customers.find(c=>c.id===customer.id)||customer), birthdayUsedYear: String(new Date().getFullYear())});
                   alert("使用済みにしました。1杯ぶんは会計から外してください。");
                 }}>🎂 誕生月券を使う</button>
               )}
@@ -3832,6 +3998,7 @@ function BackupPanel({ customers }) {
         joined:               c.joined,
         birthMonth:           c.birthMonth ?? null,
         birthdayUsedYear:     c.birthdayUsedYear ?? null,
+        bonusTickets:         c.bonusTickets || [],
         freeDrinkUsedAt:      c.freeDrinkUsedAt ?? null,
         benefitUsedMonth:     c.benefitUsedMonth || null,
         toppingRemaining:     c.toppingRemaining ?? null,
@@ -4493,15 +4660,20 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
         if (max > 0) {
           // 月が変わっていたらトッピング残数は満数に戻っている扱いなので、
           // 先月の残り（例:0回）を土台にしないよう気をつける。
+          const fromTickets = (order.ticketToppingUse || []).reduce((s,u)=>s+(Number(u.n)||0), 0);
           const base = (c.toppingRemainingMonth === currentMonth()) ? (c.toppingRemaining ?? max) : max;
-          const restored = base + (order.usedToppingCount || 0);
+          const restored = base + Math.max(0, (order.usedToppingCount || 0) - fromTickets);
           updated.toppingRemaining      = Math.min(restored, max);
           updated.toppingRemainingMonth = currentMonth();
+        } else if ((order.ticketToppingUse || []).length > 0) {
+          // ランク特典が無い人がチケットだけで使った注文
         } else {
           updated.benefitUsedMonth = null;
         }
         changed = true;
       }
+      // 特典チケットから引いたトッピングも券に戻す
+      if ((order.ticketToppingUse || []).length > 0) { updated = restoreTicketUse(updated, order.ticketToppingUse); changed = true; }
       if (changed) saveC(customers.map(x=>x.id===c.id ? updated : x));
     }
     saveOrders(orders.filter(o=>o.orderId!==order.orderId));
@@ -5060,6 +5232,13 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
   const [isSpecial,setIsSpecial]= useState(!!customer.isSpecial);
   const [resetBenefit, setResetBenefit] = useState(false);
   const [birthMonth, setBirthMonth] = useState(String(customer.birthMonth || ""));
+  const [tickets, setTickets] = useState(Array.isArray(customer.bonusTickets) ? customer.bonusTickets.filter(Boolean) : []);
+  const [tixRank, setTixRank] = useState(getEffectiveRank(customer).name && TICKET_RANKS.includes(getEffectiveRank(customer).name) ? getEffectiveRank(customer).name : "ブロンズ");
+  const [tixUses, setTixUses] = useState("1");
+  const issueTicket = () => {
+    const t = makeTicket(tixRank, parseInt(tixUses) || 0);
+    if (t) setTickets(p => [...p, t]);
+  };
   const rankPreview = getRank(parseInt(rb)||0);
 
   const pinOwner = findPinOwner(pin, customers, customer.id);
@@ -5091,6 +5270,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
       isVIP,
       isSpecial,
       birthMonth:           birthMonth ? Number(birthMonth) : null,
+      bonusTickets:         tickets,
       dataYear:             new Date().getFullYear(),
       benefitUsedMonth:     resetBenefit ? null : customer.benefitUsedMonth,
       history: [...logs, ...(customer.history||[])].slice(0,60),
@@ -5160,6 +5340,33 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
           {customer.birthdayUsedYear && (
             <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:4}}>誕生月券：{customer.birthdayUsedYear}年分は使用済み</div>
           )}
+        </div>
+        {/* 特典チケット（材料切れ等で使えなかった特典の持ち越し） */}
+        <div style={{marginBottom:14,background:"#fff8e6",border:"1px solid #f0d99a",borderRadius:12,padding:"12px 14px"}}>
+          <label style={S.label}>🎟 特典チケット（使えなかった月の特典を「ランク×回数」で持ち越す）</label>
+          {tickets.length===0 && <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginBottom:6}}>発行済みの券はありません</div>}
+          {tickets.map(t=>(
+            <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:"0.8rem",padding:"4px 0",borderBottom:"1px dashed #f0d99a"}}>
+              <span style={{fontWeight:800,color:t.color||"#b07c1e",minWidth:120}}>{t.gem} {t.label}</span>
+              <span style={{flex:1,color:"var(--ink,#3d3630)"}}>
+                {t.usedAt ? <span style={{color:"var(--ink4,#a79b90)"}}>使い切り {t.usedAt}</span> : ticketRemainText(t)}
+                <span style={{color:"var(--ink4,#a79b90)",marginLeft:6}}>発行 {String(t.issuedAt||"").split(" ")[0]}</span>
+              </span>
+              {!t.usedAt && <button className="preset-btn" style={{color:"#c94a45"}} onClick={()=>setTickets(p=>p.filter(x=>x.id!==t.id))}>削除</button>}
+            </div>
+          ))}
+          <div style={{display:"flex",gap:6,marginTop:8,alignItems:"center",flexWrap:"wrap"}}>
+            <select style={{...S.input,flex:1,minWidth:120}} value={tixRank} onChange={e=>setTixRank(e.target.value)}>
+              {TICKET_RANKS.map(n=>{ const r=RANKS.find(x=>x.name===n); return <option key={n} value={n}>{r.gem} {n}（{r.benefit.desc}）</option>; })}
+            </select>
+            <select style={{...S.input,width:90}} value={tixUses} onChange={e=>setTixUses(e.target.value)}>
+              {["1","2","3","4","5","6"].map(v=><option key={v} value={v}>{v}回分</option>)}
+            </select>
+            <button className="preset-btn" onClick={issueTicket}>＋ 発行</button>
+          </div>
+          <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.72rem",marginTop:6}}>
+            例：ブロンズ2回分＝トッピング無料2個、ゴールド1回分＝トッピング無料3個。下の「保存」を押すまで確定しません。
+          </div>
         </div>
         {/* VIPステータス */}
         <div style={{marginBottom:10,background:"#e9f1fa",border:`1px solid ${isVIP?"#e8c14a55":"#e7ded3"}`,borderRadius:12,padding:"12px 14px"}}>
@@ -5943,6 +6150,16 @@ body.night .toy-btn { box-shadow:0 0 14px rgba(178,141,255,0.15); }
   background-size:250% 250%; animation:rainbowShift 6s ease infinite;
   box-shadow:0 6px 28px rgba(255,110,199,0.45);
   border:2px dashed rgba(255,255,255,0.7); }
+/* 🎟 特典チケット：金色の半券 */
+.tix-wallet { margin-bottom:12px; padding:14px; border-radius:16px;
+  background:linear-gradient(135deg,#fff3c4,#ffe08a 55%,#ffd15c); border:2px dashed #d9a441;
+  box-shadow:0 8px 26px rgba(217,164,65,0.35); position:relative; }
+.tix-stub { display:flex; align-items:center; gap:12px; background:#fffdf5; border-radius:12px; padding:10px 12px;
+  position:relative; box-shadow:0 2px 8px rgba(120,80,0,0.12); }
+.tix-stub::after { content:""; position:absolute; top:50%; right:-7px; width:14px; height:14px; border-radius:50%;
+  background:#ffe08a; transform:translateY(-50%); }
+.tix-gem { font-size:1.6rem; min-width:44px; text-align:center; border-right:2px dashed #e8c96a; padding-right:10px; }
+.tix-tag { font-size:0.68rem; font-weight:800; color:#fff; background:#d9a441; border-radius:999px; padding:3px 8px; }
 .badge-hint { margin-top:8px; text-align:center; font-size:0.8rem; font-weight:700;
   color:var(--ink,#3d3630); background:var(--panel2,#f6f1ea);
   border:1px solid var(--line,#e7ded3); border-radius:10px; padding:8px 12px; }
