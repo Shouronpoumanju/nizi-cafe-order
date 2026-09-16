@@ -391,6 +391,267 @@ const NO_RANK = {
   benefit:{ type:"none", desc:"ランクなし", icon:"−" },
 };
 
+// ══════════════════════════════════════════
+//  メニューの絵文字：同じカテゴリでも品ごとに違う絵にする（のあさんの指示・2026-09-16）
+//  データベースの emoji は変えず、表示のときだけ品名で差し替える。無い品は元の絵文字のまま。
+// ══════════════════════════════════════════
+const EMOJI_BY_NAME = {
+  "ホットカフェラテ":"☕🤍", "アイスコーヒー":"🧊☕", "ホットコーヒー(コロンビアブレンド)":"☕", "アイスカフェラテ":"🧊🥛",
+  "ホットヘーゼルナッツコーヒー":"🌰☕", "アイスヘーゼルナッツコーヒー":"🌰🧊", "ホットヘーゼルナッツカフェラテ":"🌰🥛", "アイスヘーゼルナッツカフェラテ":"🌰🧋",
+  "緑茶ホット":"🍵", "緑茶アイス":"🧊🍵", "烏龍茶ホット":"🫖", "烏龍茶アイス":"🧊🫖", "しょうが茶":"🌿🍵",
+  "ピーチライチ":"🍑", "ローズヒップカシス":"🌹", "メロン":"🍈", "ブドウ＆ベリー":"🍇🫐", "リンゴ":"🍎", "あまおう":"🍓",
+  "ザクロ":"🍷", "マスカット":"🍇💚", "グレープフルーツ":"🍊", "パイナップル":"🍍", "アセロラ":"🍒", "太陽のシトラス":"🌞🍋", "アサイー":"🫐",
+  "アイスミルク":"🧊🥛", "ホットミルク":"🥛♨️",
+  "かき氷(トロピカルピーチ)練乳なし":"🍧🍑", "かき氷(ぶどう)練乳なし":"🍧🍇", "かき氷(いちご)練乳なし":"🍧🍓", "かき氷(ブルーハワイ)":"🍧💙",
+  "ブルーベリーアイスクリーム":"🍨", "モンスター(緑)":"🟢⚡", "レッドブル":"🔵⚡",
+  "タピオカ":"⚫", "チョコソース":"🍫", "キャラメルソース":"🍯",
+  "黒糖ミルク":"🧋", "パインヨーグルト":"🧋🍍", "ザクロヨーグルト":"🧋🍷",
+};
+const decorateItem = (it) => (it && it.name && EMOJI_BY_NAME[it.name]) ? { ...it, emoji: EMOJI_BY_NAME[it.name] } : it;
+const decorateMenu = (list) => (Array.isArray(list) ? list.map(decorateItem) : list);
+
+// ══════════════════════════════════════════
+//  🎨 オリジナルのドリンク絵（絵文字ではなく、品ごとに描いた小さなイラスト）
+//  器の形（マグ・グラス・湯のみ・かき氷・缶・タピオカカップ…）× 中身の色 × 飾り（果物・氷・ストロー）
+//  の組み合わせで、41品それぞれ違う絵になる。SVGなので拡大しても綺麗で、通信量もほぼ増えない。
+//  品名に対応が無いものは、今までどおり絵文字で出す。
+// ══════════════════════════════════════════
+const INK = "#4a3a2a";
+const DrinkParts = {
+  // 湯気
+  steam: (x) => (
+    <g stroke="#b9b0a6" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.8">
+      <path d={`M${x-6} 16 c-3 -4 3 -6 0 -10`}/><path d={`M${x} 14 c-3 -4 3 -6 0 -10`}/><path d={`M${x+6} 16 c-3 -4 3 -6 0 -10`}/>
+    </g>
+  ),
+  // 氷（グラスの中）
+  ice: (ys) => ys.map((y, i) => (
+    <rect key={i} x={i % 2 ? 34 : 22} y={y} width="10" height="9" rx="2.5" fill="#fff" opacity="0.7" stroke="#cfe6f2" strokeWidth="1"/>
+  )),
+  straw: (color = "#e8759b") => <path d="M40 8 L30 46" stroke={color} strokeWidth="4" strokeLinecap="round"/>,
+};
+
+// 器のテンプレート。liquid=中身の色、top=表面の色（泡・クリーム）
+function Mug({ liquid, top, foam, accent, nut }) {
+  return (
+    <g>
+      {DrinkParts.steam(28)}
+      <path d="M12 22 h32 v18 a10 10 0 0 1 -10 10 h-12 a10 10 0 0 1 -10 -10 z" fill="#fffdf8" stroke={INK} strokeWidth="2"/>
+      <path d="M44 26 h6 a6 6 0 0 1 0 12 h-6" fill="none" stroke={INK} strokeWidth="2"/>
+      <path d="M14 24 h28 v14 a8 8 0 0 1 -8 8 h-12 a8 8 0 0 1 -8 -8 z" fill={liquid}/>
+      {foam && <ellipse cx="28" cy="25" rx="14" ry="4" fill={top || "#fff3dd"}/>}
+      {accent && <path d="M22 27 q6 -5 12 0 q-6 5 -12 0 z" fill={accent} opacity="0.9"/>}
+      {nut && <ellipse cx="28" cy="27" rx="4" ry="3" fill="#8b5a2b" stroke="#5a3a18" strokeWidth="1"/>}
+    </g>
+  );
+}
+function Glass({ liquid, top, ice = true, straw, nut, fruit }) {
+  return (
+    <g>
+      {straw && DrinkParts.straw(straw)}
+      <path d="M18 12 h28 l-3 40 a4 4 0 0 1 -4 4 h-14 a4 4 0 0 1 -4 -4 z" fill="#f6fbff" stroke={INK} strokeWidth="2"/>
+      <path d="M20 22 h24 l-2.4 30 a2 2 0 0 1 -2 2 h-15.2 a2 2 0 0 1 -2 -2 z" fill={liquid}/>
+      {top && <path d="M20 22 h24 l-1 8 h-22 z" fill={top}/>}
+      {ice && DrinkParts.ice([26, 36])}
+      {nut && <ellipse cx="32" cy="30" rx="4" ry="3" fill="#8b5a2b" stroke="#5a3a18" strokeWidth="1"/>}
+      {fruit}
+    </g>
+  );
+}
+function Yunomi({ liquid, leaf, steam = true }) {
+  return (
+    <g>
+      {steam && DrinkParts.steam(32)}
+      <path d="M16 22 h32 v18 a8 8 0 0 1 -8 8 h-16 a8 8 0 0 1 -8 -8 z" fill="#f2ede4" stroke={INK} strokeWidth="2"/>
+      <ellipse cx="32" cy="24" rx="14" ry="3.5" fill={liquid}/>
+      <path d="M16 44 h32" stroke={INK} strokeWidth="2" opacity="0.35"/>
+      {leaf && <path d="M30 22 q3 -6 8 -6 q-1 6 -8 6 z" fill="#5fa878"/>}
+    </g>
+  );
+}
+function Teapot({ liquid }) {
+  return (
+    <g>
+      {DrinkParts.steam(30)}
+      <path d="M14 30 h30 a4 4 0 0 1 4 4 v6 a12 12 0 0 1 -12 12 h-14 a12 12 0 0 1 -12 -12 v-6 a4 4 0 0 1 4 -4 z" fill="#f2ede4" stroke={INK} strokeWidth="2"/>
+      <path d="M48 34 l8 -6 v10 l-8 2" fill="#f2ede4" stroke={INK} strokeWidth="2" strokeLinejoin="round"/>
+      <path d="M22 30 c0 -8 20 -8 20 0" fill="none" stroke={INK} strokeWidth="2"/>
+      <circle cx="32" cy="22" r="3" fill={liquid} stroke={INK} strokeWidth="1.5"/>
+      <rect x="18" y="38" width="26" height="8" rx="3" fill={liquid} opacity="0.85"/>
+    </g>
+  );
+}
+function Goblet({ liquid, fruit }) {   // お酢・美酢：ぽってりしたグラス＋果物
+  return (
+    <g>
+      <path d="M16 14 h32 v14 a16 16 0 0 1 -32 0 z" fill="#f6fbff" stroke={INK} strokeWidth="2"/>
+      <path d="M18 20 h28 v8 a14 14 0 0 1 -28 0 z" fill={liquid}/>
+      <path d="M32 44 v8" stroke={INK} strokeWidth="2"/>
+      <path d="M22 54 h20" stroke={INK} strokeWidth="2.5" strokeLinecap="round"/>
+      <rect x="18" y="20" width="28" height="4" fill="#fff" opacity="0.35"/>
+      {fruit}
+    </g>
+  );
+}
+function ShavedIce({ syrup }) {
+  return (
+    <g>
+      <path d="M18 34 a14 14 0 0 1 28 0 z" fill="#f2f9ff" stroke={INK} strokeWidth="2"/>
+      <path d="M21 34 a11 11 0 0 1 22 0 q-4 -4 -11 -3 q-7 -1 -11 3 z" fill={syrup} opacity="0.9"/>
+      <path d="M14 34 h36 l-4 14 a4 4 0 0 1 -4 4 h-20 a4 4 0 0 1 -4 -4 z" fill="#dff2fb" stroke={INK} strokeWidth="2"/>
+      <path d="M24 40 l3 6 M40 40 l-3 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.9"/>
+    </g>
+  );
+}
+function IceCreamCup({ scoop }) {
+  return (
+    <g>
+      <circle cx="32" cy="26" r="12" fill={scoop} stroke={INK} strokeWidth="2"/>
+      <circle cx="27" cy="22" r="2" fill="#fff" opacity="0.6"/>
+      <path d="M18 34 h28 l-3 14 a4 4 0 0 1 -4 4 h-14 a4 4 0 0 1 -4 -4 z" fill="#fff3dd" stroke={INK} strokeWidth="2"/>
+      <circle cx="36" cy="30" r="2.5" fill="#2d3e8c"/><circle cx="26" cy="31" r="2" fill="#2d3e8c"/>
+    </g>
+  );
+}
+function Can({ body, band, bolt }) {
+  return (
+    <g>
+      <rect x="20" y="10" width="24" height="44" rx="5" fill={body} stroke={INK} strokeWidth="2"/>
+      <rect x="20" y="10" width="24" height="6" rx="3" fill="#d9dde3" stroke={INK} strokeWidth="2"/>
+      <rect x="20" y="26" width="24" height="12" fill={band}/>
+      <path d="M34 22 l-6 10 h6 l-4 10 l10 -13 h-6 l4 -7 z" fill={bolt}/>
+    </g>
+  );
+}
+function BobaCup({ liquid, top, pearls = "#2b1d14", fruit }) {
+  return (
+    <g>
+      <path d="M40 6 L30 44" stroke="#3d3630" strokeWidth="5" strokeLinecap="round"/>
+      <path d="M18 18 a14 6 0 0 1 28 0 z" fill="#f6fbff" stroke={INK} strokeWidth="2"/>
+      <path d="M18 18 h28 l-3 34 a4 4 0 0 1 -4 4 h-14 a4 4 0 0 1 -4 -4 z" fill="#f6fbff" stroke={INK} strokeWidth="2"/>
+      <path d="M20 24 h24 l-2.4 28 a2 2 0 0 1 -2 2 h-15.2 a2 2 0 0 1 -2 -2 z" fill={liquid}/>
+      {top && <path d="M20 24 h24 l-1 8 h-22 z" fill={top}/>}
+      {[[24, 50], [30, 51], [36, 50], [27, 45], [33, 45], [39, 45]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r="2.6" fill={pearls}/>)}
+      {fruit}
+    </g>
+  );
+}
+function SauceBottle({ sauce, cap }) {
+  return (
+    <g>
+      <rect x="28" y="6" width="8" height="8" rx="2" fill={cap} stroke={INK} strokeWidth="2"/>
+      <path d="M22 16 h20 a4 4 0 0 1 4 4 v28 a6 6 0 0 1 -6 6 h-16 a6 6 0 0 1 -6 -6 v-28 a4 4 0 0 1 4 -4 z" fill={sauce} stroke={INK} strokeWidth="2"/>
+      <path d="M26 22 v22" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity="0.35"/>
+      <path d="M32 52 q0 6 -3 8 q6 0 6 -6" fill={sauce}/>
+    </g>
+  );
+}
+function Pearls() {
+  return (
+    <g>
+      <ellipse cx="32" cy="44" rx="18" ry="8" fill="#e9e2d8" stroke={INK} strokeWidth="2"/>
+      {[[20, 38], [28, 34], [36, 36], [44, 39], [24, 44], [32, 42], [40, 45], [30, 48]].map(([x, y], i) => (
+        <circle key={i} cx={x} cy={y} r="4.5" fill="#2b1d14" stroke="#111" strokeWidth="0.8"/>
+      ))}
+      <circle cx="26" cy="33" r="1.2" fill="#fff" opacity="0.6"/><circle cx="38" cy="35" r="1.2" fill="#fff" opacity="0.6"/>
+    </g>
+  );
+}
+// 果物の飾り（グラスの縁）
+const Fruit = {
+  slice: (c) => <g><circle cx="46" cy="16" r="7" fill={c} stroke={INK} strokeWidth="1.5"/><circle cx="46" cy="16" r="4" fill="#fff" opacity="0.5"/></g>,
+  berry: (c) => <g><circle cx="45" cy="15" r="5" fill={c} stroke={INK} strokeWidth="1.5"/><circle cx="52" cy="19" r="4" fill={c} stroke={INK} strokeWidth="1.5"/></g>,
+  leaf: () => <path d="M44 12 q6 -6 12 -2 q-6 6 -12 2 z" fill="#5fa878" stroke={INK} strokeWidth="1"/>,
+  straw: (c) => <g><path d="M44 10 q5 0 6 6 q-6 0 -6 -6 z" fill={c} stroke={INK} strokeWidth="1.5"/><path d="M45 12 v3 M47 12 v3" stroke="#fff" strokeWidth="1"/></g>,
+  grapes: (c) => <g>{[[44,12],[50,12],[47,17],[53,17],[50,22]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r="3.2" fill={c} stroke={INK} strokeWidth="1"/>)}</g>,
+  rose: () => <g><circle cx="47" cy="15" r="6" fill="#e0557b" stroke={INK} strokeWidth="1.5"/><path d="M44 15 q3 -4 6 0 q-3 3 -6 0" fill="#f7a1b8"/></g>,
+  cherry: () => <g><circle cx="44" cy="18" r="4" fill="#d1262e" stroke={INK} strokeWidth="1.5"/><circle cx="51" cy="18" r="4" fill="#d1262e" stroke={INK} strokeWidth="1.5"/><path d="M44 14 q3 -6 7 0" fill="none" stroke="#5fa878" strokeWidth="1.5"/></g>,
+  sun: () => <g><circle cx="47" cy="15" r="5" fill="#ffd166" stroke={INK} strokeWidth="1.5"/>{[0,45,90,135,180,225,270,315].map(a=><line key={a} x1={47+Math.cos(a*Math.PI/180)*7} y1={15+Math.sin(a*Math.PI/180)*7} x2={47+Math.cos(a*Math.PI/180)*9} y2={15+Math.sin(a*Math.PI/180)*9} stroke="#f0a020" strokeWidth="1.5"/>)}</g>,
+  pineapple: () => <g><ellipse cx="47" cy="17" rx="5" ry="6" fill="#f2c14e" stroke={INK} strokeWidth="1.5"/><path d="M47 11 l-3 -5 M47 11 l0 -6 M47 11 l3 -5" stroke="#5fa878" strokeWidth="1.5"/><path d="M44 15 l6 4 M44 19 l6 -4" stroke="#c98a1a" strokeWidth="1"/></g>,
+  melon: () => <g><path d="M40 20 a8 8 0 0 1 16 0 z" fill="#b8e08a" stroke={INK} strokeWidth="1.5"/><path d="M40 20 h16" stroke="#5fa878" strokeWidth="2"/></g>,
+  apple: () => <g><circle cx="47" cy="16" r="6" fill="#e0483c" stroke={INK} strokeWidth="1.5"/><path d="M47 10 q2 -3 4 -2" fill="none" stroke="#5a3a18" strokeWidth="1.5"/></g>,
+  peach: () => <g><circle cx="47" cy="16" r="6" fill="#f7b7a3" stroke={INK} strokeWidth="1.5"/><path d="M47 10 v12" stroke="#e58a70" strokeWidth="1.2"/><path d="M47 10 q3 -4 5 -1" fill="none" stroke="#5fa878" strokeWidth="1.5"/></g>,
+  pomegranate: () => <g><circle cx="47" cy="16" r="6" fill="#b3122e" stroke={INK} strokeWidth="1.5"/><path d="M45 9 h4 l-1 -3 h-2 z" fill="#b3122e" stroke={INK} strokeWidth="1"/>{[[45,15],[49,15],[47,18]].map(([x,y],i)=><circle key={i} cx={x} cy={y} r="1.2" fill="#ff7a90"/>)}</g>,
+};
+
+// 品名 → 絵。ここに無い品は絵文字のまま
+const DRINK_ART = {
+  "ホットカフェラテ":            () => <Mug liquid="#c69c6d" foam top="#fff3dd" accent="#b07c3a"/>,
+  "アイスコーヒー":              () => <Glass liquid="#3b2314" straw="#3d3630"/>,
+  "ホットコーヒー(コロンビアブレンド)": () => <Mug liquid="#3b2314"/>,
+  "アイスカフェラテ":            () => <Glass liquid="#c69c6d" top="#fff3dd" straw="#e8759b"/>,
+  "ホットヘーゼルナッツコーヒー":   () => <Mug liquid="#4a2c17" nut/>,
+  "アイスヘーゼルナッツコーヒー":   () => <Glass liquid="#4a2c17" nut straw="#3d3630"/>,
+  "ホットヘーゼルナッツカフェラテ":  () => <Mug liquid="#b8875a" foam top="#f6e3c8" nut/>,
+  "アイスヘーゼルナッツカフェラテ":  () => <Glass liquid="#b8875a" top="#f6e3c8" nut straw="#e8759b"/>,
+  "緑茶ホット":   () => <Yunomi liquid="#8fbf5a" leaf/>,
+  "緑茶アイス":   () => <Glass liquid="#a9d16a" straw="#5fa878" fruit={Fruit.leaf()}/>,
+  "烏龍茶ホット": () => <Teapot liquid="#8a4b1f"/>,
+  "烏龍茶アイス": () => <Glass liquid="#b5652a" straw="#8a4b1f"/>,
+  "しょうが茶":   () => <Yunomi liquid="#e8b04a" leaf={false}/>,
+  "ピーチライチ":      () => <Goblet liquid="#ffc7b0" fruit={Fruit.peach()}/>,
+  "ローズヒップカシス": () => <Goblet liquid="#c2185b" fruit={Fruit.rose()}/>,
+  "メロン":           () => <Goblet liquid="#c8ec9a" fruit={Fruit.melon()}/>,
+  "ブドウ＆ベリー":    () => <Goblet liquid="#7b3fa0" fruit={Fruit.grapes("#5e2a86")}/>,
+  "リンゴ":           () => <Goblet liquid="#f7e2a0" fruit={Fruit.apple()}/>,
+  "あまおう":         () => <Goblet liquid="#ff6b8a" fruit={Fruit.straw("#e0243c")}/>,
+  "ザクロ":           () => <Goblet liquid="#b3122e" fruit={Fruit.pomegranate()}/>,
+  "マスカット":        () => <Goblet liquid="#d6f0a0" fruit={Fruit.grapes("#a3d977")}/>,
+  "グレープフルーツ":   () => <Goblet liquid="#ffd7a8" fruit={Fruit.slice("#ff9f5a")}/>,
+  "パイナップル":      () => <Goblet liquid="#ffe27a" fruit={Fruit.pineapple()}/>,
+  "アセロラ":         () => <Goblet liquid="#e63946" fruit={Fruit.cherry()}/>,
+  "太陽のシトラス":    () => <Goblet liquid="#ffe066" fruit={Fruit.sun()}/>,
+  "アサイー":         () => <Goblet liquid="#5b2a6e" fruit={Fruit.berry("#3d1a52")}/>,
+  "アイスミルク":  () => <Glass liquid="#fffdf8" straw="#8ecae6"/>,
+  "ホットミルク":  () => <Mug liquid="#fffdf8" foam top="#fff"/>,
+  "かき氷(トロピカルピーチ)練乳なし": () => <ShavedIce syrup="#ff9e7a"/>,
+  "かき氷(ぶどう)練乳なし":       () => <ShavedIce syrup="#8e5bc2"/>,
+  "かき氷(いちご)練乳なし":       () => <ShavedIce syrup="#ff5c7a"/>,
+  "かき氷(ブルーハワイ)":         () => <ShavedIce syrup="#4dbbff"/>,
+  "ブルーベリーアイスクリーム": () => <IceCreamCup scoop="#b9a7e6"/>,
+  "モンスター(緑)": () => <Can body="#1f1f1f" band="#2fbf3a" bolt="#c9ff5a"/>,
+  "レッドブル":     () => <Can body="#3b6fd1" band="#c0c8d8" bolt="#e63946"/>,
+  "タピオカ":       () => <Pearls/>,
+  "チョコソース":   () => <SauceBottle sauce="#5a3a1e" cap="#f2c14e"/>,
+  "キャラメルソース": () => <SauceBottle sauce="#d9932a" cap="#8a4b1f"/>,
+  "黒糖ミルク":     () => <BobaCup liquid="#f0e2c8" top="#8a5a2b"/>,
+  "パインヨーグルト": () => <BobaCup liquid="#fff2c2" top="#fffdf8" fruit={Fruit.pineapple()}/>,
+  "ザクロヨーグルト": () => <BobaCup liquid="#ffd6de" top="#fffdf8" fruit={Fruit.pomegranate()}/>,
+};
+// 名前の対応が無い新しい品は、カテゴリと品名から自動で絵を組み立てる（色は品名から決まるので、品ごとに変わる）。
+// あとで DRINK_ART に1行足せば、その品だけ手描きの絵に差し替わる。
+function autoArt(item) {
+  const name = String(item.name || ""), cat = String(item.category || "");
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  const col = (sat, light) => `hsl(${h} ${sat}% ${light}%)`;
+  const hot = /ホット|温|あたたか/.test(name), iced = /アイス|冷|氷/.test(name);
+  if (/タピオカ/.test(cat)) return () => <BobaCup liquid={col(60, 88)} top="#fffdf8"/>;
+  if (/かき氷/.test(cat) || /かき氷/.test(name)) return () => <ShavedIce syrup={col(80, 65)}/>;
+  if (/酢/.test(cat)) return () => <Goblet liquid={col(75, 72)} fruit={Fruit.slice(col(80, 60))}/>;
+  if (/缶/.test(cat)) return () => <Can body={col(40, 35)} band={col(60, 75)} bolt="#ffd166"/>;
+  if (/トッピング/.test(cat)) return /タピオカ/.test(name) ? () => <Pearls/> : () => <SauceBottle sauce={col(55, 45)} cap="#f2c14e"/>;
+  if (/アイス(クリーム)?$/.test(cat) || /アイスクリーム/.test(name)) return () => <IceCreamCup scoop={col(55, 78)}/>;
+  if (/ミルク/.test(cat)) return hot ? () => <Mug liquid="#fffdf8" foam top="#fff"/> : () => <Glass liquid="#fffdf8" straw="#8ecae6"/>;
+  if (/茶/.test(cat) || /茶/.test(name)) return iced ? () => <Glass liquid={col(50, 62)} straw="#5fa878"/> : () => <Yunomi liquid={col(50, 60)} leaf/>;
+  if (/コーヒー|カフェ/.test(cat + name)) {
+    const latte = /ラテ|ミルク/.test(name);
+    return iced ? () => <Glass liquid={latte ? "#c69c6d" : "#3b2314"} top={latte ? "#fff3dd" : null} straw="#e8759b"/>
+                : () => <Mug liquid={latte ? "#c69c6d" : "#3b2314"} foam={latte} top="#fff3dd"/>;
+  }
+  return iced ? () => <Glass liquid={col(65, 70)} straw="#e8759b"/> : () => <Goblet liquid={col(65, 72)}/>;
+}
+// 絵があればSVG（手描き → 自動）、それも無ければ絵文字。size は px
+function DrinkIcon({ item, size = 40 }) {
+  const art = item && (DRINK_ART[item.name] || (item.name && autoArt(item)));
+  if (!art) return <span style={{fontSize: size * 0.7 + "px", lineHeight: 1}}>{item && item.emoji}</span>;
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" style={{display:"block"}}>
+      {art()}
+    </svg>
+  );
+}
+
+
 function getRank(p) {
   if (p < 2) return NO_RANK;
   let r = RANKS[0];
@@ -1483,7 +1744,7 @@ function DrinkRoulette({ menu, onPick }) {
       ) : (
         <div style={{textAlign:"center"}}>
           <div className={"roulette-item" + (spin.done ? " pop" : "")}>
-            <span style={{fontSize:"2rem"}}>{spin.item.emoji}</span>
+            <DrinkIcon item={spin.item} size={64}/>
             <div style={{fontWeight:700,marginTop:2}}>{spin.item.name}</div>
             <div style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{spin.item.price}</div>
           </div>
@@ -1880,8 +2141,8 @@ function BonusTicketWallet({ found }) {
       )}
       <div className="tix-wallet pop">
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-          <span style={{fontWeight:800,color:"#6b4a00"}}>🎟 特典チケット</span>
-          <span style={{fontSize:"0.8rem",color:"#8a6a1a"}}>{tickets.length}枚</span>
+          <span style={{fontWeight:800,color:"#6b4a00"}}>🎟 持ち越し特典チケット</span>
+          <span style={{fontSize:"0.8rem",color:"#8a6a1a"}}>{tickets.length}枚 ・ 今月の特典とは別に使えます</span>
         </div>
         <div style={{display:"grid",gap:8}}>
           {tickets.map((t) => (
@@ -1892,7 +2153,7 @@ function BonusTicketWallet({ found }) {
                 <div style={{fontSize:"0.78rem",color:"#6b4a00",marginTop:2}}>{ticketRemainText(t)}</div>
                 <div style={{fontSize:"0.68rem",color:"#8a6a1a",marginTop:2}}>{t.issuedAt ? `${String(t.issuedAt).split(" ")[0]} 発行` : ""}</div>
               </div>
-              <div className="tix-tag">未使用</div>
+              <div className="tix-tag">持ち越し</div>
             </div>
           ))}
         </div>
@@ -1902,6 +2163,49 @@ function BonusTicketWallet({ found }) {
         </div>
       </div>
     </>
+  );
+}
+
+// 🎁 今月の特典チケット（大きく・ランクが上がるほど豪華に）。
+// 持ち越しの🎟特典チケット（金色の半券）とは別物なので、見た目も分けてある。
+const RANK_TIX_CLASS = { "ブロンズ":"mtix-bronze", "シルバー":"mtix-silver", "ゴールド":"mtix-gold", "プラチナ":"mtix-platinum",
+  "チタン":"mtix-titanium", "サファイア":"mtix-sapphire", "ルビー":"mtix-ruby", "エメラルド":"mtix-emerald", "ダイヤモンド":"mtix-diamond" };
+const RANK_TIER = { "ブロンズ":1, "シルバー":2, "ゴールド":3, "プラチナ":4, "チタン":5, "サファイア":6, "ルビー":7, "エメラルド":8, "ダイヤモンド":9 };
+function MonthlyBenefitTicket({ found, rank }) {
+  if (!rank || rank.benefit.type === "none") return null;
+  const isAlways = rank.benefit.type === "always_discount";
+  const tmax = getToppingMax(rank);
+  const remain = tmax > 0 ? getToppingAvailable(found, rank) : 0;
+  const used = tmax > 0 ? remain <= 0 : isBenefitUsed(found);
+  const tier = RANK_TIER[rank.name] || 1;
+  const now = new Date();
+  const monthLabel = `${now.getFullYear()}年${now.getMonth() + 1}月分`;
+  const status = isAlways ? "毎回自動で適用" : tmax > 0 ? (used ? "使い切りました" : `あと ${remain} 個`) : (used ? "使用済み" : "未使用");
+  return (
+    <div className={"mtix " + (RANK_TIX_CLASS[rank.name] || "mtix-bronze") + (used && !isAlways ? " mtix-used" : "")}>
+      {tier >= 6 && [...Array(tier >= 9 ? 10 : 6)].map((_, i) => (
+        <span key={i} className="mtix-spark" aria-hidden="true" style={{left:`${(i*17+7)%100}%`,top:`${(i*29+11)%100}%`,animationDelay:`${(i%5)*0.35}s`}}>✦</span>
+      ))}
+      <div className="mtix-sheen" aria-hidden="true"/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",position:"relative"}}>
+        <div style={{fontSize:"0.72rem",fontWeight:800,letterSpacing:"0.12em",opacity:0.85}}>🎁 今月の特典チケット</div>
+        <div style={{fontSize:"0.7rem",opacity:0.8}}>{monthLabel}</div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:14,marginTop:10,position:"relative"}}>
+        <div className="mtix-gem">{rank.gem}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:"0.78rem",opacity:0.85,fontWeight:700}}>{rank.name}会員</div>
+          <div style={{fontSize:"1.2rem",fontWeight:900,lineHeight:1.3}}>{rank.benefit.icon} {rank.benefit.desc}</div>
+        </div>
+        <div className={"mtix-stamp" + (used && !isAlways ? " off" : "")}>{status}</div>
+      </div>
+      <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:10,position:"relative"}}>
+        {isAlways ? "お会計のたびに自動で引かれます"
+          : used ? "来月1日に新しい特典チケットが届きます"
+          : tmax > 0 ? "「🛒 注文する」の 🎁 特典の欄で選べます（レジでも使えます）"
+          : "「🛒 注文する」の 🎁 特典の欄で選べます（レジでも使えます）"}
+      </div>
+    </div>
   );
 }
 
@@ -1953,17 +2257,21 @@ function BadgeShelf100({ found, orders }) {
   const SEC = badgeSections({ found, orders });
   const all = SEC.flatMap((s) => s[1]);
   const got = all.filter((b) => b[2]).length;
+  // ふだんは閉じておく（見出しを押すと開く）。100個ぶんの棚は長いので、残高や特典を押し出さないため
+  const [open, setOpen] = useState(false);
   return (
     <div className="toy-panel">
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
+      <div role="button" onClick={()=>setOpen(o=>!o)}
+        style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:open?4:0,cursor:"pointer"}}>
         <span style={{fontWeight:700}}>🏆 実績バッジ</span>
-        <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.8rem"}}>{got} / {all.length}</span>
+        <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.8rem"}}>{got} / {all.length} {open ? "▲" : "▼"}</span>
       </div>
-      {got === all.length && (
+      {!open && <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.72rem",marginTop:4}}>押すと棚が開きます</div>}
+      {open && got === all.length && (
         <div className="pop" style={{textAlign:"center",color:"#ffd166",fontWeight:800,marginBottom:8,
           textShadow:"0 0 12px rgba(255,209,102,0.5)"}}>🎉 全実績コンプリート！すごい！</div>
       )}
-      {SEC.map(([title, items]) => (
+      {open && SEC.map(([title, items]) => (
         <div key={title}>
           <div className="badge-sec">{title}　<span style={{opacity:0.6}}>{items.filter(b=>b[2]).length}/{items.length}</span></div>
           <div className="badge-grid">
@@ -2143,7 +2451,7 @@ function MoodPicker({ menu, onAdd }) {
             : <div className="menu-grid-auto">
                 {items.map((item) => (
                   <button key={item.id} className="menu-item" onClick={() => onAdd(item)}>
-                    <span className="m-emoji" style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                    <span className="m-emoji"><DrinkIcon item={item} size={44}/></span>
                     <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                     <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                   </button>
@@ -2400,9 +2708,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // 実績の判定には、アーカイブへ移された過去の自分の注文も含める
   // （本体は新しい60件しか残らないため、これが無いと「50杯」などに届かない）
   const badgeOrders     = boot ? [...(boot.myOrders || []), ...(boot.myArchive || [])] : allOrders;
-  const menu            = boot ? (boot.menu || menuProp) : menuProp;
-  const designatedDrink = boot ? boot.designatedDrink : ddProp;
-  const vipGiftDrink    = boot ? boot.vipGiftDrink : vipProp;
+  const menu            = decorateMenu(boot ? (boot.menu || menuProp) : menuProp);
+  const designatedDrink = decorateItem(boot ? boot.designatedDrink : ddProp);
+  const vipGiftDrink    = decorateItem(boot ? boot.vipGiftDrink : vipProp);
   // スタッフ割引は「自分に紐づいた分」だけをサーバーから受け取る（スタッフ一覧は受け取らない）
   const staffAccounts   = boot
     ? (boot.staffDiscountRate != null
@@ -2647,22 +2955,6 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   {found.balance === 0 &&
                     <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.8rem",marginTop:4}}>また来てね ☕</div>}
                 </div>
-                <div style={{...S.benefitBox,borderColor:rank.color+"55",background:rank.color+"11"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                      <div style={{color:rank.color,fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.06em",marginBottom:4}}>
-                        {isAlways?"✨ 自動特典":"🎁 今月の特典"}
-                      </div>
-                      <div style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"0.95rem"}}>{rank.benefit.icon} {rank.benefit.desc}</div>
-                    </div>
-                    {isAlways?<div style={S.benefitTagAlways}>毎回適用</div>
-                      :used?<div style={S.benefitTagUsed}>使用済み</div>
-                      :<div style={{...S.benefitTagAvail,borderColor:rank.color,color:rank.color}}>未使用</div>}
-                  </div>
-                  {!isAlways&&<div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:8}}>
-                    {used?"来月またご利用いただけます":"スタッフにお申し付けください"}
-                  </div>}
-                </div>
                 {/* 回数と次のランクを1つにまとめた。
                     以前は「今年の購入回数」「来年のランク予測」「あと何回」「バー」が
                     バラバラに4段あって、読むのに手間がかかっていた。
@@ -2680,6 +2972,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     style={{width:`${pct}%`,background:rank.color}}/>
                 </div>}
               </HoloCard>
+              {/* 今月の特典チケット（大きく・ランクが上がるほど豪華に） */}
+              <MonthlyBenefitTicket found={found} rank={rank}/>
               {/* ランク一覧は9行あり、毎回見る情報ではない。
                   常に開いていると本題（残高と特典）が画面外に押し出されるので、
                   必要なときだけ開く形にした。 */}
@@ -3170,7 +3464,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
                 <button key={item.id} className="menu-item"
                   style={{flex:1,border:`1px solid ${rank.color}44`,background:rank.color+"0a"}}
                   onClick={()=>selectDrink(item)}>
-                  <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                  <DrinkIcon item={item} size={40}/>
                   <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink2,#8a7f76)",lineHeight:1.2,marginTop:2}}>{item.name}</span>
                   <span style={{color:rank.color,fontWeight:700,fontSize:"0.75rem"}}>🎁 無料</span>
                 </button>
@@ -3209,7 +3503,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
               <button key={item.id} className="menu-item"
                 style={{border:`1px solid ${rank.color}44`,background:rank.color+"0a"}}
                 onClick={()=>selectDrink(item)}>
-                <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                <DrinkIcon item={item} size={40}/>
                 <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:rank.color,fontWeight:700,fontSize:"0.75rem"}}>🎁 無料</span>
               </button>
@@ -3269,7 +3563,7 @@ function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
               <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`}
                 onClick={()=>{ addToCart(item); setLastAdd({id:item.id, n:Date.now()}); popSound(); }}>
                 {/* 押した瞬間、絵文字がぷるんと弾んで「+1」が飛び出す */}
-                <span className="m-emoji" style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                <span className="m-emoji"><DrinkIcon item={item} size={44}/></span>
                 <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                 <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                 {inCart&&<div key={inCart.qty} className="pop" style={S.cartBadge}>{inCart.qty}</div>}
@@ -3453,7 +3747,9 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
 // ══════════════════════════════════════════
 //  POS
 // ══════════════════════════════════════════
-function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen }) {
+function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsChief, staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen }) {
+  // 表示用に品ごとの絵文字を当てる。メニュー管理には元のまま（menuRaw）を渡し、保存データは変えない
+  const menu = decorateMenu(menuRaw);
   const [customer,  setCustomer]  = useState(null);
   const [cart,      setCart]      = useState([]);
   const [query,     setQuery]     = useState("");
@@ -3738,7 +4034,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
 
       {/* ── メニュー管理 ── */}
       {!customer && posTab==="menu" && (
-        <MenuManager menu={menu} saveMenu={saveMenu} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink}/>
+        <MenuManager menu={menuRaw} saveMenu={saveMenu} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink}/>
       )}
       
       {/* ── 現金注文 ── */}
@@ -3864,7 +4160,7 @@ function POS({ customers, menu, orders, staffRole, staffName, staffIsChief, staf
                     const inCart=cart.find(c=>c.id===item.id);
                     return (
                       <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
-                        <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                        <DrinkIcon item={item} size={40}/>
                         <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                         <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                         {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
@@ -5468,7 +5764,7 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
               const inCart=cart.find(c=>c.id===item.id);
               return (
                 <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
-                  <span style={{fontSize:"1.4rem"}}>{item.emoji}</span>
+                  <DrinkIcon item={item} size={40}/>
                   <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
                   <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
                   {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
@@ -6152,6 +6448,34 @@ body.night .toy-btn { box-shadow:0 0 14px rgba(178,141,255,0.15); }
   background-size:250% 250%; animation:rainbowShift 6s ease infinite;
   box-shadow:0 6px 28px rgba(255,110,199,0.45);
   border:2px dashed rgba(255,255,255,0.7); }
+/* 🎁 今月の特典チケット：ランクが上がるほど豪華に */
+.mtix { position:relative; overflow:hidden; margin-top:14px; padding:16px 18px; border-radius:18px; color:#fff;
+  box-shadow:0 8px 26px rgba(0,0,0,0.18); border:1.5px solid rgba(255,255,255,0.35); }
+.mtix-gem { font-size:2.2rem; width:56px; height:56px; display:flex; align-items:center; justify-content:center;
+  border-radius:50%; background:rgba(255,255,255,0.18); box-shadow:inset 0 0 0 1px rgba(255,255,255,0.35); flex-shrink:0; }
+.mtix-stamp { font-size:0.78rem; font-weight:900; padding:6px 10px; border-radius:999px; background:rgba(255,255,255,0.22);
+  border:1px solid rgba(255,255,255,0.5); white-space:nowrap; }
+.mtix-stamp.off { background:rgba(0,0,0,0.25); border-color:rgba(255,255,255,0.25); }
+.mtix-used { filter:saturate(0.35) brightness(0.85); }
+.mtix-sheen { position:absolute; top:-40%; left:-60%; width:50%; height:180%; transform:rotate(18deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.35),transparent); animation:mtixSheen 5s ease-in-out infinite; pointer-events:none; }
+@keyframes mtixSheen { 0%{left:-60%} 45%{left:120%} 100%{left:120%} }
+.mtix-spark { position:absolute; font-size:0.8rem; color:#fff; opacity:0; animation:mtixSpark 2.4s ease-in-out infinite; pointer-events:none; text-shadow:0 0 6px #fff; }
+@keyframes mtixSpark { 0%,100%{opacity:0; transform:scale(0.6)} 50%{opacity:1; transform:scale(1.2)} }
+.mtix-bronze   { background:linear-gradient(135deg,#8a4b1f,#c47a3a 55%,#e3a568); }
+.mtix-bronze .mtix-sheen { animation-duration:9s; opacity:0.6; }
+.mtix-silver   { background:linear-gradient(135deg,#5f6772,#9aa3af 45%,#e6eaf0 60%,#8b95a3); }
+.mtix-gold     { background:linear-gradient(135deg,#8a5d0a,#d9a441 45%,#ffe08a 60%,#c6912a); box-shadow:0 8px 30px rgba(217,164,65,0.55); }
+.mtix-platinum { background:linear-gradient(135deg,#6b6157,#b8ada0 40%,#f3ede4 58%,#a89b8c); box-shadow:0 8px 30px rgba(184,173,160,0.55); }
+.mtix-titanium { background:linear-gradient(135deg,#1f2f3a,#4f6b7a 45%,#9fbccb 60%,#3e5665); box-shadow:0 8px 30px rgba(79,107,122,0.55); }
+.mtix-sapphire { background:linear-gradient(135deg,#0f2a5c,#2b62b8 45%,#7fb3ff 60%,#1d4a97); box-shadow:0 10px 34px rgba(59,127,184,0.6); }
+.mtix-ruby     { background:linear-gradient(135deg,#5a0723,#c21354 45%,#ff7aa8 60%,#8f0d3c); box-shadow:0 10px 34px rgba(194,19,84,0.6); }
+.mtix-emerald  { background:linear-gradient(135deg,#0b3d22,#2f9a5c 45%,#8ff0b6 60%,#1f7a46); box-shadow:0 10px 34px rgba(62,154,92,0.6); }
+.mtix-diamond  { background:linear-gradient(135deg,#ff6ec7,#b28dff,#4deeea,#ffd166,#ff6ec7); background-size:300% 300%;
+  animation:rainbowShift 6s ease infinite; box-shadow:0 12px 40px rgba(178,141,255,0.65); border-color:#fff; }
+.mtix-diamond .mtix-gem { background:rgba(255,255,255,0.35); }
+body:not(.night) .mtix { box-shadow:0 8px 24px rgba(0,0,0,0.12); }
+
 /* 🎟 特典チケット：金色の半券 */
 .tix-wallet { margin-bottom:12px; padding:14px; border-radius:16px;
   background:linear-gradient(135deg,#fff3c4,#ffe08a 55%,#ffd15c); border:2px dashed #d9a441;
@@ -6221,7 +6545,8 @@ body:not(.night) .mood-on { color:#c2447e; background:#fdeaf3; }
   .welcome-toast, .rankup-ov, .rankup-gem, .rankup-txt, .rankup-name, .fw-p,
   .big-moon, .lightning, .ripple, .rainbow-big, .rays, .cannon,
   .card-in, .card-sheen, .srain-p, .neko, .neko-say, .roulette-item, .ach-toast, .badge-hint,
-  .hall-legend, .free-ticket { animation:none !important; }
+  .hall-legend, .free-ticket, .mtix-diamond { animation:none !important; }
+  .mtix-sheen, .mtix-spark { animation:none !important; display:none; }
   .star, .float-emoji, .shooting-star, .fall-bit, .stardust,
   .fw, .lightning, .ripple, .rays, .cannon, .card-sheen, .srain-p { display:none; }
   body.rainbow-mode .approot, body.disco .approot { animation:none !important; }
