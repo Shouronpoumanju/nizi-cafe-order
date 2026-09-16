@@ -3052,7 +3052,9 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
   const isSpecificDrink  = rank.name==="チタン";
   const isAnyDrink       = rank.name==="サファイア";
 
-  const toppingItems = menu.filter(m=>m.category==="トッピング");
+  // 特典で無料にできるトッピングから、タピオカは外す（のあさんの指示・2026-09-16）。
+  // 通常の注文（有料）では今までどおり選べる。
+  const toppingItems = menu.filter(m=>m.category==="トッピング" && !/タピオカ/.test(m.name||""));
   const coffeeItems  = menu.filter(m=>m.category==="コーヒー" && (m.name==="アイスコーヒー"||m.name==="ホットコーヒー"));
   const anyDrinkItems= menu.filter(m=>m.category==="コーヒー"||m.category==="ドリンク");
 
