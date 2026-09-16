@@ -309,6 +309,24 @@ export default async function handler(req, res) {
         for (const f of CUSTOMER_WRITABLE) {
           if (value && Object.prototype.hasOwnProperty.call(value, f)) patch[f] = value[f];
         }
+        // 🎟 特典チケットから引いた分。券は本人のもの・未使用・残数の範囲内、のときだけ減らす（増やす方向は受け付けない）
+        const ticketUse = Array.isArray(value && value.ticketUse) ? value.ticketUse : [];
+        if (ticketUse.length > 0) {
+          const now = new Date().toLocaleString("ja-JP");
+          const tickets = arr(list[i].bonusTickets);
+          const byId = new Map(tickets.map((t) => [String(t.id), t]));
+          for (const u of ticketUse) {
+            const t = byId.get(String(u && u.id));
+            const n = Number(u && u.n) || 0;
+            if (!t || t.usedAt || n <= 0 || n > (Number(t.remaining) || 0)) {
+              return send(res, 400, { error: "特典チケットが使えません（残数が足りないか、見つかりません）" });
+            }
+            const rem = (Number(t.remaining) || 0) - n;
+            byId.set(String(t.id), { ...t, remaining: rem, usedAt: rem === 0 ? now : null,
+              log: [...(t.log || []), { orderId: (value && value.orderId) || null, n, at: now }] });
+          }
+          patch.bonusTickets = tickets.map((t) => byId.get(String(t.id)) || t);
+        }
         if (Object.keys(patch).length === 0) return send(res, 400, { error: "更新できる項目がありません" });
         list[i] = { ...list[i], ...patch };   // 残高・暗証番号・氏名には触れない
         await fbPut("cafe_v4_customers", list);
@@ -343,6 +361,18 @@ export default async function handler(req, res) {
         // 済んだ注文は取り消せない（残高が動いた後なので）
         if (target.status !== "pending") return send(res, 400, { error: "この注文はもう取り消せません" });
         await fbPut("cafe_v4_orders", list.filter((o) => o.orderId !== target.orderId));
+        // 🎟 特典チケットから引いていたトッピングを券に戻す
+        const use = Array.isArray(target.ticketToppingUse) ? target.ticketToppingUse : [];
+        if (use.length > 0) {
+          const cl = arr(await fbGet("cafe_v4_customers"));
+          const i = cl.findIndex((c) => String(c.id) === String(me.id));
+          if (i >= 0) {
+            const map = new Map(use.map((u) => [String(u.id), Number(u.n) || 0]));
+            cl[i] = { ...cl[i], bonusTickets: arr(cl[i].bonusTickets).map((t) => map.has(String(t.id))
+              ? { ...t, remaining: (Number(t.remaining) || 0) + map.get(String(t.id)), usedAt: null } : t) };
+            await fbPut("cafe_v4_customers", cl);
+          }
+        }
         return send(res, 200, { ok: true });
       }
 
