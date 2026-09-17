@@ -50,7 +50,7 @@ export default async function handler(req, res) {
   // 暗証番号の総当たりを現実的でなくするための待ち時間（0.4秒）
   await new Promise((r) => setTimeout(r, 400));
 
-  const { role, pin, name, password } = readBody(req);
+  const { role, pin, name, password, remember } = readBody(req);
 
   try {
     // ── お客様：暗証番号でログイン ──────────────────
@@ -68,7 +68,8 @@ export default async function handler(req, res) {
       }
       const me = matches[0];
       return send(res, 200, {
-        token: issueToken({ r: "customer", id: me.id }),
+        // remember: 「この端末で記憶する」を選んだときは7日間有効（毎回の暗証番号入力を省くため）
+        token: issueToken({ r: "customer", id: me.id }, remember ? 24 * 7 : 12),
         customer: me,
       });
     }
