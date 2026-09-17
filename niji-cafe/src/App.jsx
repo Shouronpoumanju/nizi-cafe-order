@@ -78,6 +78,17 @@ getAuthToken();
 let _apiToken = null;
 const setApiToken = (t) => { _apiToken = t; };
 
+// ── お客様の「この端末で記憶する」 ─────────────────────
+// 次回から暗証番号を打たずに開けるように、ログイン証を端末に控える（7日で切れる）。
+// キーに niji_ を付けない（niji_* は遊びの記録としてサーバーに同期されるため）。
+const SESS_KEY = "nz_cust_session";
+const sessLoad = () => { try { const v = JSON.parse(localStorage.getItem(SESS_KEY) || "null"); return v && v.token && v.exp > Date.now() ? v : null; } catch { return null; } };
+const sessSave = (token, name) => { try { localStorage.setItem(SESS_KEY, JSON.stringify({ token, name, exp: Date.now() + 7 * 24 * 3600 * 1000 })); } catch {} };
+const sessClear = () => { try { localStorage.removeItem(SESS_KEY); } catch {} };
+// 文字の大きさ（年配の方向け）
+const bigTextLoad = () => { try { return localStorage.getItem("nz_bigtext") === "1"; } catch { return false; } };
+const applyBigText = (on) => { try { document.body.classList.toggle("bigtext", !!on); localStorage.setItem("nz_bigtext", on ? "1" : "0"); } catch {} };
+
 const apiLogin = async (role, body) => {
   const res = await fetch("/api/login", {
     method: "POST",
@@ -1361,7 +1372,8 @@ function Home({ setScreen }) {
         <div style={S.homeBtns}>
           <button className="btn-rainbow" onClick={()=>setScreen("customer")}>
             <span style={{fontSize:"1.15rem"}}>🎫</span>
-            <span>チケットを確認する</span>
+            {/* 端末に記憶があれば、名前つきで「開く」。暗証番号なしでそのまま入れる */}
+            <span>{(sessLoad() || {}).name ? `${sessLoad().name} さんのチケットを開く` : "チケットを確認する"}</span>
           </button>
           <button className="btn-crystal" onClick={()=>setScreen("login")}>
             <span style={{fontSize:"1rem"}}>🔑</span>
@@ -2571,6 +2583,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [benefitItems, setBenefitItems] = useState([]); // 無料特典アイテム
   const [benefitUsed,  setBenefitUsed]  = useState(false); // この注文で特典使用
   const [busy,         setBusy]         = useState(false);
+  const [remember,     setRemember]     = useState(true);   // この端末で記憶する
+  const [autoBusy,     setAutoBusy]     = useState(() => !!sessLoad());
+  const [bigText,      setBigText]      = useState(bigTextLoad);
+  useEffect(() => { applyBigText(bigText); return () => { try { document.body.classList.remove("bigtext"); } catch {} }; }, [bigText]);
 
   // ── サーバーから受け取った「自分の分だけ」のデータ ──────────────
   // これがあるときは、他の会員のデータを一切持たずに画面が動く。
@@ -2578,11 +2594,31 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [boot, setBoot] = useState(null);
   const custToken = useRef(null);   // お客様のログイン証
   const [showRanks, setShowRanks] = useState(false);
+  const [showPlay,  setShowPlay]  = useState(false);   // バッジ棚・ランキング（ふだん閉じる）
 
   const reset = () => { setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); };
   // 画面を離れる／別の人に切り替わるとき、遊びの記録の同期を止める（残りは送ってから）
   useEffect(() => () => playDetach(), []);
   useEffect(() => { if (!found) playDetach(); }, [found && found.id]);
+
+  // 端末に控えたログイン証で開く（暗証番号なし）。切れていたら黙って入力画面へ
+  const openWithToken = async (token) => {
+    const b = (await apiData("bootstrap", { value: { full: true } }, token)).value;
+    custToken.current = token;
+    setBoot(b); setFound(b.customer); reset();
+    playAttach(token, b.play);
+  };
+  useEffect(() => {
+    const sess = sessLoad();
+    if (!sess) { setAutoBusy(false); return; }
+    let alive = true;
+    (async () => {
+      try { await openWithToken(sess.token); sessSave(sess.token, sess.name); }
+      catch (e) { if (e && e.status === 401) sessClear(); }
+      finally { if (alive) setAutoBusy(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const search = async () => {
     if (busy) return;
@@ -2590,12 +2626,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     const v = input.trim();
     try {
       // 暗証番号の照合はサーバーの中で行う（全会員の暗証番号をブラウザに配らない）
-      const r = await apiLogin("customer", { pin: v });
-      custToken.current = r.token;
-      // full: 実績の計算に使う「アーカイブ済みの自分の注文」も一度だけ受け取る
-      const b = (await apiData("bootstrap", { value: { full: true } }, r.token)).value;
-      setBoot(b); setFound(b.customer); reset();
-      playAttach(r.token, b.play);   // 遊びの記録をサーバーと合流
+      const r = await apiLogin("customer", { pin: v, remember });
+      await openWithToken(r.token);
+      if (remember) sessSave(r.token, r.customer && r.customer.name); else sessClear();
       setBusy(false);
       return;
     } catch (e) {
@@ -2621,7 +2654,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     } catch (e) {
       // ログイン証が切れたら、暗証番号の入力からやり直してもらう
       if (e.status === 401) {
-        playDetach();
+        playDetach(); sessClear();
         custToken.current = null; setBoot(null); setFound(null);
         setErr("時間が経ったため、もう一度暗証番号を入力してください");
         return;
@@ -2859,24 +2892,37 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       <NightMode/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <button className="back-btn" onClick={()=>{setScreen("home");setFound(null);setInput("");}}>← 戻る</button>
-        {/* きせかえ：夜空の色を4種類から選べる */}
-        <ThemeButton/>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {/* 文字を大きく（年配の方向け）。端末が覚える */}
+          <button className="theme-btn" onClick={()=>setBigText(v=>!v)} title="文字の大きさ">{bigText ? "🔠 ふつう" : "🔠 大きく"}</button>
+          {/* きせかえ：夜空の色を4種類から選べる */}
+          <ThemeButton/>
+        </div>
       </div>
       <h2 style={S.title}>チケット確認</h2>
 
-      {!found ? (
+      {autoBusy ? (
+        <div style={{textAlign:"center",padding:"30px 0",color:"var(--ink2,#8a7f76)"}}>
+          <div className="spinner" style={{margin:"0 auto 10px"}}/>
+          {(sessLoad() || {}).name ? `${sessLoad().name} さんのチケットを開いています…` : "開いています…"}
+        </div>
+      ) : !found ? (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <p style={S.hint}>暗証番号を入力してください</p>
-          {/* 間違えると入力欄がぷるぷる震える（クラスを交互に付け替えて毎回震わせる） */}
-          <input style={S.input} type="password" placeholder="暗証番号" value={input}
+          {/* 間違えると入力欄がぷるぷる震える（クラスを交互に付け替えて毎回震わせる）。数字キーパッドで開く */}
+          <input style={S.input} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="off" placeholder="暗証番号" value={input}
             className={errN ? `wobble-${errN % 2}` : ""}
             onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()}/>
           {err && <p style={S.err}>{err}</p>}
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:"0.85rem",color:"var(--ink2,#8a7f76)",cursor:"pointer"}}>
+            <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{width:18,height:18}}/>
+            この端末で記憶する（次回から暗証番号なしで開けます・7日間）
+          </label>
           <button className="btn-gold" onClick={search}>確認する</button>
         </div>
       ) : (
         <div>
-          <div style={{display:"flex",background:"var(--panel2,#f2ece4)",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
+          <div className="cv-tabs" style={{display:"flex",background:"var(--panel2,#f2ece4)",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
             {[
               ["ticket","🎫 チケット"],
               ["order","🛒 注文する"],
@@ -2899,8 +2945,6 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             <div>
               <RankUpShow found={found} rank={rank}/>
               <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
-              {/* 持ち越しの特典チケット。あるときだけ、カードの上に出る */}
-              <BonusTicketWallet found={found}/>
               {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
                   以前はカード全体をランク色のグラデーションで塗っていたため、
                   シルバーやプラチナの人には画面全体が灰色一色になり、
@@ -2974,6 +3018,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               </HoloCard>
               {/* 今月の特典チケット（大きく・ランクが上がるほど豪華に） */}
               <MonthlyBenefitTicket found={found} rank={rank}/>
+              {/* 持ち越しの特典チケット。あるときだけ、今月の券の下に出る */}
+              <BonusTicketWallet found={found}/>
               {/* ランク一覧は9行あり、毎回見る情報ではない。
                   常に開いていると本題（残高と特典）が画面外に押し出されるので、
                   必要なときだけ開く形にした。 */}
@@ -3011,12 +3057,22 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth}/>
               {/* 100個達成の人にだけ出る1杯無料券 */}
               {badgeCount({found,orders:badgeOrders}).got >= 100 && <FreeDrinkTicket found={found}/>}
-              {/* 今日の一節（聖書 新改訳2017）と、実績バッジの棚 */}
+              {/* 今日の一節（聖書 新改訳2017） */}
               <TodayVerse/>
-              <BadgeShelf100 found={found} orders={badgeOrders}/>
-              <RankingBoard customers={customers} myId={found.id}/>
+              {/* 遊びのコーナー（バッジ棚・ランキング）はまとめて折りたたむ。残高と特典を押し出さないため */}
+              <button className="btn-quiet" style={{marginTop:10,width:"100%",textAlign:"left",display:"flex",justifyContent:"space-between"}}
+                onClick={()=>setShowPlay(v=>!v)}>
+                <span>🏆 実績バッジ・🏅 ランキング</span><span>{showPlay ? "閉じる ▲" : "▼"}</span>
+              </button>
+              {showPlay && (<>
+                <BadgeShelf100 found={found} orders={badgeOrders}/>
+                <RankingBoard customers={customers} myId={found.id}/>
+              </>)}
               {/* めったに使わない操作なので、一番下で控えめに */}
-              <button className="btn-quiet" style={{marginTop:10}} onClick={()=>{setFound(null);setInput("");}}>別の番号を確認する</button>
+              <div style={{display:"flex",gap:8,marginTop:10}}>
+                <button className="btn-quiet" style={{flex:1}} onClick={()=>{playDetach(); custToken.current=null; setBoot(null); setFound(null); setInput("");}}>別の番号を確認する</button>
+                {sessLoad() && <button className="btn-quiet" style={{flex:1}} onClick={()=>{ if(!window.confirm("この端末の記憶を消します。次回は暗証番号の入力が必要になります。")) return; sessClear(); playDetach(); custToken.current=null; setBoot(null); setFound(null); setInput(""); }}>🔓 この端末の記憶を消す</button>}
+              </div>
             </div>
           )}
 
@@ -3032,6 +3088,25 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           )}
           {cvTab==="order" && (
             <div>
+              {/* 🔁 いつもの：前回の注文をワンタップでカートに入れる（未処理注文が無く、カートが空のときだけ） */}
+              {!myPendingOrder && cart.length===0 && (() => {
+                const last = [...badgeOrders].filter(o => o && !o.isVipGift && (o.items||[]).length > 0 && o.status !== "pending")
+                  .sort((a,b) => String(b.orderId||"").localeCompare(String(a.orderId||"")))[0];
+                if (!last) return null;
+                const picks = (last.items||[]).map(it => { const m = menu.find(x => x.id===it.id) || menu.find(x => x.name===it.name); return m ? { ...m, qty: it.qty || 1 } : null; }).filter(Boolean);
+                if (!picks.length) return null;
+                const label = picks.map(p => `${p.name}×${p.qty}`).join("、");
+                return (
+                  <button className="usual-btn" onClick={()=>{ setCart(picks); popSound(); try { navigator.vibrate && navigator.vibrate(12); } catch {} }}>
+                    <span style={{fontSize:"1.3rem"}}>🔁</span>
+                    <span style={{flex:1,textAlign:"left"}}>
+                      <span style={{fontWeight:800,display:"block"}}>いつもの</span>
+                      <span style={{fontSize:"0.75rem",opacity:0.8}}>前回：{label}</span>
+                    </span>
+                    <span style={{fontSize:"0.8rem",fontWeight:700}}>カートへ →</span>
+                  </button>
+                );
+              })()}
               {myPendingOrder ? (
                 <div style={{background:"#e9f5ec",border:"1px solid #c9e2ce",borderRadius:16,padding:16}}>
                   <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.95rem",marginBottom:10}}>✅ 注文受付済み — スタッフが準備中です</div>
@@ -6448,6 +6523,17 @@ body.night .toy-btn { box-shadow:0 0 14px rgba(178,141,255,0.15); }
   background-size:250% 250%; animation:rainbowShift 6s ease infinite;
   box-shadow:0 6px 28px rgba(255,110,199,0.45);
   border:2px dashed rgba(255,255,255,0.7); }
+/* 文字を大きく（年配の方向け） */
+body.bigtext { font-size:117%; }
+/* チケット／注文の切り替えは、スクロールしても上に貼り付く */
+.cv-tabs { position:sticky; top:6px; z-index:20; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); box-shadow:0 4px 14px rgba(0,0,0,0.08); }
+body.night .cv-tabs { background:rgba(30,24,60,0.75) !important; }
+/* 🔁 いつもの */
+.usual-btn { width:100%; display:flex; align-items:center; gap:12px; padding:12px 14px; margin-bottom:12px; border-radius:14px;
+  border:1.5px solid #d9a441; background:linear-gradient(135deg,#fff8e6,#ffe9b8); color:#5a3a12; cursor:pointer; font-family:inherit; }
+body.night .usual-btn { background:linear-gradient(135deg,rgba(255,209,102,0.18),rgba(255,209,102,0.08)); color:#ffd166; }
+.spinner { width:28px; height:28px; border-radius:50%; border:3px solid #e7ded3; border-top-color:#d9a441; animation:spin 0.9s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 /* 🎁 今月の特典チケット：ランクが上がるほど豪華に */
 .mtix { position:relative; overflow:hidden; margin-top:14px; padding:16px 18px; border-radius:18px; color:#fff;
   box-shadow:0 8px 26px rgba(0,0,0,0.18); border:1.5px solid rgba(255,255,255,0.35); }
