@@ -63,8 +63,11 @@ const PUSH_OK = ["cafe_v4_money_log", "cafe_v4_sales_log"];
 
 // お客様が自分の会員データのうち書き換えてよい項目（特典の使用状況だけ）
 const CUSTOMER_WRITABLE = [
-  "benefitUsedMonth", "toppingRemaining", "toppingRemainingMonth", "vipGiftUsedMonth",
+  "benefitUsedMonth", "toppingRemaining", "toppingRemainingMonth", "vipGiftUsedMonth", "keiroGiftUsed",
 ];
+// 🎁 敬老の日 特別プレゼント（2026-09-20・対象の方だけ・お一人1回）。画面側の KEIRO と同じ内容
+const KEIRO = { year: "2026", date: "2026/9/20", names: ["えつこ", "ちえこ", "ゆうこ", "まきやま", "よこやま"] };
+const jstToday = () => { const d = new Date(Date.now() + 9 * 3600 * 1000); return `${d.getUTCFullYear()}/${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
 
 const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 
@@ -341,11 +344,20 @@ export default async function handler(req, res) {
           return send(res, 403, { error: "他の会員の注文は出せません" });
         }
         if (order.status !== "pending") return send(res, 400, { error: "注文の状態が不正です" });
+        // 🎁 敬老の日：当日・対象の方・未受け取り、のときだけ ¥0 の注文を受け付ける
+        if (order.isKeiroGift) {
+          const cl = arr(await fbGet("cafe_v4_customers"));
+          const mine = cl.find((c) => String(c.id) === String(me.id));
+          if (!mine || !KEIRO.names.includes(String(mine.name || "").trim())) return send(res, 403, { error: "このプレゼントの対象ではありません" });
+          if (jstToday() !== KEIRO.date) return send(res, 400, { error: "このプレゼントは9月20日だけ受け取れます" });
+          if (String(mine.keiroGiftUsed || "") === KEIRO.year) return send(res, 409, { error: "すでに受け取り済みです" });
+          order.total = 0; order.subtotal = 0; order.discount = 0; order.items = [];
+        }
         const list = arr(await fbGet("cafe_v4_orders"));
-        // 同じ人の、同じ種類（通常／VIPギフト）の未処理注文を置き換える
+        // 同じ人の、同じ種類（通常／VIPギフト／敬老の日）の未処理注文を置き換える
+        const kind = (o) => o.isVipGift ? "vip" : o.isKeiroGift ? "keiro" : "normal";
         const kept = list.filter(
-          (o) => !(String(o.customerId) === String(me.id) && o.status === "pending"
-                   && !!o.isVipGift === !!order.isVipGift)
+          (o) => !(String(o.customerId) === String(me.id) && o.status === "pending" && kind(o) === kind(order))
         );
         await fbPut("cafe_v4_orders", [order, ...kept]);
         return send(res, 200, { ok: true });
