@@ -6718,7 +6718,10 @@ body:not(.night) .mtix { box-shadow:0 8px 24px rgba(0,0,0,0.12); }
 .keiro-opt small { display:block; font-size:0.7rem; margin-top:2px; }
 .keiro-opt em { display:block; font-style:normal; font-size:0.68rem; color:#ff6ec7; font-weight:800; margin-top:4px; }
 .keiro-opt.sel { border-color:#ff6ec7; background:linear-gradient(135deg,rgba(255,110,199,0.28),rgba(255,209,102,0.2)); box-shadow:0 0 18px rgba(255,110,199,0.4); }
-.keiro-ov { background:rgba(8,6,24,0.9); }
+/* お祝いは読める長さ（約7秒）出して、押しても閉じられるようにする（rankup-ov の 3.4 秒フェードを上書き） */
+.keiro-ov { background:rgba(8,6,24,0.92); pointer-events:auto; animation:keiroFade 7s ease forwards; cursor:pointer; }
+@keyframes keiroFade { 0%,88%{opacity:1} 100%{opacity:0} }
+.keiro-ov .rankup-box { top:44%; width:min(92vw,340px); }
 body:not(.night) .keiro-in { background:linear-gradient(160deg,#241c5a,#1a1244); }
 @media (prefers-reduced-motion: reduce) { .keiro, .keiro-in::before, .keiro-in::after, .keiro-grad, .keiro-spark { animation:none !important; } }
 
