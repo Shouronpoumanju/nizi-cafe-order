@@ -2221,6 +2221,108 @@ function MonthlyBenefitTicket({ found, rank }) {
   );
 }
 
+// ══════════════════════════════════════════
+//  🎁 敬老の日 特別プレゼント（2026-09-20・対象の方だけ・お一人1回）
+// ══════════════════════════════════════════
+// 対象者は名前で指定（のあさんの指示）。日付は日本時間で判定。使うと会員データに keiroGiftUsed="2026" が入る。
+const KEIRO = {
+  year: "2026", date: "2026/9/20", names: ["えつこ", "ちえこ", "ゆうこ", "まきやま", "よこやま"],
+  drink: "敬老の日 スペシャルドリンク",
+};
+const jstToday = () => { const d = new Date(Date.now() + 9 * 3600 * 1000); return `${d.getUTCFullYear()}/${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+const keiroIsDay = () => jstToday() === KEIRO.date;
+const keiroTarget = (c) => !!c && KEIRO.names.includes(String(c.name || "").trim());
+const keiroUsed = (c) => String((c && c.keiroGiftUsed) || "") === KEIRO.year;
+
+// 当日ログインした瞬間の、全画面のお祝い（端末ごとに一度だけ）
+function KeiroShow({ found }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!found || !keiroTarget(found) || !keiroIsDay()) return;
+    try {
+      const key = "niji_keiro" + KEIRO.year + "_seen";
+      if (localStorage.getItem(key) === "1") return;
+      lsSet(key, "1");
+      setShow(true);
+      try { navigator.vibrate && navigator.vibrate([30, 60, 30, 60, 30, 60, 160]); } catch {}
+      const t = setTimeout(() => setShow(false), 7000);
+      return () => clearTimeout(t);
+    } catch {}
+  }, [found && found.id]);
+  if (!show) return null;
+  return (
+    <div className="rankup-ov keiro-ov" onClick={() => setShow(false)}>
+      {[...Array(18)].map((_, i) => (
+        <span key={i} className="rankup-gem" style={{left:`${(i*29+3)%100}%`,animationDelay:`${(i%9)*0.25}s`,animationDuration:`${2.4+(i%4)*0.5}s`}}>{["🌈","🎉","✨","🎊","🌸"][i%5]}</span>
+      ))}
+      <div className="rankup-box" style={{maxWidth:320}}>
+        <div className="rankup-big pop">🎁</div>
+        <div className="rankup-txt keiro-grad" style={{fontSize:"1.25rem"}}>敬老の日おめでとうございます</div>
+        <div style={{color:"#f5efff",fontSize:"0.9rem",lineHeight:1.9,marginTop:10}}>
+          これからも笑顔いっぱい<br/>素敵な毎日を。<br/>
+          これからも最高のカフェを準備して<br/>お待ちしております。
+        </div>
+        <div style={{color:"#ffd166",fontSize:"0.8rem",marginTop:14,fontWeight:700}}>虹カフェ スタッフ一同</div>
+        <div style={{color:"#a49cd1",fontSize:"0.68rem",marginTop:14}}>画面を押すと閉じます</div>
+      </div>
+    </div>
+  );
+}
+
+// 虹色にピカピカ光る特別チケット。Hot／ICE を選んで ¥0 の注文を出す
+function KeiroTicket({ found, orders, onClaim, onCancel }) {
+  const [hot, setHot] = useState(true);
+  const [busy, setBusy] = useState(false);
+  if (!found || !keiroTarget(found) || !keiroIsDay()) return null;
+  const pending = (orders || []).find((o) => o && o.isKeiroGift && o.status === "pending" && String(o.customerId) === String(found.id));
+  const used = keiroUsed(found);
+  return (
+    <div className="keiro">
+      <div className="keiro-in">
+        {[...Array(12)].map((_, i) => (
+          <span key={i} className="mtix-spark keiro-spark" aria-hidden="true" style={{left:`${(i*23+5)%100}%`,top:`${(i*41+9)%100}%`,animationDelay:`${(i%6)*0.3}s`}}>✦</span>
+        ))}
+        <div className="keiro-eyebrow"><span>🎁 敬老の日 特別プレゼント</span><span>9月20日 限定</span></div>
+        <div className="keiro-title keiro-grad">感謝の一杯を、あなたに。</div>
+        <div style={{fontSize:"0.82rem",color:"#c9bfe6",marginTop:4,lineHeight:1.6}}>いつもありがとうございます。今日だけの特別ドリンクを1杯、無料でお贈りします。</div>
+        <div className="keiro-drink">
+          <span style={{fontSize:"1.8rem"}}>🎁</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:800,fontSize:"1rem",color:"#f5efff"}}>{KEIRO.drink}</div>
+            <div style={{fontSize:"0.72rem",color:"#a49cd1"}}>スタッフ特製・この日だけの一杯</div>
+          </div>
+          <div style={{fontWeight:900,color:"#ffd166",whiteSpace:"nowrap"}}>🎁 無料</div>
+        </div>
+        {used && !pending ? (
+          <div style={{textAlign:"center",marginTop:14,color:"#ffd166",fontWeight:800}}>✓ お渡し済み　ありがとうございました</div>
+        ) : pending ? (
+          <div style={{marginTop:12}}>
+            <div style={{textAlign:"center",color:"#4deeea",fontWeight:800}}>☕ スタッフが準備中です（{(pending.benefitItems||[])[0] && /ICE/.test(pending.benefitItems[0].name) ? "🧊 ICE" : "♨️ Hot"}）</div>
+            <div style={{textAlign:"center",fontSize:"0.75rem",color:"#a49cd1",marginTop:4}}>できあがったらカウンターへどうぞ</div>
+            <button className="btn-quiet" style={{marginTop:10,width:"100%"}} disabled={busy} onClick={async()=>{ setBusy(true); try { await onCancel(pending); } finally { setBusy(false); } }}>取り消す</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{marginTop:12,fontSize:"0.75rem",color:"#a49cd1",letterSpacing:"0.08em"}}>ホット／アイス を選んでください</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
+              {[["♨️ Hot","あたたかい一杯",true],["🧊 ICE","ひんやり一杯",false]].map(([t,sub,v]) => (
+                <button key={t} type="button" className={"keiro-opt" + (hot===v ? " sel" : "")} onClick={()=>setHot(v)}>
+                  <b>{t}</b><small>{sub}</small>{hot===v && <em>✓ えらびました</em>}
+                </button>
+              ))}
+            </div>
+            <button className="btn-pay" style={{marginTop:12,width:"100%",fontSize:"1rem"}} disabled={busy}
+              onClick={async()=>{ setBusy(true); try { await onClaim(hot ? "Hot" : "ICE"); } finally { setBusy(false); } }}>
+              🎁 この一杯を注文する
+            </button>
+            <div style={{fontSize:"0.7rem",color:"#a49cd1",marginTop:8,textAlign:"center"}}>お一人さま1回・9月20日のみ・会計は¥0です</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // 🎂 誕生月の1杯券。誕生月の間だけチケット画面に出て、年に1回使える。
 // 誕生月は本人が一度だけ登録できる（変更はマネージャーのみ）。
 const THIS_MONTH = () => new Date().getMonth() + 1;
@@ -2668,7 +2770,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     const me = (list || []).find(c => c && boot && c.id === boot.customer.id);
     if (!me) return;
     const value = {};
-    ["benefitUsedMonth","toppingRemaining","toppingRemainingMonth","vipGiftUsedMonth"]
+    ["benefitUsedMonth","toppingRemaining","toppingRemainingMonth","vipGiftUsedMonth","keiroGiftUsed"]
       .forEach(f => { if (f in me) value[f] = me[f] ?? null; });
     // 特典チケットから引いた分（サーバー側で「本人の券・残数の範囲内」を確認して減らす）
     if (Array.isArray(ticketUse) && ticketUse.length) value.ticketUse = ticketUse;
@@ -2695,6 +2797,30 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       alert(e.message || "登録に失敗しました。もう一度お試しください。");
       refresh();
     }
+  };
+
+  // 🎁 敬老の日：¥0 の注文を出し、会員データに「今年は受け取った」印を付ける（VIPプレゼントと同じ流れ）
+  const claimKeiro = async (hotOrIce) => {
+    const base = customers.find(c=>c.id===found.id) || found;
+    const order = {
+      orderId: `ord_${Date.now()}`, customerId: found.id, customerName: found.name,
+      rankName: "敬老の日", rankColor: "#ff6ec7", rankGem: "🎁",
+      items: [], benefitItems: [{ id: "keiro" + KEIRO.year, name: `${KEIRO.drink}（${hotOrIce}）`, emoji: "🎁", price: 0, qty: 1 }],
+      subtotal: 0, discount: 0, total: 0, isKeiroGift: true, staffLinked: null,
+      status: "pending", createdAt: new Date().toLocaleString("ja-JP"),
+    };
+    await saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending" && o.isKeiroGift))]);
+    const updated = { ...base, keiroGiftUsed: KEIRO.year };
+    await saveC(customers.map(c=>c.id===found.id ? updated : c));
+    setFound(updated);
+    try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
+  };
+  const cancelKeiro = async (pending) => {
+    await saveOrders(orders.filter(o=>o.orderId!==pending.orderId));
+    const base = customers.find(c=>c.id===found.id) || found;
+    const updated = { ...base, keiroGiftUsed: null };
+    await saveC(customers.map(c=>c.id===found.id ? updated : c));
+    setFound(updated);
   };
 
   // 注文の作成・取り消し。増えていれば作成、減っていれば取り消しとして扱う。
@@ -2782,7 +2908,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // VIPプレゼントの注文は「🎁 プレゼント」タブが別に管理しているので、
   // 通常の注文の未処理判定からは外す。混ぜると、通常注文をしたときに
   // プレゼントの注文が巻き添えで消え、しかも受け取り済みの表示だけが残ってしまう。
-  const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending" && !o.isVipGift) : null;
+  const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending" && !o.isVipGift && !o.isKeiroGift) : null;
   // スタッフ・マネージャーリンク確認
   const linkedStaff = found
     ? (staffAccounts.find(s=>s.linkedCustomerId===found.id) || (managerAccounts||[]).find(s=>s.linkedCustomerId===found.id))
@@ -2829,7 +2955,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     };
     // 通常の注文を出すとき、置き換えるのは同じ人の「通常の」未処理注文だけ。
     // VIPプレゼントの注文は消さない。
-    saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending" && !o.isVipGift))]);
+    saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending" && !o.isVipGift && !o.isKeiroGift))]);
 
     // 書き込みの土台は同期済みの最新を使う（開きっぱなしの画面の古い残高で上書きしないため）
     let updated = { ...(customers.find(c=>c.id===found.id) || found) };
@@ -2944,6 +3070,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           {cvTab==="ticket" && (
             <div>
               <RankUpShow found={found} rank={rank}/>
+              <KeiroShow found={found}/>
               <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
               {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
                   以前はカード全体をランク色のグラデーションで塗っていたため、
@@ -3016,6 +3143,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     style={{width:`${pct}%`,background:rank.color}}/>
                 </div>}
               </HoloCard>
+              {/* 🎁 敬老の日（9/20・対象の方だけ） */}
+              <KeiroTicket found={found} orders={orders} onClaim={claimKeiro} onCancel={cancelKeiro}/>
               {/* 今月の特典チケット（大きく・ランクが上がるほど豪華に） */}
               <MonthlyBenefitTicket found={found} rank={rank}/>
               {/* 持ち越しの特典チケット。あるときだけ、今月の券の下に出る */}
@@ -3090,7 +3219,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             <div>
               {/* 🔁 いつもの：前回の注文をワンタップでカートに入れる（未処理注文が無く、カートが空のときだけ） */}
               {!myPendingOrder && cart.length===0 && (() => {
-                const last = [...badgeOrders].filter(o => o && !o.isVipGift && (o.items||[]).length > 0 && o.status !== "pending")
+                const last = [...badgeOrders].filter(o => o && !o.isVipGift && !o.isKeiroGift && (o.items||[]).length > 0 && o.status !== "pending")
                   .sort((a,b) => String(b.orderId||"").localeCompare(String(a.orderId||"")))[0];
                 if (!last) return null;
                 const picks = (last.items||[]).map(it => { const m = menu.find(x => x.id===it.id) || menu.find(x => x.name===it.name); return m ? { ...m, qty: it.qty || 1 } : null; }).filter(Boolean);
@@ -4996,7 +5125,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     ].join(", ");
     const updatedCustomer = {
       ...customer,
-      balance: (order.isSpecial || order.isVipGift) ? customer.balance : Math.max(0, customer.balance - order.total),
+      balance: (order.isSpecial || order.isVipGift || order.isKeiroGift) ? customer.balance : Math.max(0, customer.balance - order.total),
       history: [{
         type:"use", amount:order.total, subtotal:order.subtotal, discount:order.discount,
         items: itemText,
@@ -5026,6 +5155,9 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       let changed = false;
       if (order.isVipGift) {
         updated.vipGiftUsedMonth = null;
+        changed = true;
+      } else if (order.isKeiroGift) {
+        updated.keiroGiftUsed = null;   // 敬老の日プレゼントは、削除したらもう一度受け取れるように戻す
         changed = true;
       } else if (order.usedBenefit) {
         const r   = getEffectiveRank(c);
@@ -5079,7 +5211,9 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
                     <span style={{fontSize:"0.95rem"}}>{order.rankGem}</span>
                     <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
-                    {order.isVipGift
+                    {order.isKeiroGift
+                      ? <span style={{color:"#c2185b",fontSize:"0.75rem",border:"1px solid #ff6ec7aa",borderRadius:999,padding:"2px 9px",fontWeight:800,background:"#fff0f7"}}>🎁 敬老の日スペシャル</span>
+                      : order.isVipGift
                       ? <span style={{color:"#a9791a",fontSize:"0.75rem",border:"1px solid #e8c14a55",borderRadius:999,padding:"2px 9px",fontWeight:700}}>⭐ VIPギフト</span>
                       : order.isCash
                         ? <span style={{color:"#3e9a5c",fontSize:"0.75rem",border:"1px solid #7cc39455",borderRadius:999,padding:"2px 9px",fontWeight:700}}>💵 現金</span>
@@ -6561,6 +6695,32 @@ body.night .usual-btn { background:linear-gradient(135deg,rgba(255,209,102,0.18)
   animation:rainbowShift 6s ease infinite; box-shadow:0 12px 40px rgba(178,141,255,0.65); border-color:#fff; }
 .mtix-diamond .mtix-gem { background:rgba(255,255,255,0.35); }
 body:not(.night) .mtix { box-shadow:0 8px 24px rgba(0,0,0,0.12); }
+
+/* 🎁 敬老の日 特別チケット：虹色にピカピカ */
+.keiro { margin-top:14px; border-radius:20px; padding:3px; position:relative;
+  background:linear-gradient(120deg,#ff6ec7,#ffd166,#4deeea,#b28dff,#ff6ec7); background-size:300% 300%;
+  animation:rainbowShift 4s ease infinite, keiroGlow 2.2s ease-in-out infinite; }
+@keyframes keiroGlow { 0%,100%{ box-shadow:0 0 0 1px rgba(255,255,255,0.5), 0 10px 40px rgba(255,110,199,0.55), 0 0 70px rgba(77,238,234,0.35); }
+  50%{ box-shadow:0 0 0 2px rgba(255,255,255,0.9), 0 12px 56px rgba(255,209,102,0.7), 0 0 100px rgba(178,141,255,0.55); } }
+.keiro-in { border-radius:17px; padding:16px 16px 14px; position:relative; overflow:hidden;
+  background:linear-gradient(160deg,rgba(28,22,66,0.96),rgba(20,14,50,0.96)); }
+.keiro-in::before { content:""; position:absolute; inset:-40% -60%; background:conic-gradient(from 0deg,transparent 0 55%,rgba(255,255,255,0.28) 62%,transparent 70%); animation:spin 4.5s linear infinite; pointer-events:none; }
+.keiro-in::after { content:""; position:absolute; top:-50%; left:-70%; width:40%; height:200%; transform:rotate(18deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent); animation:mtixSheen 3s ease-in-out infinite; pointer-events:none; }
+.keiro-spark { color:#fff; font-size:1rem; text-shadow:0 0 8px #fff, 0 0 16px #ffd166; animation-duration:1.6s; }
+.keiro-eyebrow { display:flex; justify-content:space-between; font-size:0.7rem; letter-spacing:0.16em; font-weight:800; color:#ffd166; position:relative; }
+.keiro-eyebrow span:last-child { color:#a49cd1; letter-spacing:0.04em; font-weight:500; }
+.keiro-grad { background:linear-gradient(90deg,#ffd166,#ff6ec7,#4deeea,#b28dff,#ffd166); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:rainbowShift 3s linear infinite; }
+.keiro-title { font-size:1.35rem; font-weight:900; margin-top:8px; line-height:1.3; position:relative; }
+.keiro-drink { display:flex; align-items:center; gap:12px; margin-top:12px; background:rgba(255,255,255,0.08); border:1px dashed rgba(255,209,102,0.6); border-radius:14px; padding:10px 12px; position:relative; }
+.keiro-opt { border-radius:14px; padding:12px 10px; text-align:center; border:1.5px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.05); color:#c9bfe6; font-family:inherit; cursor:pointer; position:relative; }
+.keiro-opt b { display:block; font-size:1.05rem; color:#f5efff; }
+.keiro-opt small { display:block; font-size:0.7rem; margin-top:2px; }
+.keiro-opt em { display:block; font-style:normal; font-size:0.68rem; color:#ff6ec7; font-weight:800; margin-top:4px; }
+.keiro-opt.sel { border-color:#ff6ec7; background:linear-gradient(135deg,rgba(255,110,199,0.28),rgba(255,209,102,0.2)); box-shadow:0 0 18px rgba(255,110,199,0.4); }
+.keiro-ov { background:rgba(8,6,24,0.9); }
+body:not(.night) .keiro-in { background:linear-gradient(160deg,#241c5a,#1a1244); }
+@media (prefers-reduced-motion: reduce) { .keiro, .keiro-in::before, .keiro-in::after, .keiro-grad, .keiro-spark { animation:none !important; } }
 
 /* 🎟 特典チケット：金色の半券 */
 .tix-wallet { margin-bottom:12px; padding:14px; border-radius:16px;
