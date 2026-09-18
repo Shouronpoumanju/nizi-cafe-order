@@ -63,7 +63,7 @@ const PUSH_OK = ["cafe_v4_money_log", "cafe_v4_sales_log"];
 
 // お客様が自分の会員データのうち書き換えてよい項目（特典の使用状況だけ）
 const CUSTOMER_WRITABLE = [
-  "benefitUsedMonth", "toppingRemaining", "toppingRemainingMonth", "vipGiftUsedMonth", "keiroGiftUsed",
+  "benefitUsedMonth", "toppingRemaining", "toppingRemainingMonth", "vipGiftUsedMonth", "keiroGiftUsed", "birthdayUsedYear",
 ];
 // 🎁 敬老の日 特別プレゼント（2026-09-20・対象の方だけ・お一人1回）。画面側の KEIRO と同じ内容
 const KEIRO = { year: "2026", date: "2026/9/20", names: ["えつこ", "ちえこ", "ゆうこ", "まきやま", "よこやま"] };
@@ -353,6 +353,24 @@ export default async function handler(req, res) {
           if (String(mine.keiroGiftUsed || "") === KEIRO.year) return send(res, 409, { error: "すでに受け取り済みです" });
           order.total = 0; order.subtotal = 0; order.discount = 0; order.items = [];
         }
+        // 🎂 誕生日の一杯：誕生月・今年未使用のときだけ。無料の品はドリンク1＋トッピング1まで、価格は必ず0
+        let bdayCustomers = null, bdayIndex = -1;
+        if (order.isBirthdayGift) {
+          bdayCustomers = arr(await fbGet("cafe_v4_customers"));
+          bdayIndex = bdayCustomers.findIndex((c) => String(c.id) === String(me.id));
+          const mine = bdayCustomers[bdayIndex];
+          const month = new Date(Date.now() + 9 * 3600 * 1000).getUTCMonth() + 1;
+          const year = String(new Date(Date.now() + 9 * 3600 * 1000).getUTCFullYear());
+          if (!mine || Number(mine.birthMonth) !== month) return send(res, 400, { error: "誕生月のプレゼントは、お誕生月にだけ使えます" });
+          if (String(mine.birthdayUsedYear || "") === year) return send(res, 409, { error: "今年のお誕生日の一杯は、もう受け取り済みです" });
+          const bi = arr(order.birthdayItems);
+          const drinks = bi.filter((i) => i && i.category !== "トッピング"), tops = bi.filter((i) => i && i.category === "トッピング");
+          if (drinks.length !== 1 || tops.length > 1) return send(res, 400, { error: "誕生日のプレゼントはドリンク1杯とトッピング1つまでです" });
+          order.birthdayItems = [...drinks, ...tops].map((i) => ({ ...i, price: 0, qty: 1 }));
+          bdayCustomers[bdayIndex] = { ...mine, birthdayUsedYear: year };
+        } else {
+          order.isBirthdayGift = false; order.birthdayItems = [];
+        }
         const list = arr(await fbGet("cafe_v4_orders"));
         // 同じ人の、同じ種類（通常／VIPギフト／敬老の日）の未処理注文を置き換える
         const kind = (o) => o.isVipGift ? "vip" : o.isKeiroGift ? "keiro" : "normal";
@@ -360,6 +378,7 @@ export default async function handler(req, res) {
           (o) => !(String(o.customerId) === String(me.id) && o.status === "pending" && kind(o) === kind(order))
         );
         await fbPut("cafe_v4_orders", [order, ...kept]);
+        if (bdayCustomers) await fbPut("cafe_v4_customers", bdayCustomers);
         return send(res, 200, { ok: true });
       }
       case "cancelMyOrder": {
@@ -373,6 +392,12 @@ export default async function handler(req, res) {
         // 済んだ注文は取り消せない（残高が動いた後なので）
         if (target.status !== "pending") return send(res, 400, { error: "この注文はもう取り消せません" });
         await fbPut("cafe_v4_orders", list.filter((o) => o.orderId !== target.orderId));
+        // 🎂 誕生日の一杯を取り消したら、券はまた使える
+        if (target.isBirthdayGift) {
+          const cl = arr(await fbGet("cafe_v4_customers"));
+          const i = cl.findIndex((c) => String(c.id) === String(me.id));
+          if (i >= 0) { cl[i] = { ...cl[i], birthdayUsedYear: null }; await fbPut("cafe_v4_customers", cl); }
+        }
         // 🎟 特典チケットから引いていたトッピングを券に戻す
         const use = Array.isArray(target.ticketToppingUse) ? target.ticketToppingUse : [];
         if (use.length > 0) {
