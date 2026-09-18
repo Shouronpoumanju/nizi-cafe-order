@@ -2234,9 +2234,83 @@ const keiroIsDay = () => jstToday() === KEIRO.date;
 const keiroTarget = (c) => !!c && KEIRO.names.includes(String(c.name || "").trim());
 const keiroUsed = (c) => String((c && c.keiroGiftUsed) || "") === KEIRO.year;
 
-// 当日ログインした瞬間の、全画面のお祝い（端末ごとに一度だけ）
+// 🎉 クラッカーの演出（Canvas）。左右の角から紙吹雪とリボンが勢いよく飛び出し、
+// ひらひら舞い落ちる。途中で真ん中からもう一発。約7秒で自然に止まる。
+function keiroPopper(canvas, durationMs) {
+  const ctx = canvas.getContext("2d");
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr; ctx.scale(dpr, dpr);
+  const COLORS = ["#ff6ec7", "#ffd166", "#4deeea", "#b28dff", "#ff8c42", "#ffffff", "#f2cd72", "#7cf29c"];
+  const ps = [], flashes = [];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function fire(x, y, angleDeg, count, power) {
+    flashes.push({ x, y, t: 0 });
+    for (let i = 0; i < count; i++) {
+      const a = (angleDeg + rnd(-28, 28)) * Math.PI / 180;
+      const sp = rnd(power * 0.45, power);
+      const kind = Math.random() < 0.18 ? "ribbon" : Math.random() < 0.25 ? "circle" : "rect";
+      ps.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, rot: rnd(0, Math.PI * 2), vr: rnd(-0.25, 0.25),
+        w: kind === "ribbon" ? rnd(3, 5) : rnd(6, 11), h: kind === "ribbon" ? rnd(26, 46) : rnd(4, 8),
+        color: COLORS[Math.floor(Math.random() * COLORS.length)], kind, life: 0, ttl: rnd(2600, 4200), ph: rnd(0, 6.28) });
+    }
+  }
+  const t0 = performance.now();
+  const shots = [
+    { at: 120, f: () => fire(W * 0.06, H * 0.96, -62, 110, 22) },
+    { at: 420, f: () => fire(W * 0.94, H * 0.96, -118, 110, 22) },
+    { at: 1250, f: () => fire(W * 0.5, H * 0.98, -90, 90, 20) },
+    { at: 2600, f: () => { fire(W * 0.06, H * 0.96, -62, 60, 18); fire(W * 0.94, H * 0.96, -118, 60, 18); } },
+  ];
+  let last = t0, raf = 0, alive = true;
+  function frame(now) {
+    if (!alive) return;
+    const el = now - t0, dt = Math.min(40, now - last) / 16.67; last = now;
+    while (shots.length && el >= shots[0].at) shots.shift().f();
+    ctx.clearRect(0, 0, W, H);
+    // 発射の閃光
+    for (const f of flashes) {
+      f.t += dt;
+      const r = 20 + f.t * 26, a = Math.max(0, 0.9 - f.t * 0.12);
+      if (a <= 0) continue;
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+      g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.4, `rgba(255,209,102,${a * 0.7})`); g.addColorStop(1, "rgba(255,209,102,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, 6.28); ctx.fill();
+    }
+    // 紙吹雪
+    for (const p of ps) {
+      p.life += dt * 16.67;
+      p.vy += 0.16 * dt;                          // 重力
+      p.vx *= Math.pow(0.985, dt); p.vy *= Math.pow(0.985, dt);
+      p.x += p.vx * dt + Math.sin(p.life / 180 + p.ph) * 0.6 * dt;   // ひらひら
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+      const fade = p.life > p.ttl - 700 ? Math.max(0, (p.ttl - p.life) / 700) : 1;
+      if (fade <= 0 || p.y > H + 40) continue;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = fade; ctx.fillStyle = p.color;
+      if (p.kind === "circle") { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, 6.28); ctx.fill(); }
+      else if (p.kind === "ribbon") {
+        ctx.beginPath(); ctx.moveTo(-p.w / 2, -p.h / 2);
+        for (let k = 0; k <= 4; k++) ctx.quadraticCurveTo((k % 2 ? 6 : -6), -p.h / 2 + (k + 0.5) * p.h / 5, 0, -p.h / 2 + (k + 1) * p.h / 5);
+        ctx.lineWidth = p.w; ctx.strokeStyle = p.color; ctx.stroke();
+      } else { const sq = Math.abs(Math.cos(p.life / 120 + p.ph)); ctx.fillRect(-p.w / 2, -p.h / 2 * sq, p.w, p.h * sq); }
+      ctx.restore();
+    }
+    if (el < durationMs) raf = requestAnimationFrame(frame); else ctx.clearRect(0, 0, W, H);
+  }
+  raf = requestAnimationFrame(frame);
+  return () => { alive = false; cancelAnimationFrame(raf); };
+}
+
+// 当日ログインした瞬間の、全画面のお祝い（端末ごとに一度だけ）。絵文字が降るのではなく、クラッカーが鳴る
 function KeiroShow({ found }) {
   const [show, setShow] = useState(false);
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    if (!show || !canvasRef.current) return;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    return keiroPopper(canvasRef.current, 7000);
+  }, [show]);
   useEffect(() => {
     if (!found || !keiroTarget(found) || !keiroIsDay()) return;
     try {
@@ -2252,9 +2326,9 @@ function KeiroShow({ found }) {
   if (!show) return null;
   return (
     <div className="rankup-ov keiro-ov" onClick={() => setShow(false)}>
-      {[...Array(18)].map((_, i) => (
-        <span key={i} className="rankup-gem" style={{left:`${(i*29+3)%100}%`,animationDelay:`${(i%9)*0.25}s`,animationDuration:`${2.4+(i%4)*0.5}s`}}>{["🌈","🎉","✨","🎊","🌸"][i%5]}</span>
-      ))}
+      <canvas ref={canvasRef} className="keiro-canvas" aria-hidden="true"/>
+      <span className="popper popper-l" aria-hidden="true">🎉</span>
+      <span className="popper popper-r" aria-hidden="true">🎉</span>
       <div className="rankup-box" style={{maxWidth:320}}>
         <div className="rankup-big pop">🎁</div>
         <div className="rankup-txt keiro-grad" style={{fontSize:"1.25rem"}}>敬老の日おめでとうございます</div>
@@ -6722,6 +6796,13 @@ body:not(.night) .mtix { box-shadow:0 8px 24px rgba(0,0,0,0.12); }
 .keiro-ov { background:rgba(8,6,24,0.92); pointer-events:auto; animation:keiroFade 7s ease forwards; cursor:pointer; }
 @keyframes keiroFade { 0%,88%{opacity:1} 100%{opacity:0} }
 .keiro-ov .rankup-box { top:44%; width:min(92vw,340px); }
+.keiro-canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.popper { position:absolute; bottom:6%; font-size:2.6rem; filter:drop-shadow(0 0 10px rgba(255,209,102,0.8)); }
+.popper-l { left:4%; transform:rotate(-20deg); animation:kickL 0.5s 0.12s cubic-bezier(0.34,1.56,0.64,1) both; }
+.popper-r { right:4%; transform:rotate(20deg) scaleX(-1); animation:kickR 0.5s 0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
+@keyframes kickL { 0%{transform:rotate(-20deg) scale(0.6)} 40%{transform:rotate(-38deg) scale(1.35)} 100%{transform:rotate(-20deg) scale(1)} }
+@keyframes kickR { 0%{transform:rotate(20deg) scaleX(-1) scale(0.6)} 40%{transform:rotate(38deg) scaleX(-1) scale(1.35)} 100%{transform:rotate(20deg) scaleX(-1) scale(1)} }
+.keiro-ov .rankup-txt { animation-delay:0.5s; } .keiro-ov .rankup-big { animation-delay:0.3s; }
 body:not(.night) .keiro-in { background:linear-gradient(160deg,#241c5a,#1a1244); }
 @media (prefers-reduced-motion: reduce) { .keiro, .keiro-in::before, .keiro-in::after, .keiro-grad, .keiro-spark { animation:none !important; } }
 
