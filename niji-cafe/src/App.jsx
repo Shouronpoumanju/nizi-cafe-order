@@ -2405,14 +2405,14 @@ function isBirthdayTicketActive(c) {
   if (Number(c.birthMonth) !== THIS_MONTH()) return false;
   return String(c.birthdayUsedYear || "") !== String(new Date().getFullYear());
 }
-function BirthdayTicket({ found, onSetMonth }) {
+function BirthdayTicket({ found, onSetMonth, onUse }) {
   const [pick, setPick] = useState(null);
   if (!found.birthMonth) {
     return (
       <div className="toy-panel" style={{textAlign:"center"}}>
         <div style={{fontWeight:700,marginBottom:6}}>🎂 お誕生月を教えてください</div>
         <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.78rem",marginBottom:10}}>
-          誕生月には「1杯無料券」が届きます（登録は一度だけ。あとから変える時はスタッフへ）
+          誕生月には「お好きなドリンク1杯 無料券」が届きます（登録は一度だけ。あとから変える時はスタッフへ）
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center"}}>
           {[...Array(12)].map((_, i) => (
@@ -2429,15 +2429,126 @@ function BirthdayTicket({ found, onSetMonth }) {
       </div>
     );
   }
-  if (!isBirthdayTicketActive(found)) return null;
+  const year = new Date().getFullYear();
+  const inMonth = Number(found.birthMonth) === THIS_MONTH();
+  if (!inMonth) return null;
+  const used = String(found.birthdayUsedYear || "") === String(year);
+  const lastDay = new Date(year, THIS_MONTH(), 0).getDate();
   return (
-    <div className="free-ticket" style={{background:"linear-gradient(135deg,#ff9a9e22,#fad0c422,#ffd1ff22)"}}>
-      <div style={{fontSize:"2rem",marginBottom:4}}>🎂</div>
-      <div style={{fontWeight:800,fontSize:"1.05rem",marginBottom:4}}>お誕生月おめでとうございます</div>
-      <div style={{fontSize:"0.85rem",fontWeight:700,marginBottom:8}}>🎫 1杯 無料券（{found.birthMonth}月）</div>
-      <div style={{fontSize:"0.78rem",opacity:0.8}}>この画面をスタッフにお見せください</div>
-      <div style={{fontSize:"0.68rem",opacity:0.6,marginTop:8}}>{found.name} 様　※ {new Date().getFullYear()}年分・お一人1回</div>
+    <div className="bday"><div className="bday-in">
+      {[...Array(6)].map((_, i) => (
+        <span key={i} className="bday-spark" aria-hidden="true" style={{left:`${(i*37+6)%100}%`,top:`${(i*53+8)%100}%`,animationDelay:`${(i%4)*0.4}s`}}>✦</span>
+      ))}
+      <div className="bday-eyebrow"><span>🎂 お誕生月のプレゼント</span><span>{found.birthMonth}月{lastDay}日まで</span></div>
+      <div className="cake" aria-hidden="true"><svg viewBox="0 0 96 80">
+        <g className="flame"><ellipse cx="30" cy="16" rx="4" ry="7" fill="#ffd166"/><ellipse cx="30" cy="18" rx="2" ry="4" fill="#fff8d6"/></g>
+        <g className="flame"><ellipse cx="48" cy="12" rx="4" ry="7" fill="#ffd166"/><ellipse cx="48" cy="14" rx="2" ry="4" fill="#fff8d6"/></g>
+        <g className="flame"><ellipse cx="66" cy="16" rx="4" ry="7" fill="#ffd166"/><ellipse cx="66" cy="18" rx="2" ry="4" fill="#fff8d6"/></g>
+        <rect x="28" y="22" width="4" height="14" rx="2" fill="#ff9ac6"/><rect x="46" y="18" width="4" height="18" rx="2" fill="#4deeea"/><rect x="64" y="22" width="4" height="14" rx="2" fill="#b28dff"/>
+        <path d="M14 40 h68 a6 6 0 0 1 6 6 v6 h-80 v-6 a6 6 0 0 1 6 -6z" fill="#ffe0ec"/>
+        <path d="M14 46 q6 8 12 0 q6 8 12 0 q6 8 12 0 q6 8 12 0 q6 8 12 0 q6 8 12 0 v-6 h-72z" fill="#ff9ac6"/>
+        <rect x="8" y="52" width="80" height="20" rx="5" fill="#c98a5a"/><rect x="8" y="52" width="80" height="6" fill="#fff3dd"/>
+        <circle cx="30" cy="63" r="3" fill="#ff6b8a"/><circle cx="48" cy="62" r="3" fill="#ff6b8a"/><circle cx="66" cy="63" r="3" fill="#ff6b8a"/>
+      </svg></div>
+      <div className="bday-title">お誕生月おめでとうございます</div>
+      <div className="bday-name">{found.name} さんへ、感謝をこめて</div>
+      {used ? (
+        <div style={{marginTop:12,color:"#ffd166",fontWeight:800}}>✓ お誕生日の一杯はお渡し済みです　ありがとうございました</div>
+      ) : (
+        <>
+          <div className="bday-coupon">
+            <div className="amt">1杯<br/><span style={{fontSize:"0.7rem",color:"#8a6a1a"}}>無料</span></div>
+            <div className="txt"><b>お好きなドリンク1杯 プレゼント</b>トッピングも1つ無料（タピオカもOK）。押すとメニューから選べます。</div>
+          </div>
+          <button className="btn-pay" style={{marginTop:12,width:"100%",fontSize:"1rem"}} onClick={onUse}>🎂 この券で一杯えらぶ →</button>
+          <div className="bday-foot">{found.name} 様　※ {year}年分・お一人1回・レジで使うこともできます</div>
+        </>
+      )}
+    </div></div>
+  );
+}
+
+// 誕生月に初めて開いたときの、クラッカーつきのお祝い（年に一度・端末ごと）
+function BirthdayShow({ found }) {
+  const [show, setShow] = useState(false);
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    if (!found || !found.birthMonth || Number(found.birthMonth) !== THIS_MONTH()) return;
+    try {
+      const key = "niji_bday_seen_" + new Date().getFullYear();
+      if (localStorage.getItem(key) === "1") return;
+      lsSet(key, "1");
+      setShow(true);
+      try { navigator.vibrate && navigator.vibrate([30, 60, 30, 60, 30, 60, 160]); } catch {}
+      const t = setTimeout(() => setShow(false), 7000);
+      return () => clearTimeout(t);
+    } catch {}
+  }, [found && found.id]);
+  useEffect(() => {
+    if (!show || !canvasRef.current) return;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    return keiroPopper(canvasRef.current, 7000);
+  }, [show]);
+  if (!show) return null;
+  return (
+    <div className="rankup-ov keiro-ov" onClick={() => setShow(false)}>
+      <canvas ref={canvasRef} className="keiro-canvas" aria-hidden="true"/>
+      <span className="popper popper-l" aria-hidden="true">🎉</span>
+      <span className="popper popper-r" aria-hidden="true">🎉</span>
+      <div className="rankup-box" style={{maxWidth:320}}>
+        <div className="rankup-big pop">🎂</div>
+        <div className="rankup-txt bday-grad" style={{fontSize:"1.25rem"}}>お誕生月おめでとうございます</div>
+        <div style={{color:"#f5efff",fontSize:"0.9rem",lineHeight:1.9,marginTop:10}}>
+          {found.name} さん、素敵な一年に<br/>なりますように。<br/>今月は1杯、私たちからプレゼントです。
+        </div>
+        <div style={{color:"#ffd166",fontSize:"0.8rem",marginTop:14,fontWeight:700}}>虹カフェ スタッフ一同</div>
+        <div style={{color:"#a49cd1",fontSize:"0.68rem",marginTop:14}}>画面を押すと閉じます</div>
+      </div>
     </div>
+  );
+}
+
+// 注文画面で、誕生日の一杯（＋トッピング1つ）をメニューから選ぶ
+function BirthdayPicker({ menu, drink, topping, setDrink, setTopping, onQuit }) {
+  const drinks = menu.filter((m) => m && m.category !== "トッピング");
+  const tops = menu.filter((m) => m && m.category === "トッピング");
+  const cats = [...new Set(drinks.map((m) => m.category))];
+  return (
+    <div className="bday" style={{marginTop:0,marginBottom:14}}><div className="bday-in" style={{textAlign:"left"}}>
+      <div className="bday-eyebrow"><span>🎂 お誕生日の一杯をえらぶ</span><button className="btn-quiet" style={{width:"auto",padding:"2px 8px"}} onClick={onQuit}>やめる</button></div>
+      {!drink ? (
+        <>
+          <div style={{color:"#f5efff",fontWeight:800,marginTop:8}}>① お好きなドリンクを1つ（無料）</div>
+          {cats.map((cat) => (
+            <div key={cat} style={{marginTop:8}}>
+              <div style={{color:"#c9bfe6",fontSize:"0.75rem",marginBottom:4}}>{cat}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {drinks.filter((m) => m.category === cat).map((m) => (
+                  <button key={m.id} className="bday-pick" onClick={() => setDrink({ ...m, price: 0, qty: 1 })}>
+                    <DrinkIcon item={m} size={26}/><span>{m.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
+          <div className="bday-chosen"><DrinkIcon item={drink} size={30}/><span style={{flex:1,fontWeight:800}}>{drink.name}</span><span style={{color:"#ffd166",fontWeight:900}}>🎂 無料</span>
+            <button className="btn-quiet" style={{width:"auto",padding:"2px 8px"}} onClick={() => { setDrink(null); setTopping(null); }}>変える</button></div>
+          <div style={{color:"#f5efff",fontWeight:800,marginTop:10}}>② トッピングを1つ（無料・タピオカもOK・なしでも大丈夫）</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+            {tops.map((m) => (
+              <button key={m.id} className={"bday-pick" + (topping && topping.id === m.id ? " on" : "")}
+                onClick={() => setTopping(topping && topping.id === m.id ? null : { ...m, price: 0, qty: 1 })}>
+                <DrinkIcon item={m} size={26}/><span>{m.name}{topping && topping.id === m.id ? " ✓" : ""}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{color:"#c9bfe6",fontSize:"0.75rem",marginTop:10}}>このまま下の「注文する」を押すと、¥0で注文が届きます。他の品を足して一緒に注文することもできます。</div>
+        </>
+      )}
+    </div></div>
   );
 }
 
@@ -2758,6 +2869,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   });
   const [benefitItems, setBenefitItems] = useState([]); // 無料特典アイテム
   const [benefitUsed,  setBenefitUsed]  = useState(false); // この注文で特典使用
+  const [bdayMode,     setBdayMode]     = useState(false); // 🎂 誕生日の一杯を選んでいる
+  const [bdayDrink,    setBdayDrink]    = useState(null);
+  const [bdayTopping,  setBdayTopping]  = useState(null);
   const [busy,         setBusy]         = useState(false);
   const [remember,     setRemember]     = useState(true);   // この端末で記憶する
   const [autoBusy,     setAutoBusy]     = useState(() => !!sessLoad());
@@ -2772,7 +2886,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [showRanks, setShowRanks] = useState(false);
   const [showPlay,  setShowPlay]  = useState(false);   // バッジ棚・ランキング（ふだん閉じる）
 
-  const reset = () => { setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); };
+  const reset = () => { setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); setBdayMode(false); setBdayDrink(null); setBdayTopping(null); };
   // 画面を離れる／別の人に切り替わるとき、遊びの記録の同期を止める（残りは送ってから）
   useEffect(() => () => playDetach(), []);
   useEffect(() => { if (!found) playDetach(); }, [found && found.id]);
@@ -2844,7 +2958,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     const me = (list || []).find(c => c && boot && c.id === boot.customer.id);
     if (!me) return;
     const value = {};
-    ["benefitUsedMonth","toppingRemaining","toppingRemainingMonth","vipGiftUsedMonth","keiroGiftUsed"]
+    ["benefitUsedMonth","toppingRemaining","toppingRemainingMonth","vipGiftUsedMonth","keiroGiftUsed","birthdayUsedYear"]
       .forEach(f => { if (f in me) value[f] = me[f] ?? null; });
     // 特典チケットから引いた分（サーバー側で「本人の券・残数の範囲内」を確認して減らす）
     if (Array.isArray(ticketUse) && ticketUse.length) value.ticketUse = ticketUse;
@@ -3008,7 +3122,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   });
 
   const placeOrder = () => {
-    if ((cart.length===0 && benefitItems.length===0) || !found) return;
+    if ((cart.length===0 && benefitItems.length===0 && !bdayDrink) || !found) return;
     // 残高が足りないときは注文を受け付けない（ボタンの見た目だけでなく処理でも止める）
     if (total > found.balance) { alert("残高が不足しています。スタッフにチャージをお申し付けください。"); return; }
     const order = {
@@ -3019,6 +3133,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       subtotal, discount, staffDiscount: isSpecial ? 0 : staffDiscount, total,
       usedBenefit: benefitUsed,
       usedToppingCount: benefitItems.length,
+      // 🎂 誕生日の一杯（＋トッピング1つ）。¥0。サーバーでも「誕生月・今年未使用」を確認する
+      isBirthdayGift: !!bdayDrink,
+      birthdayItems: bdayDrink ? [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])] : [],
       // 特典チケットから引いたトッピング数（取り消しで戻すため）。今月ぶんを先に使う
       ticketToppingUse: (benefitUsed && (isToppingRank || ticketToppingsHere > 0))
         ? allocTicketToppings(found, Math.max(0, benefitItems.length - monthlyTopping)) : [],
@@ -3033,6 +3150,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
 
     // 書き込みの土台は同期済みの最新を使う（開きっぱなしの画面の古い残高で上書きしないため）
     let updated = { ...(customers.find(c=>c.id===found.id) || found) };
+    if (bdayDrink) {
+      updated = { ...updated, birthdayUsedYear: String(new Date().getFullYear()) };
+      if (!benefitUsed) { saveC(customers.map(c=>c.id===found.id ? updated : c)); setFound(updated); }
+    }
     if (benefitUsed) {
       if (isToppingRank || ticketToppingsHere > 0) {
         // 今月ぶんを先に使い、足りない分を特典チケットから引く
@@ -3059,7 +3180,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     const todayKey = new Date().toLocaleDateString("ja-JP");
     const firstToday = !mine.some(o => String(o.createdAt || "").indexOf(todayKey + " ") === 0);
     setOkExtra(nth % 10 === 0 ? `☕ これで${nth}杯目のご注文！` : firstToday ? "今日の一杯目！" : "");
-    setCart([]); setBenefitItems([]); setBenefitUsed(false); setOrdered(true);
+    setCart([]); setBenefitItems([]); setBenefitUsed(false); setBdayMode(false); setBdayDrink(null); setBdayTopping(null); setOrdered(true);
     // 対応している端末（主にAndroid）では、注文完了を指先にも「トン・トン」と伝える
     try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
   };
@@ -3067,6 +3188,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const cancelOrder = () => {
     if (!myPendingOrder) return;
     let updated = { ...(customers.find(c=>c.id===found.id) || found) };
+    if (myPendingOrder.isBirthdayGift) {
+      // 誕生日の一杯を取り消したら、券はまた使える
+      updated = { ...updated, birthdayUsedYear: null };
+      if (!myPendingOrder.usedBenefit) { saveC(customers.map(c=>c.id===found.id ? updated : c)); setFound(updated); }
+    }
     if (myPendingOrder.usedBenefit) {
       const fromTickets = (myPendingOrder.ticketToppingUse || []).reduce((s,u)=>s+(Number(u.n)||0), 0);
       if (isToppingRank) {
@@ -3145,6 +3271,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             <div>
               <RankUpShow found={found} rank={rank}/>
               <KeiroShow found={found}/>
+              <BirthdayShow found={found}/>
               <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
               {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
                   以前はカード全体をランク色のグラデーションで塗っていたため、
@@ -3257,7 +3384,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               </div>
               )}
               {/* 誕生月の1杯券（未登録なら誕生月の登録ボタン） */}
-              <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth}/>
+              <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth} onUse={()=>{ setBdayMode(true); setCvTab("order"); }}/>
               {/* 100個達成の人にだけ出る1杯無料券 */}
               {badgeCount({found,orders:badgeOrders}).got >= 100 && <FreeDrinkTicket found={found}/>}
               {/* 今日の一節（聖書 新改訳2017） */}
@@ -3291,6 +3418,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           )}
           {cvTab==="order" && (
             <div>
+              {/* 🎂 誕生日の一杯を選ぶ（券のボタンから来たとき） */}
+              {bdayMode && !myPendingOrder && isBirthdayTicketActive(found) && (
+                <BirthdayPicker menu={menu} drink={bdayDrink} topping={bdayTopping} setDrink={setBdayDrink} setTopping={setBdayTopping}
+                  onQuit={()=>{ setBdayMode(false); setBdayDrink(null); setBdayTopping(null); }}/>
+              )}
               {/* 🔁 いつもの：前回の注文をワンタップでカートに入れる（未処理注文が無く、カートが空のときだけ） */}
               {!myPendingOrder && cart.length===0 && (() => {
                 const last = [...badgeOrders].filter(o => o && !o.isVipGift && !o.isKeiroGift && (o.items||[]).length > 0 && o.status !== "pending")
@@ -3323,6 +3455,12 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
                       <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name}</span>
                       <span style={{color:"#3e9a5c",fontSize:"0.85rem"}}>🎁 無料</span>
+                    </div>
+                  ))}
+                  {(myPendingOrder.birthdayItems||[]).map((item,i)=>(
+                    <div key={"bd"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
+                      <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name}</span>
+                      <span style={{color:"#ff9ac6",fontSize:"0.85rem",fontWeight:700}}>🎂 無料</span>
                     </div>
                   ))}
                   <div style={{borderTop:"1px solid #c9e2ce",paddingTop:8,marginTop:6,display:"flex",justifyContent:"space-between"}}>
@@ -3433,7 +3571,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       以前はメニュー33品の下にあったため、1品選ぶたびに
                       合計を見るために一番下までスクロールする必要があった。
                       選んだ品数が多いときは、この中だけがスクロールする。 */}
-                  {(cart.length>0 || benefitItems.length>0) &&(
+                  {(cart.length>0 || benefitItems.length>0 || bdayDrink) &&(
                     <div className="glass rise" style={{position:"sticky",bottom:8,zIndex:20,marginTop:8,
                       border:"1px solid var(--line,#e7ded3)",borderRadius:16,padding:"12px 14px",
                       boxShadow:"0 -6px 24px rgba(61,54,48,0.12)"}}>
@@ -3453,6 +3591,12 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                         <div key={i} style={{...S.cartRow,opacity:0.85}}>
                           <span style={{color:rank.color,fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
                           <span style={{color:rank.color,fontWeight:700,fontSize:"0.85rem"}}>🎁 無料</span>
+                        </div>
+                      ))}
+                      {bdayDrink && [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])].map((item,i)=>(
+                        <div key={"bd"+i} style={{...S.cartRow}}>
+                          <span style={{color:"#e8759b",fontSize:"0.85rem",fontWeight:700}}>{item.emoji} {item.name}</span>
+                          <span style={{color:"#e8759b",fontWeight:800,fontSize:"0.85rem"}}>🎂 無料</span>
                         </div>
                       ))}
                       </div>
@@ -3491,10 +3635,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                         {/* 「クリア」は間違って押されると全部消える操作なので、小さく端に置く */}
                         <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
                           <button className="btn-clear" style={{flexShrink:0,padding:"13px 14px",fontSize:"0.85rem"}}
-                            onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false); setCleared(Date.now()); setTimeout(()=>setCleared(0),1600);}}>クリア</button>
+                            onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false); setBdayDrink(null); setBdayTopping(null); setCleared(Date.now()); setTimeout(()=>setCleared(0),1600);}}>クリア</button>
                           <button className="btn-pay"
-                            disabled={(cart.length===0 && benefitItems.length===0) || total>found.balance}
-                            style={{opacity:(cart.length>0||benefitItems.length>0)&&total<=found.balance?1:0.35,fontSize:"1rem"}}
+                            disabled={(cart.length===0 && benefitItems.length===0 && !bdayDrink) || total>found.balance}
+                            style={{opacity:(cart.length>0||benefitItems.length>0||bdayDrink)&&total<=found.balance?1:0.35,fontSize:"1rem"}}
                             onClick={placeOrder}>
                             {total<=found.balance?"注文する":"残高が足りません"}
                           </button>
@@ -5007,6 +5151,7 @@ function SalesHistoryPanel({ customers, orders }) {
       items: [
         ...(o.items || []).map(i=>`${i.name}×${i.qty}`),
         ...(o.benefitItems || []).map(i=>`${i.name}(特典)`),
+        ...(o.birthdayItems || []).map(i=>`${i.name}(🎂誕生日)`),
         ...(o.makaiItem ? [`${o.makaiItem.name}(賄い)`] : []),
       ].join(", "),
       performer: o.completedBy || "スタッフ",
@@ -5195,6 +5340,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     const itemText = [
       ...(order.items||[]).map(i=>`${i.name}×${i.qty}`),
       ...(order.benefitItems||[]).map(i=>`${i.name}(特典)`),
+      ...(order.birthdayItems||[]).map(i=>`${i.name}(🎂誕生日)`),
       ...(order.makaiItem ? [`${order.makaiItem.name}(賄い)`] : []),
     ].join(", ");
     const updatedCustomer = {
@@ -5253,6 +5399,8 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       }
       // 特典チケットから引いたトッピングも券に戻す
       if ((order.ticketToppingUse || []).length > 0) { updated = restoreTicketUse(updated, order.ticketToppingUse); changed = true; }
+      // 🎂 誕生日の一杯を含む注文を消したら、券はまた使える
+      if (order.isBirthdayGift) { updated.birthdayUsedYear = null; changed = true; }
       if (changed) saveC(customers.map(x=>x.id===c.id ? updated : x));
     }
     saveOrders(orders.filter(o=>o.orderId!==order.orderId));
@@ -5287,6 +5435,8 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                     <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
                     {order.isKeiroGift
                       ? <span style={{color:"#c2185b",fontSize:"0.75rem",border:"1px solid #ff6ec7aa",borderRadius:999,padding:"2px 9px",fontWeight:800,background:"#fff0f7"}}>🎁 敬老の日スペシャル</span>
+                      : order.isBirthdayGift
+                      ? <span style={{color:"#c2185b",fontSize:"0.75rem",border:"1px solid #ff9ac6aa",borderRadius:999,padding:"2px 9px",fontWeight:800,background:"#fff0f7"}}>🎂 誕生日プレゼント</span>
                       : order.isVipGift
                       ? <span style={{color:"#a9791a",fontSize:"0.75rem",border:"1px solid #e8c14a55",borderRadius:999,padding:"2px 9px",fontWeight:700}}>⭐ VIPギフト</span>
                       : order.isCash
@@ -5314,6 +5464,12 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
                   <div key={"b"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:3}}>
                     <span style={{color:order.rankColor||"#a9791a"}}>🎁 {item.emoji} {item.name} × {item.qty}（特典）</span>
                     <span style={{color:"#3e9a5c"}}>無料</span>
+                  </div>
+                ))}
+                {(order.birthdayItems||[]).map((item,i)=>(
+                  <div key={"bd"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:3}}>
+                    <span style={{color:"#c2185b",fontWeight:700}}>🎂 {item.emoji} {item.name}（誕生日プレゼント）</span>
+                    <span style={{color:"#c2185b",fontWeight:700}}>無料</span>
                   </div>
                 ))}
               </div>
@@ -6805,6 +6961,39 @@ body:not(.night) .mtix { box-shadow:0 8px 24px rgba(0,0,0,0.12); }
 .keiro-ov .rankup-txt { animation-delay:0.5s; } .keiro-ov .rankup-big { animation-delay:0.3s; }
 body:not(.night) .keiro-in { background:linear-gradient(160deg,#241c5a,#1a1244); }
 @media (prefers-reduced-motion: reduce) { .keiro, .keiro-in::before, .keiro-in::after, .keiro-grad, .keiro-spark { animation:none !important; } }
+
+/* 🎂 誕生月のプレゼント：ケーキと蝋燭の券 */
+.bday { margin-top:12px; border-radius:20px; padding:3px; position:relative;
+  background:linear-gradient(120deg,#ff9ac6,#ffd166,#ff9ac6,#b28dff); background-size:300% 300%; animation:rainbowShift 5s ease infinite;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.4), 0 10px 40px rgba(255,154,198,0.5); }
+.bday-in { border-radius:17px; padding:16px 16px 14px; position:relative; overflow:hidden; text-align:center; color:#f5efff;
+  background:radial-gradient(ellipse at 50% 0%,#4a2a5c,transparent 60%),linear-gradient(160deg,#2b1a44,#1a1240); }
+.bday-in::after { content:""; position:absolute; top:-50%; left:-70%; width:40%; height:200%; transform:rotate(18deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.35),transparent); animation:mtixSheen 4s ease-in-out infinite; pointer-events:none; }
+.bday-eyebrow { font-size:0.7rem; letter-spacing:0.18em; font-weight:800; color:#ffd166; display:flex; justify-content:space-between; align-items:center; position:relative; }
+.bday-eyebrow span:last-child { color:#c9bfe6; letter-spacing:0.04em; font-weight:500; }
+.cake { position:relative; display:inline-block; margin-top:8px; }
+.cake svg { width:96px; height:80px; display:block; }
+.flame { transform-origin:50% 100%; animation:flick 0.7s ease-in-out infinite alternate; }
+.flame:nth-child(2) { animation-delay:.2s } .flame:nth-child(3) { animation-delay:.45s }
+@keyframes flick { from{ transform:scaleY(1) rotate(-4deg);} to{ transform:scaleY(1.25) rotate(4deg);} }
+.bday-title { font-size:1.35rem; font-weight:900; margin-top:6px; line-height:1.3; position:relative; }
+.bday-title, .bday-grad { background:linear-gradient(90deg,#ffd166,#ff9ac6,#ffd166); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:rainbowShift 3s linear infinite; }
+.bday-name { font-size:0.9rem; color:#f5efff; margin-top:2px; font-weight:700; position:relative; }
+.bday-coupon { margin:12px auto 0; background:#fffdf5; color:#5a3a12; border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px; position:relative; box-shadow:0 4px 14px rgba(0,0,0,0.25); }
+.bday-coupon::before, .bday-coupon::after { content:""; position:absolute; top:50%; width:16px; height:16px; border-radius:50%; background:#2b1a44; transform:translateY(-50%); }
+.bday-coupon::before { left:-8px } .bday-coupon::after { right:-8px }
+.bday-coupon .amt { font-size:1.3rem; font-weight:900; color:#c2185b; border-right:2px dashed #f0c9d8; padding-right:12px; white-space:nowrap; line-height:1.1; }
+.bday-coupon .txt { flex:1; text-align:left; font-size:0.78rem; line-height:1.5; }
+.bday-coupon .txt b { display:block; font-size:0.95rem; color:#3d2a12; }
+.bday-spark { position:absolute; color:#ffd166; font-size:0.9rem; opacity:0; animation:mtixSpark 1.8s ease-in-out infinite; text-shadow:0 0 8px #ffd166; pointer-events:none; }
+.bday-foot { font-size:0.7rem; color:#c9bfe6; margin-top:10px; position:relative; }
+.bday-pick { display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.08); border:1.5px solid rgba(255,255,255,0.2); color:#f5efff;
+  border-radius:12px; padding:6px 10px; font-family:inherit; font-size:0.85rem; cursor:pointer; }
+.bday-pick.on { border-color:#ff9ac6; background:rgba(255,154,198,0.25); }
+.bday-chosen { display:flex; align-items:center; gap:10px; margin-top:10px; background:rgba(255,255,255,0.1); border:1.5px dashed #ff9ac6; border-radius:12px; padding:8px 10px; }
+body:not(.night) .bday-in { color:#f5efff; }
+@media (prefers-reduced-motion: reduce) { .bday, .bday-in::after, .bday-title, .bday-grad, .flame, .bday-spark { animation:none !important; } }
 
 /* 🎟 特典チケット：金色の半券 */
 .tix-wallet { margin-bottom:12px; padding:14px; border-radius:16px;
