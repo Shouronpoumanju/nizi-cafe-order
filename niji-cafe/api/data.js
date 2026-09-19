@@ -364,11 +364,9 @@ export default async function handler(req, res) {
           if (!mine || Number(mine.birthMonth) !== month) return send(res, 400, { error: "誕生月のプレゼントは、お誕生月にだけ使えます" });
           if (String(mine.birthdayUsedYear || "") === year) return send(res, 409, { error: "今年のお誕生日の一杯は、もう受け取り済みです" });
           const bi = arr(order.birthdayItems);
-          // 選べるのはアイスコーヒー／ホットコーヒー／お酢のドリンク（お酢・美酢）だけ。トッピングは付かない
-          const eligible = (i) => i && i.category !== "トッピング" &&
-            (/^(アイスコーヒー|ホットコーヒー)/.test(String(i.name || "")) || /酢/.test(String(i.category || "")));
-          if (bi.length !== 1 || !eligible(bi[0])) return send(res, 400, { error: "誕生日のプレゼントは、コーヒーかお酢ドリンク1杯だけです" });
-          order.birthdayItems = [{ ...bi[0], price: 0, qty: 1 }];
+          const drinks = bi.filter((i) => i && i.category !== "トッピング"), tops = bi.filter((i) => i && i.category === "トッピング");
+          if (drinks.length !== 1 || tops.length > 1) return send(res, 400, { error: "誕生日のプレゼントはドリンク1杯とトッピング1つまでです" });
+          order.birthdayItems = [...drinks, ...tops].map((i) => ({ ...i, price: 0, qty: 1 }));
           bdayCustomers[bdayIndex] = { ...mine, birthdayUsedYear: year };
         } else {
           order.isBirthdayGift = false; order.birthdayItems = [];
