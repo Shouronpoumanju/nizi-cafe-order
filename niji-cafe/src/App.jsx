@@ -2412,7 +2412,7 @@ function BirthdayTicket({ found, onSetMonth, onUse }) {
       <div className="toy-panel" style={{textAlign:"center"}}>
         <div style={{fontWeight:700,marginBottom:6}}>🎂 お誕生月を教えてください</div>
         <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.78rem",marginBottom:10}}>
-          誕生月には「コーヒーかお酢ドリンク1杯 無料券」が届きます（登録は一度だけ。あとから変える時はスタッフへ）
+          誕生月には「お好きなドリンク1杯 無料券」が届きます（登録は一度だけ。あとから変える時はスタッフへ）
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center"}}>
           {[...Array(12)].map((_, i) => (
@@ -2458,7 +2458,7 @@ function BirthdayTicket({ found, onSetMonth, onUse }) {
         <>
           <div className="bday-coupon">
             <div className="amt">1杯<br/><span style={{fontSize:"0.7rem",color:"#8a6a1a"}}>無料</span></div>
-            <div className="txt"><b>コーヒー または お酢ドリンク 1杯</b>アイスコーヒー・ホットコーヒー・お酢のドリンクから1杯。押すと選べます（お誕生月のみ）。</div>
+            <div className="txt"><b>お好きなドリンク1杯 プレゼント</b>トッピングも1つ無料（タピオカもOK）。押すとメニューから選べます。</div>
           </div>
           <button className="btn-pay" style={{marginTop:12,width:"100%",fontSize:"1rem"}} onClick={onUse}>🎂 この券で一杯えらぶ →</button>
           <div className="bday-foot">{found.name} 様　※ {year}年分・お一人1回・レジで使うこともできます</div>
@@ -2508,21 +2508,17 @@ function BirthdayShow({ found }) {
   );
 }
 
-// 誕生日の一杯に選べるもの：アイスコーヒー／ホットコーヒー／お酢のドリンク（お酢・美酢）。トッピングは付かない
-const bdayEligible = (m) => !!m && m.category !== "トッピング" &&
-  (/^(アイスコーヒー|ホットコーヒー)/.test(String(m.name || "")) || /酢/.test(String(m.category || "")));
-
-// 注文画面で、誕生日の一杯をメニューから選ぶ
+// 注文画面で、誕生日の一杯（＋トッピング1つ）をメニューから選ぶ
 function BirthdayPicker({ menu, drink, topping, setDrink, setTopping, onQuit }) {
-  const drinks = menu.filter(bdayEligible);
+  const drinks = menu.filter((m) => m && m.category !== "トッピング");
+  const tops = menu.filter((m) => m && m.category === "トッピング");
   const cats = [...new Set(drinks.map((m) => m.category))];
   return (
     <div className="bday" style={{marginTop:0,marginBottom:14}}><div className="bday-in" style={{textAlign:"left"}}>
       <div className="bday-eyebrow"><span>🎂 お誕生日の一杯をえらぶ</span><button className="btn-quiet" style={{width:"auto",padding:"2px 8px"}} onClick={onQuit}>やめる</button></div>
       {!drink ? (
         <>
-          <div style={{color:"#f5efff",fontWeight:800,marginTop:8}}>お好きな一杯を1つ（無料）</div>
-          <div style={{color:"#c9bfe6",fontSize:"0.75rem",marginTop:2}}>アイスコーヒー・ホットコーヒー・お酢のドリンクから選べます</div>
+          <div style={{color:"#f5efff",fontWeight:800,marginTop:8}}>① お好きなドリンクを1つ（無料）</div>
           {cats.map((cat) => (
             <div key={cat} style={{marginTop:8}}>
               <div style={{color:"#c9bfe6",fontSize:"0.75rem",marginBottom:4}}>{cat}</div>
@@ -2540,7 +2536,16 @@ function BirthdayPicker({ menu, drink, topping, setDrink, setTopping, onQuit }) 
         <>
           <div className="bday-chosen"><DrinkIcon item={drink} size={30}/><span style={{flex:1,fontWeight:800}}>{drink.name}</span><span style={{color:"#ffd166",fontWeight:900}}>🎂 無料</span>
             <button className="btn-quiet" style={{width:"auto",padding:"2px 8px"}} onClick={() => { setDrink(null); setTopping(null); }}>変える</button></div>
-          <div style={{color:"#c9bfe6",fontSize:"0.75rem",marginTop:10}}>このまま下の「注文する」を押すと、¥0で注文が届きます。他の品を足して一緒に注文することもできます（トッピングは通常料金です）。</div>
+          <div style={{color:"#f5efff",fontWeight:800,marginTop:10}}>② トッピングを1つ（無料・タピオカもOK・なしでも大丈夫）</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+            {tops.map((m) => (
+              <button key={m.id} className={"bday-pick" + (topping && topping.id === m.id ? " on" : "")}
+                onClick={() => setTopping(topping && topping.id === m.id ? null : { ...m, price: 0, qty: 1 })}>
+                <DrinkIcon item={m} size={26}/><span>{m.name}{topping && topping.id === m.id ? " ✓" : ""}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{color:"#c9bfe6",fontSize:"0.75rem",marginTop:10}}>このまま下の「注文する」を押すと、¥0で注文が届きます。他の品を足して一緒に注文することもできます。</div>
         </>
       )}
     </div></div>
