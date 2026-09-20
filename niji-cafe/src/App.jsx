@@ -1040,7 +1040,13 @@ export default function App() {
   // 対応していない端末では、今までどおり瞬時に切り替わる（壊れない）。
   const changeScreen = (s) => {
     if (document.startViewTransition) {
-      document.startViewTransition(() => { flushSync(() => setScreen(s)); });
+      // 前の切り替えがまだ終わっていないうちに次を始めると、ブラウザが
+      // 「Transition was aborted」という文句を記録する（動作には影響しないが、
+      // 後で本当の不具合を探すとき邪魔になる）。受け止めて黙らせておく。
+      try {
+        const t = document.startViewTransition(() => { flushSync(() => setScreen(s)); });
+        if (t) { const hush = () => {}; t.finished && t.finished.catch(hush); t.ready && t.ready.catch(hush); t.updateCallbackDone && t.updateCallbackDone.catch(hush); }
+      } catch { setScreen(s); }
     } else {
       setScreen(s);
     }
