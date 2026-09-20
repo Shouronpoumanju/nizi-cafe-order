@@ -1248,7 +1248,7 @@ function Home({ setScreen }) {
 
   return (
     <div style={S.homeOuter} onPointerDown={makeRipple}>
-      <NightMode/>
+      <ThemeMode/>
 
       {/* 満月の夜だけ、大きな月がのぼっている（本物の月齢と連動） */}
       {moonEmoji() === "🌕" && <div className="big-moon" aria-hidden="true">🌕</div>}
@@ -1373,7 +1373,7 @@ function Home({ setScreen }) {
           <button className="btn-rainbow" onClick={()=>setScreen("customer")}>
             <span style={{fontSize:"1.15rem"}}>🎫</span>
             {/* 端末に記憶があれば、名前つきで「開く」。暗証番号なしでそのまま入れる */}
-            <span>{(sessLoad() || {}).name ? `${sessLoad().name} さんのチケットを開く` : "チケットを確認する"}</span>
+            <span>{(sessLoad() || {}).name ? `${sessLoad().name} さんのページを開く` : "会員ページを開く"}</span>
           </button>
           <button className="btn-crystal" onClick={()=>setScreen("login")}>
             <span style={{fontSize:"1rem"}}>🔑</span>
@@ -1496,6 +1496,23 @@ function popSound() {
     o.connect(g); g.connect(_audioCtx.destination);
     o.start(); o.stop(_audioCtx.currentTime + 0.11);
     bumpAch("niji_cnt_pop", 10, "niji_ach_pop10", "音と一緒に");
+  } catch {}
+}
+
+// できあがりのチャイム「ピンポン」。注文が完了したときに一度だけ鳴る
+function dingSound() {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = _audioCtx.currentTime;
+    [[880, 0], [1175, 0.18]].forEach(([f, d]) => {
+      const o = _audioCtx.createOscillator(), g = _audioCtx.createGain();
+      o.type = "sine"; o.frequency.setValueAtTime(f, t0 + d);
+      g.gain.setValueAtTime(0.0001, t0 + d);
+      g.gain.exponentialRampToValueAtTime(0.16, t0 + d + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.45);
+      o.connect(g); g.connect(_audioCtx.destination);
+      o.start(t0 + d); o.stop(t0 + d + 0.5);
+    });
   } catch {}
 }
 
@@ -2552,12 +2569,12 @@ function BirthdayPicker({ menu, drink, topping, setDrink, setTopping, onQuit }) 
   );
 }
 
-function BadgeShelf100({ found, orders }) {
+function BadgeShelf100({ found, orders, defaultOpen = false }) {
   const SEC = badgeSections({ found, orders });
   const all = SEC.flatMap((s) => s[1]);
   const got = all.filter((b) => b[2]).length;
-  // ふだんは閉じておく（見出しを押すと開く）。100個ぶんの棚は長いので、残高や特典を押し出さないため
-  const [open, setOpen] = useState(false);
+  // ふだんは閉じておく（見出しを押すと開く）。「あそび」タブでは最初から開く
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="toy-panel">
       <div role="button" onClick={()=>setOpen(o=>!o)}
@@ -2791,6 +2808,259 @@ function CountUp({ value }) {
 }
 
 // ══════════════════════════════════════════
+//  🌈 新デザイン（2026-09-20）：昼はパステル、夜はネオン
+// ══════════════════════════════════════════
+// 昼（5時〜18時）はやわらかいパステル、夜（18時〜5時）はいまのネオンガラス。
+// 「じぶん」タブで「自動／昼／夜」に固定もできる（端末に記憶）。
+const DAYNIGHT_KEY = "niji_daynight";
+const dayNightPref = () => { try { return localStorage.getItem(DAYNIGHT_KEY) || "auto"; } catch { return "auto"; } };
+const setDayNightPref = (v) => { try { lsSet(DAYNIGHT_KEY, v); } catch {} try { window.dispatchEvent(new Event("niji-daynight")); } catch {} };
+const isNightNow = () => {
+  const p = dayNightPref();
+  if (p === "day") return false;
+  if (p === "night") return true;
+  const h = new Date().getHours();
+  return h >= 18 || h < 5;
+};
+function ThemeMode() {
+  const [night, setNight] = useState(isNightNow);
+  useEffect(() => {
+    const t = setInterval(() => setNight(isNightNow()), 60000);
+    const onPref = () => setNight(isNightNow());
+    window.addEventListener("niji-daynight", onPref);
+    return () => { clearInterval(t); window.removeEventListener("niji-daynight", onPref); };
+  }, []);
+  useEffect(() => {
+    document.body.classList.toggle("pastel", !night);
+    return () => document.body.classList.remove("pastel");
+  }, [night]);
+  return night ? <NightMode/> : null;
+}
+
+// 文字の大きさ 3段階（ふつう／大きめ／特大）。端末に記憶
+const textSizeLoad = () => { try { const v = localStorage.getItem("nz_bigtext"); return v === "2" ? 2 : v === "1" ? 1 : 0; } catch { return 0; } };
+const applyTextSize = (n) => {
+  try {
+    document.body.classList.toggle("bigtext", n === 1);
+    document.body.classList.toggle("bigtext2", n === 2);
+    localStorage.setItem("nz_bigtext", String(n));
+  } catch {}
+};
+
+// 残高カードの色（ランクごと）。上のランクほど深い色に
+const WALLET_GRAD = {
+  _: "#ff9fbf,#c9a6ff 55%,#8fd3ff",
+  "ブロンズ": "#d98a58,#f0b48a 55%,#ffd4b0",
+  "シルバー": "#8e9bb0,#b3bfd0 55%,#d3dbe6",
+  "ゴールド": "#d9a441,#f0c96a 55%,#ffe3a0",
+  "プラチナ": "#8f8378,#b8ada0 55%,#dcd3c8",
+  "チタン":   "#3f5867,#6b8d9f 55%,#9fc3d4",
+  "サファイア": "#2b62b8,#5b8ddc 55%,#8fbaff",
+  "ルビー":   "#c21354,#e8467f 55%,#ff9ac6",
+  "エメラルド": "#2f9a5c,#5cc286 55%,#a3e6bf",
+  "ダイヤモンド": "#ff9fbf,#c9a6ff 40%,#8fd3ff 75%,#ffd166",
+};
+const walletGrad = (rank) => `linear-gradient(135deg,${(rank && WALLET_GRAD[rank.name]) || WALLET_GRAD._})`;
+// 商品カードの絵の下地（カテゴリで色分け）
+const catTint = (cat) => /コーヒー/.test(cat || "") ? "var(--peach,#ffe3c9)"
+  : /トッピング/.test(cat || "") ? "var(--mint,#d6f5e3)"
+  : /ドリンク|酢|ジュース|ティー|茶/.test(cat || "") ? "var(--sky,#cde9ff)"
+  : "var(--lav,#e6dbff)";
+const isSoldOut = (item) => !!(item && item.soldOut);
+
+// 下のタブバー（ホーム／チケット／☕注文／あそび／じぶん）
+function TabBar({ tab, setTab, dot }) {
+  const T = [["home","🏠","ホーム"],["tickets","🎫","チケット"],["order","☕","注文"],["play","🎮","あそび"],["me","👤","じぶん"]];
+  return (
+    <nav className="nz-tabbar" aria-label="画面の切り替え">
+      {T.map(([k, i, l]) => (
+        <button key={k} type="button" className={"nz-tb" + (tab === k ? " on" : "") + (k === "order" ? " mid" : "")}
+          onClick={() => { setTab(k); try { navigator.vibrate && navigator.vibrate(6); } catch {} }}>
+          <span className="i">{i}{k === "order" && dot && <b className="nz-dot" aria-hidden="true"/>}</span>
+          <span className="l">{l}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// 残高カード（ランクの色・次のランクまでの輪っか・ホログラム）
+function WalletCard({ found, rank, next, cyp, pct, badgeOrders, tapBalance, delta, coinBurst, sleepy }) {
+  const h = hallRank(badgeCount({ found, orders: badgeOrders }).got);
+  return (
+    <HoloCard className={`nz-wallet ticket-card card-in ${(h || {}).cls || ""}`} style={{background: walletGrad(rank)}}>
+      <div className="card-sheen" aria-hidden="true"/>
+      <NekoMascot/>
+      {found.balance >= 10000 && <SparkleRain emoji="✨"/>}
+      {String(found.balance).includes("777") && <SparkleRain emoji="🪙"/>}
+      <div className="nz-w-head">
+        <span className="nz-w-rank">
+          <TapBurst emojis={["✨","💖","⭐","✨"]}><span className="gem-pulse">{rank.gem}</span></TapBurst> {rank.name}
+        </span>
+        {h && <span className={"hall-badge " + h.cls} style={{color:"#fff",borderColor:"rgba(255,255,255,0.7)",boxShadow:"none"}}>{h.emoji} {h.label}</span>}
+      </div>
+      <div className="nz-w-label">のこり{sleepy && <span className="sleepy" aria-hidden="true">💤</span>}</div>
+      <div className="nz-w-bal" onClick={tapBalance}>
+        ¥<CountUp value={found.balance}/>
+        {delta && <span key={delta.id} className="delta-up">+¥{delta.v.toLocaleString()}</span>}
+        {String(found.balance).includes("777") && <span className="chip-pop">777！✨</span>}
+        {found.balance >= 111 && /^(\d)\1+$/.test(String(found.balance)) && !String(found.balance).includes("777") && <span className="chip-pop">ゾロ目！✨</span>}
+        {coinBurst !== 0 && (
+          <span key={coinBurst} className="burst" aria-hidden="true">
+            {["🪙","🪙","🪙","🪙","🪙","🪙","🪙","🪙"].map((e, i) => <span key={i} className="burst-p" style={{"--a":`${i*45}deg`}}>{e}</span>)}
+          </span>
+        )}
+      </div>
+      {found.balance === 0 && <div className="nz-w-sub">また来てね ☕</div>}
+      <div className="nz-w-foot">
+        <div className={"nz-ring" + (next && next.min - cyp === 1 ? " nz-ring-soon" : "")} style={{"--p": `${Math.round(pct)}%`}}><b>{next ? next.min - cyp : "✓"}</b></div>
+        <div className="nz-w-next">
+          {next ? <>あと <b>{next.min - cyp}回</b> で {next.gem}{next.name}</> : <b>最高ランクです</b>}
+          <div className="nz-w-sub">今年 {cyp}回 ・ {found.name} さん</div>
+        </div>
+      </div>
+    </HoloCard>
+  );
+}
+
+// 注文のいま（受付 → お作りしています → できあがり）。番号や待ち時間は出さない（スタッフが席まで届ける）
+function OrderStatusCard({ order, ready, onCancel, onDismiss, justOrdered, okMsg, okIcon, okExtra, okEmojis, onMore }) {
+  const o = ready || order;
+  if (!o) return null;
+  const items = [
+    ...(o.items || []).map((it, i) => ({ k: "i" + i, icon: it.emoji, name: `${it.name} × ${it.qty}`, right: `¥${(it.price * it.qty).toLocaleString()}`, cls: "" })),
+    ...(o.benefitItems || []).map((it, i) => ({ k: "b" + i, icon: it.emoji, name: it.name, right: "🎁 無料", cls: "nz-free" })),
+    ...(o.birthdayItems || []).map((it, i) => ({ k: "d" + i, icon: it.emoji, name: it.name, right: "🎂 無料", cls: "nz-free" })),
+  ];
+  const step = ready ? 3 : 2;
+  return (
+    <div className={"nz-status card-in" + (ready ? " nz-status-ready" : "")}>
+      {justOrdered && !ready && (
+        <div className="confetti-box" aria-hidden="true">
+          {(okEmojis && okEmojis.length ? [...Array(12)].map((_, i) => (
+            <span key={i} className="confetti-e" style={{left:`${6+i*8}%`,animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}>{okEmojis[i % okEmojis.length]}</span>
+          )) : ["#ff9fbf","#ffb877","#ffd166","#9fdcae","#8fc2ee","#c9a6ff","#ff9fbf","#9fdcae","#8fc2ee","#ffd166","#c9a6ff","#ffb877"].map((c, i) => (
+            <i key={i} style={{left:`${6+i*8}%`,background:c,animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}/>
+          )))}
+        </div>
+      )}
+      <div className="nz-cup" aria-hidden="true">
+        {ready ? <span className="pop" style={{fontSize:"3rem"}}>🎉</span> : (
+          <svg viewBox="0 0 80 80" width="70" height="70">
+            <g className="steam" stroke="#a9a0b8" strokeWidth="3" fill="none" strokeLinecap="round">
+              <path d="M30 26c-4-5 4-8 0-13"/><path d="M40 24c-4-5 4-8 0-13"/><path d="M50 26c-4-5 4-8 0-13"/>
+            </g>
+            <path d="M18 34h40v14a14 14 0 0 1-14 14H32a14 14 0 0 1-14-14z" fill="#fff" stroke="#3a2e4f" strokeWidth="3"/>
+            <path d="M58 38h6a6 6 0 0 1 0 12h-6" fill="none" stroke="#3a2e4f" strokeWidth="3"/>
+            <path d="M22 40h32v8a10 10 0 0 1-10 10H32a10 10 0 0 1-10-10z" fill="#c98a5a"/>
+          </svg>
+        )}
+      </div>
+      <div className="nz-status-title">
+        {ready ? "できあがりました！" : justOrdered ? `${okIcon} ${okMsg}` : "お作りしています"}
+      </div>
+      <div className="nz-status-sub">
+        {ready ? "スタッフがお席までお届けします。ごゆっくりどうぞ ☕" : "できあがったらこの画面でお知らせします。お席でお待ちください。"}
+      </div>
+      {justOrdered && !ready && okExtra && <div className="chip-pop" style={{position:"static",display:"inline-block",marginTop:6}}>{okExtra}</div>}
+      <div className={"nz-steps s" + step} aria-hidden="true">
+        {[["✓","受け付けました"],["☕","お作りしています"],["🎉","できあがり"]].map(([ic, l], i) => (
+          <div key={i} className={"nz-st" + (i + 1 < step ? " done" : i + 1 === step ? (ready ? " done" : " now") : "")}>
+            <div className="o">{ic}</div>{l}
+          </div>
+        ))}
+      </div>
+      <div className="nz-status-items">
+        {items.map((it) => (
+          <div key={it.k} className={"nz-row " + it.cls}><span>{it.icon} {it.name}</span><span>{it.right}</span></div>
+        ))}
+        <div className="nz-row nz-row-total"><span>お支払い</span><b>¥{Number(o.total || 0).toLocaleString()}</b></div>
+      </div>
+      <div className="nz-status-time">{o.createdAt} に注文</div>
+      {ready ? (
+        <button type="button" className="nz-primary" onClick={onDismiss}>OK！ いただきます</button>
+      ) : (
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <button type="button" className="nz-ghost" style={{flex:1}} onClick={onMore}>追加で注文</button>
+          <button type="button" className="nz-ghost nz-danger" style={{flex:1}} onClick={onCancel}>取り消す</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 注文のメニュー（カテゴリのチップ → 手描きの絵つきカード）
+function OrderMenuGrid({ menu, cart, addToCart, removeOne }) {
+  const categories = [...new Set(menu.map((m) => m.category))];
+  const [activeTab, setActiveTab] = useState(categories[0] || "");
+  const [lastAdd, setLastAdd] = useState(null);
+  const cur = categories.includes(activeTab) ? activeTab : (categories[0] || "");
+  return (
+    <div>
+      <div className="nz-chips">
+        {categories.map((cat) => (
+          <button key={cat} type="button" className={"nz-chip" + (cur === cat ? " on" : "")} onClick={() => setActiveTab(cat)}>{cat}</button>
+        ))}
+      </div>
+      <div className="nz-menu">
+        {menu.filter((m) => m.category === cur).map((item) => {
+          const inCart = cart.find((c) => c.id === item.id);
+          const so = isSoldOut(item);
+          return (
+            <div key={item.id} className={"nz-m" + (inCart ? " on" : "") + (so ? " so" : "")} role="button" tabIndex={0}
+              onClick={() => { if (so) return; addToCart(item); setLastAdd({ id: item.id, n: Date.now() }); popSound(); try { navigator.vibrate && navigator.vibrate(6); } catch {} }}
+              onKeyDown={(e) => { if (!so && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); addToCart(item); popSound(); } }}>
+              <div className="pic" style={{background: catTint(item.category)}}>
+                <span className="m-emoji"><DrinkIcon item={item} size={52}/></span>
+                {so && <span className="nz-so-tag">売り切れ</span>}
+              </div>
+              <div className="nm">{item.name}</div>
+              <div className="pr">
+                <span>¥{item.price}</span>
+                {inCart ? (
+                  <span className="nz-qtybox" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="nz-qb" aria-label="減らす" onClick={() => removeOne(item.id)}>－</button>
+                    <b key={inCart.qty} className="pop">{inCart.qty}</b>
+                    <button type="button" className="nz-qb" aria-label="増やす" onClick={() => { addToCart(item); setLastAdd({ id: item.id, n: Date.now() }); popSound(); }}>＋</button>
+                  </span>
+                ) : (
+                  <span className="add" aria-hidden="true">{so ? "×" : "＋"}</span>
+                )}
+              </div>
+              {inCart && inCart.qty >= 5 && <span className="hot-tag">大人気！</span>}
+              {lastAdd && lastAdd.id === item.id && <span key={lastAdd.n} className="plus-one">+1</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 「じぶん」タブの設定行
+function SettingRow({ icon, label, sub, children }) {
+  return (
+    <div className="nz-set">
+      <div className="nz-set-ic">{icon}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div className="nz-set-l">{label}</div>
+        {sub && <div className="nz-set-s">{sub}</div>}
+      </div>
+      <div className="nz-set-r">{children}</div>
+    </div>
+  );
+}
+function Segmented({ value, options, onChange }) {
+  return (
+    <div className="nz-seg" role="radiogroup">
+      {options.map(([v, l]) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} className={"nz-seg-b" + (value === v ? " on" : "")} onClick={() => onChange(v)}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════
 //  CUSTOMER VIEW
 // ══════════════════════════════════════════
 function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrders,
@@ -2800,7 +3070,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [input,        setInput]        = useState("");
   const [found,        setFound]        = useState(null);
   const [err,          setErr]          = useState("");
-  const [cvTab,        setCvTab]        = useState("ticket");
+  const [tab,          setTab]          = useState("home");   // home | tickets | order | play | me
   const [cart,         setCart]         = useState([]);
   const [ordered,      setOrdered]      = useState(false);
   // ご褒美の段階を数え直すための合図（実績が増えたとき用）
@@ -2875,8 +3145,15 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [busy,         setBusy]         = useState(false);
   const [remember,     setRemember]     = useState(true);   // この端末で記憶する
   const [autoBusy,     setAutoBusy]     = useState(() => !!sessLoad());
-  const [bigText,      setBigText]      = useState(bigTextLoad);
-  useEffect(() => { applyBigText(bigText); return () => { try { document.body.classList.remove("bigtext"); } catch {} }; }, [bigText]);
+  const [textSize,     setTextSize]     = useState(textSizeLoad);
+  useEffect(() => { applyTextSize(textSize); return () => { try { document.body.classList.remove("bigtext"); document.body.classList.remove("bigtext2"); } catch {} }; }, [textSize]);
+  const [dayNight,     setDayNight]     = useState(dayNightPref);
+  const [sndOn,        setSndOn]        = useState(() => { try { return localStorage.getItem("niji_snd") === "on"; } catch { return false; } });
+  const [sheet,        setSheet]        = useState(false);   // 注文の確認シート
+  const [viewMenu,     setViewMenu]     = useState(false);   // 注文中でもメニューを見る（追加注文）
+  const [ready,        setReady]        = useState(null);    // できあがった注文（お知らせ中）
+  const [sentOrder,    setSentOrder]    = useState(null);    // いま送った注文（サーバーから戻るまでの控え）
+  const pendRef = useRef(new Set());                          // 見守っている未処理注文のID
 
   // ── サーバーから受け取った「自分の分だけ」のデータ ──────────────
   // これがあるときは、他の会員のデータを一切持たずに画面が動く。
@@ -2886,7 +3163,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [showRanks, setShowRanks] = useState(false);
   const [showPlay,  setShowPlay]  = useState(false);   // バッジ棚・ランキング（ふだん閉じる）
 
-  const reset = () => { setCvTab("ticket"); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); setBdayMode(false); setBdayDrink(null); setBdayTopping(null); };
+  const reset = () => { setTab("home"); setSheet(false); setReady(null); setViewMenu(false); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); setBdayMode(false); setBdayDrink(null); setBdayTopping(null); };
   // 画面を離れる／別の人に切り替わるとき、遊びの記録の同期を止める（残りは送ってから）
   useEffect(() => () => playDetach(), []);
   useEffect(() => { if (!found) playDetach(); }, [found && found.id]);
@@ -3028,7 +3305,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       await refresh();
     } catch (e) {
       console.error("注文の保存に失敗しました", e);
-      alert("注文の保存に失敗しました。通信状況を確認して、もう一度お試しください。");
+      alert((e && e.message && /売り切れ|誕生|プレゼント|チケット/.test(e.message)) ? e.message : "注文の保存に失敗しました。通信状況を確認して、もう一度お試しください。");
+      setOrdered(false);
       refresh();
     }
   };
@@ -3097,6 +3375,24 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // 通常の注文の未処理判定からは外す。混ぜると、通常注文をしたときに
   // プレゼントの注文が巻き添えで消え、しかも受け取り済みの表示だけが残ってしまう。
   const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending" && !o.isVipGift && !o.isKeiroGift) : null;
+  // 見守っていた未処理注文が「完了」に変わったら、できあがりのお知らせを出す（番号や待ち時間は出さない）
+  useEffect(() => {
+    if (!found) { pendRef.current = new Set(); return; }
+    const mine = (orders || []).filter(o => o && String(o.customerId) === String(found.id));
+    const nowPend = new Set(mine.filter(o => o.status === "pending").map(o => o.orderId));
+    for (const id of pendRef.current) {
+      if (nowPend.has(id)) continue;
+      const done = mine.find(o => o.orderId === id && o.status === "completed");
+      if (done) {
+        setReady(done); setOrdered(false); setSheet(false); setTab("order");
+        dingSound();
+        try { navigator.vibrate && navigator.vibrate([60, 80, 60, 80, 160]); } catch {}
+        try { document.body.classList.add("nz-flash"); setTimeout(() => document.body.classList.remove("nz-flash"), 2400); } catch {}
+        unlockAch("niji_ach_ready", "できあがりを受け取った");
+      }
+    }
+    pendRef.current = nowPend;
+  }, [orders, found && found.id]);
   // スタッフ・マネージャーリンク確認
   const linkedStaff = found
     ? (staffAccounts.find(s=>s.linkedCustomerId===found.id) || (managerAccounts||[]).find(s=>s.linkedCustomerId===found.id))
@@ -3111,10 +3407,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const isSpecial = !!found?.isSpecial;
   const total    = isSpecial ? 0 : Math.max(0, subtotal - discount - staffDiscount);
 
-  const addToCart = (item) => setCart(prev=>{
+  const addToCart = (item) => { if (isSoldOut(item)) return; setCart(prev=>{
     const ex=prev.find(c=>c.id===item.id);
     return ex ? prev.map(c=>c.id===item.id?{...c,qty:c.qty+1}:c) : [...prev,{...item,qty:1}];
-  });
+  }); };
   const removeOne = (id) => setCart(prev=>{
     const ex=prev.find(c=>c.id===id);
     if(!ex) return prev;
@@ -3144,6 +3440,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       status: "pending",
       createdAt: new Date().toLocaleString("ja-JP"),
     };
+    setReady(null); setSentOrder(order);
     // 通常の注文を出すとき、置き換えるのは同じ人の「通常の」未処理注文だけ。
     // VIPプレゼントの注文は消さない。
     saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending" && !o.isVipGift && !o.isKeiroGift))]);
@@ -3213,444 +3510,302 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     setOrdered(false);
   };
 
-  return (
-    <div style={S.page}>
-      <NightMode/>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <button className="back-btn" onClick={()=>{setScreen("home");setFound(null);setInput("");}}>← 戻る</button>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {/* 文字を大きく（年配の方向け）。端末が覚える */}
-          <button className="theme-btn" onClick={()=>setBigText(v=>!v)} title="文字の大きさ">{bigText ? "🔠 ふつう" : "🔠 大きく"}</button>
-          {/* きせかえ：夜空の色を4種類から選べる */}
-          <ThemeButton/>
-        </div>
-      </div>
-      <h2 style={S.title}>チケット確認</h2>
+  // ── 新デザインの画面 ──────────────────────────
+  const cartCount = cart.reduce((s, i) => s + i.qty, 0) + benefitItems.length + (bdayDrink ? 1 : 0) + (bdayTopping ? 1 : 0);
+  const hasCart = cart.length > 0 || benefitItems.length > 0 || !!bdayDrink;
+  const canOrder = hasCart && total <= (found ? found.balance : 0);
+  const gotBadges = found ? badgeCount({ found, orders: badgeOrders }).got : 0;
+  const hour = new Date().getHours();
+  const greet = hour >= 5 && hour <= 10 ? "おはようございます" : hour >= 11 && hour <= 16 ? "こんにちは" : hour >= 2 && hour <= 4 ? "夜ふかしさん、いらっしゃい" : "こんばんは";
+  // 🔁 いつもの（前回の注文）
+  const usual = (() => {
+    if (!found) return null;
+    const last = [...badgeOrders].filter(o => o && !o.isVipGift && !o.isKeiroGift && (o.items||[]).length > 0 && o.status !== "pending")
+      .sort((a,b) => String(b.orderId||"").localeCompare(String(a.orderId||"")))[0];
+    if (!last) return null;
+    const picks = (last.items||[]).map(it => { const m = menu.find(x => x.id===it.id) || menu.find(x => x.name===it.name); return m && !isSoldOut(m) ? { ...m, qty: it.qty || 1 } : null; }).filter(Boolean);
+    if (!picks.length) return null;
+    return { picks, label: picks.map(p => `${p.name}×${p.qty}`).join("、") };
+  })();
+  const useUsual = () => { if (!usual) return; setCart(usual.picks); setTab("order"); popSound(); try { navigator.vibrate && navigator.vibrate(12); } catch {} };
+  // 使えるチケットの一覧（ホームの横並び用）
+  const ticketChips = found ? [
+    ...(keiroTarget(found) && keiroIsDay() && !keiroUsed(found) ? [{ k:"keiro", cls:"nz-tk-keiro", icon:"🎁", t:"敬老の日", s:"特別な一杯を無料で" }] : []),
+    ...(isBirthdayTicketActive(found) ? [{ k:"bday", cls:"nz-tk-bday", icon:"🎂", t:"誕生月の一杯", s:"お好きなドリンク無料" }] : []),
+    ...(rank && rank.benefit.type !== "none" ? [{ k:"month", cls:"nz-tk-month", icon: rank.benefit.icon, t:"今月の特典",
+        s: isAlways ? "毎回自動で割引" : isToppingRank ? (toppingFullyUsed ? "今月分は使い切り" : `トッピング あと${monthlyTopping}個`) : (used ? "使用済み" : rank.benefit.desc) }] : []),
+    ...(unusedTickets(found).length ? [{ k:"bonus", cls:"nz-tk-bonus", icon:"🎟", t:"持ち越しチケット", s:`${unusedTickets(found).length}枚あります` }] : []),
+    ...(gotBadges >= 100 && !found.freeDrinkUsedAt ? [{ k:"free", cls:"nz-tk-free", icon:"🏆", t:"1杯無料券", s:"実績100個のごほうび" }] : []),
+  ] : [];
 
+  const logoutAll = () => { playDetach(); custToken.current = null; setBoot(null); setFound(null); setInput(""); setTab("home"); };
+
+  return (
+    <div className="nz-shell">
+      <ThemeMode/>
       {autoBusy ? (
-        <div style={{textAlign:"center",padding:"30px 0",color:"var(--ink2,#8a7f76)"}}>
+        <div style={{textAlign:"center",padding:"60px 0",color:"var(--ink2,#8a7f76)"}}>
           <div className="spinner" style={{margin:"0 auto 10px"}}/>
-          {(sessLoad() || {}).name ? `${sessLoad().name} さんのチケットを開いています…` : "開いています…"}
+          {(sessLoad() || {}).name ? `${sessLoad().name} さんのページを開いています…` : "開いています…"}
         </div>
       ) : !found ? (
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <p style={S.hint}>暗証番号を入力してください</p>
-          {/* 間違えると入力欄がぷるぷる震える（クラスを交互に付け替えて毎回震わせる）。数字キーパッドで開く */}
-          <input style={S.input} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="off" placeholder="暗証番号" value={input}
-            className={errN ? `wobble-${errN % 2}` : ""}
+        <div className="nz-login card-in">
+          <button type="button" className="back-btn" onClick={()=>{setScreen("home");setInput("");}}>← 戻る</button>
+          <div className="nz-login-logo" aria-hidden="true">🌈</div>
+          <h2 className="nz-login-title">虹カフェ 会員ページ</h2>
+          <p className="nz-login-hint">暗証番号を入力してください</p>
+          <input style={S.input} className={"nz-input " + (errN ? `wobble-${errN % 2}` : "")} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="off" placeholder="暗証番号" value={input}
             onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()}/>
           {err && <p style={S.err}>{err}</p>}
-          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:"0.85rem",color:"var(--ink2,#8a7f76)",cursor:"pointer"}}>
-            <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{width:18,height:18}}/>
-            この端末で記憶する（次回から暗証番号なしで開けます・7日間）
+          <label className="nz-check">
+            <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/>
+            <span>この端末で記憶する<small>次回から暗証番号なしで開けます（7日間）</small></span>
           </label>
-          <button className="btn-gold" onClick={search}>確認する</button>
+          <button type="button" className="nz-primary" disabled={busy} onClick={search}>{busy ? "確認中…" : "開く"}</button>
         </div>
       ) : (
-        <div>
-          <div className="cv-tabs" style={{display:"flex",background:"var(--panel2,#f2ece4)",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
-            {[
-              ["ticket","🎫 チケット"],
-              ["order","🛒 注文する"],
-              // 🎁はときどきもぞもぞ動く（中身が気になっているらしい）
-              ...(found.isVIP ? [["present", <span key="p"><span className="wiggle">🎁</span> プレゼント</span>]] : []),
-            ].map(([k,l])=>(
-              <button key={k} className={`tab-btn ${cvTab===k?"active":""}`} onClick={()=>setCvTab(k)}
-                style={{position:"relative"}}>
-                {l}
-                {k==="order" && myPendingOrder && (
-                  <span style={{position:"absolute",top:4,right:6,background:"#e8467f",borderRadius:"50%",width:7,height:7,display:"block"}}/>
-                )}
-              </button>
-            ))}
+        <>
+          {/* 入場の虹カーテンと、お祝いの演出（条件が揃った時だけ出る） */}
+          <WelcomeSweep found={found}/>
+          <RankUpShow found={found} rank={rank}/>
+          <KeiroShow found={found}/>
+          <BirthdayShow found={found}/>
+          <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
+
+          {/* 上のあいさつ */}
+          <div className="nz-top">
+            <div className="nz-avatar" aria-hidden="true">{rank.gem}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="nz-top-t">{greet}</div>
+              <div className="nz-top-n">{found.name} さん</div>
+            </div>
+            <button type="button" className="nz-bell" aria-label="注文のようす" onClick={()=>setTab("order")}>
+              {ready ? "🎉" : myPendingOrder ? "☕" : "🔔"}
+              {(myPendingOrder || ready) && <i aria-hidden="true"/>}
+            </button>
           </div>
 
-          {/* 入場の虹カーテンと、ランクアップの祝祭（条件が揃った時だけ出る） */}
-          <WelcomeSweep found={found}/>
-          {cvTab==="ticket" && (
-            <div>
-              <RankUpShow found={found} rank={rank}/>
-              <KeiroShow found={found}/>
-              <BirthdayShow found={found}/>
-              <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
-              {/* カードは白地にして、ランクの色は上端の帯・バッジ・バーだけに使う。
-                  以前はカード全体をランク色のグラデーションで塗っていたため、
-                  シルバーやプラチナの人には画面全体が灰色一色になり、
-                  一番大事な残高まで薄い灰色で「使えなくなったカード」のように見えていた。 */}
-              <HoloCard className={`ticket-card card-in ${(hallRank(badgeCount({found,orders:badgeOrders}).got)||{}).cls||""}`}
-                style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#ece4d9)",
-                boxShadow:`0 6px 22px ${rank.glow}22`,position:"relative",overflow:"hidden"}}>
-                <div style={{position:"absolute",top:0,left:0,right:0,height:5,background:rank.bg}}/>
-                {/* 開いた瞬間、光の帯がカードを一度だけ横切る */}
-                <div className="card-sheen" aria-hidden="true"/>
-                {/* カードの隅に住んでいる看板猫。なでると返事をする */}
-                <NekoMascot/>
-                {/* 残高1万円以上は✨が、777は🪙が、カードの中で静かに降り続ける */}
-                {found.balance >= 10000 && <SparkleRain emoji="✨"/>}
-                {String(found.balance).includes("777") && <SparkleRain emoji="🪙"/>}
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,marginTop:4,flexWrap:"wrap"}}>
-                  <span style={{fontSize:"1.15rem",fontWeight:700,color:"var(--ink,#3d3630)"}}>{found.name}</span>
-                  {/* 25個ごとの称号。集めた人だけ名前の横に付く */}
-                  {(() => { const h = hallRank(badgeCount({found,orders:badgeOrders}).got);
-                    return h ? <span className={"hall-badge " + h.cls}>{h.emoji} {h.label}</span> : null; })()}
-                  <span style={{...S.rankBadge,color:rank.color,borderColor:rank.color+"55",background:rank.color+"14",marginBottom:0}}>
-                    {/* 宝石を押すとキラキラがはじける */}
-                    <TapBurst emojis={["✨","💖","⭐","✨"]}>
-                      <span className="gem-pulse">{rank.gem}</span>
-                    </TapBurst> {rank.name}
-                  </span>
-                </div>
-                {/* 残高はランクに関係なく、いつも一番はっきり読める濃さにする。
-                    この画面を開く理由がこれなので、色よりも読みやすさを優先する。
-                    隠し：5回連打で🪙／ゾロ目や777だとお祝いが付く */}
-                <div style={{marginBottom:16,position:"relative"}}>
-                  <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:2}}>
-                    のこり
-                    {sleepy && <span className="sleepy" aria-hidden="true">💤</span>}
-                  </div>
-                  <div onClick={tapBalance}
-                    style={{color:"var(--ink-strong,#2f2925)",fontSize:"2.6rem",fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,fontVariantNumeric:"tabular-nums"}}>
-                    ¥<CountUp value={found.balance}/>
-                    {delta && <span key={delta.id} className="delta-up">+¥{delta.v.toLocaleString()}</span>}
-                    {String(found.balance).includes("777") &&
-                      <span className="chip-pop">777！✨</span>}
-                    {found.balance >= 111 && /^(\d)\1+$/.test(String(found.balance)) && !String(found.balance).includes("777") &&
-                      <span className="chip-pop">ゾロ目！✨</span>}
-                    {coinBurst !== 0 && (
-                      <span key={coinBurst} className="burst" aria-hidden="true">
-                        {["🪙","🪙","🪙","🪙","🪙","🪙","🪙","🪙"].map((e,i)=>(
-                          <span key={i} className="burst-p" style={{"--a":`${i*45}deg`}}>{e}</span>
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                  {found.balance === 0 &&
-                    <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.8rem",marginTop:4}}>また来てね ☕</div>}
-                </div>
-                {/* 回数と次のランクを1つにまとめた。
-                    以前は「今年の購入回数」「来年のランク予測」「あと何回」「バー」が
-                    バラバラに4段あって、読むのに手間がかかっていた。
-                    来年の予測は今この場では要らない情報なので落とした。 */}
-                <div style={S.divider}/>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-                  <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>今年 {cyp}回</span>
-                  {next
-                    ? <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>あと{next.min-cyp}回で <span style={{color:next.color,fontWeight:700}}>{next.gem}{next.name}</span></span>
-                    : <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>最高ランクです</span>}
-                </div>
-                {/* ランクアップまであと1回のときだけ、バーが虹色に脈打つ（もうすぐの高鳴り） */}
-                {next && <div style={S.bar}>
-                  <div className={`bar-fill${next.min - cyp === 1 ? " bar-rainbow" : ""}`}
-                    style={{width:`${pct}%`,background:rank.color}}/>
-                </div>}
-              </HoloCard>
-              {/* 🎁 敬老の日（9/20・対象の方だけ） */}
+          {/* ══ ホーム ══ */}
+          {tab === "home" && (
+            <div className="nz-page">
+              <WalletCard found={found} rank={rank} next={next} cyp={cyp} pct={pct} badgeOrders={badgeOrders}
+                tapBalance={tapBalance} delta={delta} coinBurst={coinBurst} sleepy={sleepy}/>
+              {(ready || myPendingOrder) && (
+                <button type="button" className={"nz-banner" + (ready ? " nz-banner-ready" : "")} onClick={()=>setTab("order")}>
+                  <span style={{fontSize:"1.3rem"}}>{ready ? "🎉" : "☕"}</span>
+                  <span style={{flex:1,textAlign:"left"}}><b>{ready ? "できあがりました！" : "お作りしています"}</b><small>{ready ? "お席までお届けします" : "できあがったらお知らせします"}</small></span>
+                  <span>→</span>
+                </button>
+              )}
+              <div className="nz-quick">
+                <button type="button" className="nz-q" onClick={()=>setTab("order")}><span className="ic" style={{background:"var(--peach,#ffe3c9)"}}>☕</span>注文する</button>
+                <button type="button" className={"nz-q" + (usual ? "" : " dim")} onClick={useUsual} disabled={!usual}>
+                  <span className="ic" style={{background:"var(--sky,#cde9ff)"}}>🔁</span>いつもの
+                  {usual && <small className="nz-q-sub">{usual.label}</small>}
+                </button>
+                <button type="button" className="nz-q" onClick={()=>setTab("tickets")}><span className="ic" style={{background:"var(--mint,#d6f5e3)"}}>🎫</span>チケット</button>
+              </div>
+              {/* 🎁 敬老の日（9/20・対象の方だけ）はホームの一番目立つ所に */}
               <KeiroTicket found={found} orders={orders} onClaim={claimKeiro} onCancel={cancelKeiro}/>
-              {/* 今月の特典チケット（大きく・ランクが上がるほど豪華に） */}
-              <MonthlyBenefitTicket found={found} rank={rank}/>
-              {/* 持ち越しの特典チケット。あるときだけ、今月の券の下に出る */}
-              <BonusTicketWallet found={found}/>
-              {/* ランク一覧は9行あり、毎回見る情報ではない。
-                  常に開いていると本題（残高と特典）が画面外に押し出されるので、
-                  必要なときだけ開く形にした。 */}
-              <button onClick={()=>setShowRanks(v=>!v)}
-                style={{width:"100%",marginTop:14,background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:16,
-                  padding:"14px 16px",cursor:"pointer",fontFamily:"inherit",display:"flex",
-                  justifyContent:"space-between",alignItems:"center",color:"var(--ink2,#8a7f76)",fontSize:"0.95rem"}}>
-                <span>ランクと特典を見る</span>
-                <span style={{color:"var(--ink4,#a79b90)"}}>{showRanks?"閉じる ▲":"▼"}</span>
-              </button>
-              {showRanks && (
-              <div style={{marginTop:8,background:"var(--card,#ffffff)",borderRadius:16,padding:"14px 16px"}}>
-                {RANKS.map(r=>{
-                  const unlocked=found.rankBasis>=r.min, isCur=r.name===rank.name;
-                  return (
-                    <div key={r.name} style={{...S.rankRow,opacity:unlocked?1:0.35,background:isCur?rank.color+"18":"transparent",borderRadius:8}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
-                        <span style={{fontSize:"0.95rem"}}>{r.gem}</span>
-                        <div>
-                          <span style={{color:r.color,fontWeight:700,fontSize:"0.85rem"}}>{r.name}</span>
-                          <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginLeft:6}}>{r.min}回〜</span>
-                        </div>
-                      </div>
-                      <div style={{textAlign:"right"}}>
-                        <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>{r.benefit.icon} {r.benefit.desc}</span>
-                        {r.benefit.type==="always_discount"&&<span style={{color:r.color,fontSize:"0.75rem",marginLeft:4,fontWeight:700}}>毎回</span>}
-                      </div>
-                      {isCur&&<div style={{...S.curDot,background:rank.color}}/>}
-                    </div>
-                  );
-                })}
-              </div>
-              )}
-              {/* 誕生月の1杯券（未登録なら誕生月の登録ボタン） */}
-              <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth} onUse={()=>{ setBdayMode(true); setCvTab("order"); }}/>
-              {/* 100個達成の人にだけ出る1杯無料券 */}
-              {badgeCount({found,orders:badgeOrders}).got >= 100 && <FreeDrinkTicket found={found}/>}
-              {/* 今日の一節（聖書 新改訳2017） */}
-              <TodayVerse/>
-              {/* 遊びのコーナー（バッジ棚・ランキング）はまとめて折りたたむ。残高と特典を押し出さないため */}
-              <button className="btn-quiet" style={{marginTop:10,width:"100%",textAlign:"left",display:"flex",justifyContent:"space-between"}}
-                onClick={()=>setShowPlay(v=>!v)}>
-                <span>🏆 実績バッジ・🏅 ランキング</span><span>{showPlay ? "閉じる ▲" : "▼"}</span>
-              </button>
-              {showPlay && (<>
-                <BadgeShelf100 found={found} orders={badgeOrders}/>
-                <RankingBoard customers={customers} myId={found.id}/>
-              </>)}
-              {/* めったに使わない操作なので、一番下で控えめに */}
-              <div style={{display:"flex",gap:8,marginTop:10}}>
-                <button className="btn-quiet" style={{flex:1}} onClick={()=>{playDetach(); custToken.current=null; setBoot(null); setFound(null); setInput("");}}>別の番号を確認する</button>
-                {sessLoad() && <button className="btn-quiet" style={{flex:1}} onClick={()=>{ if(!window.confirm("この端末の記憶を消します。次回は暗証番号の入力が必要になります。")) return; sessClear(); playDetach(); custToken.current=null; setBoot(null); setFound(null); setInput(""); }}>🔓 この端末の記憶を消す</button>}
-              </div>
-            </div>
-          )}
-
-          {cvTab==="present" && found.isVIP && (
-            <VipPresentTab
-              found={found}
-              vipGiftDrink={vipGiftDrink}
-              orders={orders}
-              saveOrders={saveOrders}
-              saveC={saveC}
-              customers={customers}
-            />
-          )}
-          {cvTab==="order" && (
-            <div>
-              {/* 🎂 誕生日の一杯を選ぶ（券のボタンから来たとき） */}
-              {bdayMode && !myPendingOrder && isBirthdayTicketActive(found) && (
-                <BirthdayPicker menu={menu} drink={bdayDrink} topping={bdayTopping} setDrink={setBdayDrink} setTopping={setBdayTopping}
-                  onQuit={()=>{ setBdayMode(false); setBdayDrink(null); setBdayTopping(null); }}/>
-              )}
-              {/* 🔁 いつもの：前回の注文をワンタップでカートに入れる（未処理注文が無く、カートが空のときだけ） */}
-              {!myPendingOrder && cart.length===0 && (() => {
-                const last = [...badgeOrders].filter(o => o && !o.isVipGift && !o.isKeiroGift && (o.items||[]).length > 0 && o.status !== "pending")
-                  .sort((a,b) => String(b.orderId||"").localeCompare(String(a.orderId||"")))[0];
-                if (!last) return null;
-                const picks = (last.items||[]).map(it => { const m = menu.find(x => x.id===it.id) || menu.find(x => x.name===it.name); return m ? { ...m, qty: it.qty || 1 } : null; }).filter(Boolean);
-                if (!picks.length) return null;
-                const label = picks.map(p => `${p.name}×${p.qty}`).join("、");
-                return (
-                  <button className="usual-btn" onClick={()=>{ setCart(picks); popSound(); try { navigator.vibrate && navigator.vibrate(12); } catch {} }}>
-                    <span style={{fontSize:"1.3rem"}}>🔁</span>
-                    <span style={{flex:1,textAlign:"left"}}>
-                      <span style={{fontWeight:800,display:"block"}}>いつもの</span>
-                      <span style={{fontSize:"0.75rem",opacity:0.8}}>前回：{label}</span>
-                    </span>
-                    <span style={{fontSize:"0.8rem",fontWeight:700}}>カートへ →</span>
-                  </button>
-                );
-              })()}
-              {myPendingOrder ? (
-                <div style={{background:"#e9f5ec",border:"1px solid #c9e2ce",borderRadius:16,padding:16}}>
-                  <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.95rem",marginBottom:10}}>✅ 注文受付済み — スタッフが準備中です</div>
-                  {myPendingOrder.items.map((item,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
-                      <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name} × {item.qty}</span>
-                      <span style={{color:"var(--gold,#b07c1e)"}}>¥{(item.price*item.qty).toLocaleString()}</span>
-                    </div>
-                  ))}
-                  {(myPendingOrder.benefitItems||[]).map((item,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
-                      <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name}</span>
-                      <span style={{color:"#3e9a5c",fontSize:"0.85rem"}}>🎁 無料</span>
-                    </div>
-                  ))}
-                  {(myPendingOrder.birthdayItems||[]).map((item,i)=>(
-                    <div key={"bd"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:4}}>
-                      <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name}</span>
-                      <span style={{color:"#ff9ac6",fontSize:"0.85rem",fontWeight:700}}>🎂 無料</span>
-                    </div>
-                  ))}
-                  <div style={{borderTop:"1px solid #c9e2ce",paddingTop:8,marginTop:6,display:"flex",justifyContent:"space-between"}}>
-                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>合計</span>
-                    <span style={{color:"#3e9a5c",fontWeight:800}}>¥{myPendingOrder.total.toLocaleString()}</span>
-                  </div>
-                  <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:6}}>{myPendingOrder.createdAt} に注文</div>
-                  <button className="btn-danger" style={{marginTop:12,padding:"9px"}} onClick={cancelOrder}>注文をキャンセル</button>
-                </div>
-              ) : ordered ? (
-                <div style={{textAlign:"center",padding:"32px 16px"}}>
-                  {/* 紙吹雪——ではなく、いま頼んだドリンクの絵文字が降ってくる */}
-                  <div className="confetti-box" aria-hidden="true">
-                    {okEmojis && okEmojis.length ? [...Array(12)].map((_,i)=>(
-                      <span key={i} className="confetti-e" style={{left:`${6+i*8}%`,
-                        animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}>
-                        {okEmojis[i % okEmojis.length]}
-                      </span>
-                    )) : ["#e8759b","#e8944a","#d9a821","#5fa878","#5b93c9","#8a7cc4",
-                      "#e8759b","#5fa878","#5b93c9","#d9a821","#8a7cc4","#e8944a"].map((c,i)=>(
-                      <i key={i} style={{left:`${6+i*8}%`,background:c,
-                        animationDelay:`${(i%5)*0.1}s`,animationDuration:`${1.2+(i%4)*0.22}s`}}/>
+              {ticketChips.length > 0 && (
+                <>
+                  <div className="nz-sec"><span>使えるチケット</span><button type="button" className="nz-link" onClick={()=>setTab("tickets")}>すべて見る →</button></div>
+                  <div className="nz-strip">
+                    {ticketChips.map(c => (
+                      <button key={c.k} type="button" className={"nz-tk " + c.cls} onClick={()=>{ if (c.k==="bday") { setBdayMode(true); setTab("order"); } else setTab("tickets"); }}>
+                        <span className="d">{c.icon}</span><b>{c.t}</b><span>{c.s}</span>
+                      </button>
                     ))}
                   </div>
-                  {/* ✅の後ろから光線が放射され、「今日の一杯目」は両脇から大砲も撃つ */}
-                  <div style={{position:"relative",display:"inline-block"}}>
-                    <div className="rays" aria-hidden="true"/>
-                    <div className="pop" style={{fontSize:"3rem",marginBottom:12,position:"relative"}}>{okIcon}</div>
-                  </div>
-                  {okExtra === "今日の一杯目！" && (
-                    <div aria-hidden="true">
-                      {[...Array(7)].map((_,i)=>(
-                        <span key={"l"+i} className="cannon cannon-l" style={{animationDelay:`${i*0.07}s`,"--cx":`${40+i*22}px`,"--cy":`${-90-(i%4)*30}px`}}>
-                          {(okEmojis&&okEmojis[i%okEmojis.length])||"🎉"}
-                        </span>
-                      ))}
-                      {[...Array(7)].map((_,i)=>(
-                        <span key={"r"+i} className="cannon cannon-r" style={{animationDelay:`${i*0.07}s`,"--cx":`${-40-i*22}px`,"--cy":`${-90-(i%4)*30}px`}}>
-                          {(okEmojis&&okEmojis[i%okEmojis.length])||"🎉"}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {okExtra && <div className="chip-pop" style={{position:"static",display:"inline-block",marginBottom:8}}>{okExtra}</div>}
-                  <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"1.15rem",marginBottom:6}}>{okMsg}</div>
-                  <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>スタッフが準備します。しばらくお待ちください。</div>
-                  <button className="btn-ghost" style={{marginTop:20}} onClick={()=>setOrdered(false)}>続けて注文する</button>
+                </>
+              )}
+              {/* 今日の一節（聖書 新改訳2017） */}
+              <TodayVerse/>
+            </div>
+          )}
+
+          {/* ══ チケット ══ */}
+          {tab === "tickets" && (
+            <div className="nz-page">
+              <h2 className="nz-h">🎫 チケット</h2>
+              <KeiroTicket found={found} orders={orders} onClaim={claimKeiro} onCancel={cancelKeiro}/>
+              <MonthlyBenefitTicket found={found} rank={rank}/>
+              <BonusTicketWallet found={found}/>
+              <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth} onUse={()=>{ setBdayMode(true); setTab("order"); }}/>
+              {gotBadges >= 100 && <FreeDrinkTicket found={found}/>}
+              {found.isVIP && (
+                <div className="nz-card" style={{marginTop:12}}>
+                  <div className="nz-card-h"><span className="wiggle">🎁</span> VIPプレゼント</div>
+                  <VipPresentTab found={found} vipGiftDrink={vipGiftDrink} orders={orders} saveOrders={saveOrders} saveC={saveC} customers={customers}/>
                 </div>
-              ) : (
-                <div>
-                  {/* ── スペシャル無料バナー ── */}
-                  {isSpecial && (
-                    <div style={{background:"linear-gradient(135deg,#f5eafa,#eddcf5)",border:"1px solid #c98ada55",borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:"1.15rem"}}>💜</span>
-                      <div>
-                        <div style={{color:"#9c3fb5",fontWeight:800,fontSize:"0.95rem"}}>スペシャル — 全品無料</div>
-                        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem"}}>全ての注文が¥0になります</div>
+              )}
+              <button type="button" className="nz-card nz-card-btn" onClick={()=>setShowRanks(v=>!v)}>
+                <span>ランクと特典のしくみ</span><span style={{color:"var(--ink3,#9a8f85)"}}>{showRanks?"閉じる ▲":"▼"}</span>
+              </button>
+              {showRanks && (
+                <div className="nz-card" style={{marginTop:8}}>
+                  {RANKS.map(r=>{
+                    const unlocked=found.rankBasis>=r.min, isCur=r.name===rank.name;
+                    return (
+                      <div key={r.name} style={{...S.rankRow,opacity:unlocked?1:0.4,background:isCur?rank.color+"18":"transparent",borderRadius:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,flex:1}}>
+                          <span>{r.gem}</span>
+                          <div><span style={{color:r.color,fontWeight:800,fontSize:"0.85rem"}}>{r.name}</span><span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.72rem",marginLeft:6}}>{r.min}回〜</span></div>
+                        </div>
+                        <div style={{textAlign:"right",fontSize:"0.8rem",color:"var(--ink2,#8a7f76)"}}>{r.benefit.icon} {r.benefit.desc}{r.benefit.type==="always_discount"&&<b style={{color:r.color,marginLeft:4}}>毎回</b>}</div>
+                        {isCur&&<div style={{...S.curDot,background:rank.color}}/>}
                       </div>
-                    </div>
-                  )}
-
-                  {/* ── スタッフ割引バナー ── */}
-                  {isStaffAccount && (
-                    <div style={{background:"#e9f5ec",border:"1px solid #7cc39444",borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:"1rem"}}>🟢</span>
-                      <div>
-                        <div style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.85rem"}}>スタッフ割引 {discountRate}%OFF</div>
-                        {/* ここは「10%」と決め打ちで書かれていたため、
-                            割引率が15%の人には上下で違う数字が並んで見えていた。 */}
-                        <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>全商品が自動で{discountRate}%オフになります</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── 月次特典セクション（未使用/残あり時のみ表示） ── */}
-                  {showBenefit && (
-                    <BenefitOrderSection
-                      rank={benefitRank}
-                      ticketToppings={ticketToppingsHere}
-                      monthlyTopping={monthlyTopping}
-                      menu={menu}
-                      benefitUsed={benefitUsed}
-                      benefitItems={benefitItems}
-                      setBenefitItems={setBenefitItems}
-                      setBenefitUsed={setBenefitUsed}
-                      designatedDrink={designatedDrink}
-                      availableTopping={availableTopping}
-                    />
-                  )}
-
-                  {/* 気分で選ぶチップと、迷ったとき用のシャッフル（見て遊べるおもちゃ） */}
-                  <MoodPicker menu={menu} onAdd={(it)=>{ addToCart(it); popSound(); }}/>
-                  <DrinkRoulette menu={menu} onPick={(it)=>{ addToCart(it); popSound(); }}/>
-
-                  {/* カートを空にした直後だけ、ひとこと */}
-                  {cleared !== 0 && <div key={cleared} className="cleared-note">また選んでね〜</div>}
-
-                  {/* ── メニュー（カテゴリタブ） ── */}
-                  <OrderMenuTabs
-                    menu={menu}
-                    cart={cart}
-                    addToCart={addToCart}
-                    removeOne={removeOne}
-                  />
-
-                  {/* ── カート ──
-                      画面の下に貼り付いて、常に見えるようにしてある。
-                      以前はメニュー33品の下にあったため、1品選ぶたびに
-                      合計を見るために一番下までスクロールする必要があった。
-                      選んだ品数が多いときは、この中だけがスクロールする。 */}
-                  {(cart.length>0 || benefitItems.length>0 || bdayDrink) &&(
-                    <div className="glass rise" style={{position:"sticky",bottom:8,zIndex:20,marginTop:8,
-                      border:"1px solid var(--line,#e7ded3)",borderRadius:16,padding:"12px 14px",
-                      boxShadow:"0 -6px 24px rgba(61,54,48,0.12)"}}>
-                      <div style={{maxHeight:"32vh",overflowY:"auto"}}>
-                      {cart.map(item=>(
-                        <div key={item.id} style={S.cartRow}>
-                          <span style={{color:"var(--ink,#3d3630)",fontSize:"0.85rem",fontWeight:600}}>{item.emoji} {item.name}</span>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                            <span style={{color:"var(--ink,#3d3630)",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
-                            <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                            <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                      {benefitItems.map((item,i)=>(
-                        <div key={i} style={{...S.cartRow,opacity:0.85}}>
-                          <span style={{color:rank.color,fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
-                          <span style={{color:rank.color,fontWeight:700,fontSize:"0.85rem"}}>🎁 無料</span>
-                        </div>
-                      ))}
-                      {bdayDrink && [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])].map((item,i)=>(
-                        <div key={"bd"+i} style={{...S.cartRow}}>
-                          <span style={{color:"#e8759b",fontSize:"0.85rem",fontWeight:700}}>{item.emoji} {item.name}</span>
-                          <span style={{color:"#e8759b",fontWeight:800,fontSize:"0.85rem"}}>🎂 無料</span>
-                        </div>
-                      ))}
-                      </div>
-                      <div style={{paddingTop:8,borderTop:"1px solid var(--line,#e7ded3)",marginTop:6}}>
-                        {isSpecial&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                          <span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>💜 スペシャル割引</span>
-                          <span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>全品無料</span>
-                        </div>}
-                        {!isSpecial&&staffDiscount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                          <span style={{color:"#3e9a5c",fontSize:"0.85rem"}}>🟢 スタッフ割引 {discountRate}%</span>
-                          <span style={{color:"#3e9a5c",fontSize:"0.85rem"}}>－¥{staffDiscount.toLocaleString()}</span>
-                        </div>}
-                        {!isSpecial&&discount>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                          <span style={{color:rank.color,fontSize:"0.85rem"}}>{rank.benefit.icon} ランク割引</span>
-                          <span style={{color:rank.color,fontSize:"0.85rem"}}>－¥{discount.toLocaleString()}</span>
-                        </div>}
-                        {benefitItems.length>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                          <span style={{color:rank.color,fontSize:"0.85rem"}}>🎁 月次特典</span>
-                          <span style={{color:rank.color,fontSize:"0.85rem"}}>無料</span>
-                        </div>}
-                        {/* 合計と一緒に「払ったあといくら残るか」を出す。
-                            残高不足で押せなくなってから気づくのでは遅いため。 */}
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                          <div>
-                            <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>合計</div>
-                            <div style={{color:total>found.balance?"#c25b52":"#a79b90",fontSize:"0.75rem",marginTop:2}}>
-                              {total>found.balance
-                                ? `のこり ¥${found.balance.toLocaleString()} — ¥${(total-found.balance).toLocaleString()} 足りません`
-                                : `お支払い後 ¥${(found.balance-total).toLocaleString()}`}
-                            </div>
-                          </div>
-                          <span style={{color:"var(--ink-strong,#2f2925)",fontWeight:800,fontSize:"1.7rem",letterSpacing:"-0.02em"}}>¥{total.toLocaleString()}</span>
-                        </div>
-                        {/* ちょうど500円なら「ワンコイン！」 */}
-                        {total === 500 && <div className="chip-pop" style={{position:"static",display:"inline-block",marginBottom:8}}>ワンコイン！🪙</div>}
-                        {/* 「クリア」は間違って押されると全部消える操作なので、小さく端に置く */}
-                        <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
-                          <button className="btn-clear" style={{flexShrink:0,padding:"13px 14px",fontSize:"0.85rem"}}
-                            onClick={()=>{setCart([]); setBenefitItems([]); setBenefitUsed(false); setBdayDrink(null); setBdayTopping(null); setCleared(Date.now()); setTimeout(()=>setCleared(0),1600);}}>クリア</button>
-                          <button className="btn-pay"
-                            disabled={(cart.length===0 && benefitItems.length===0 && !bdayDrink) || total>found.balance}
-                            style={{opacity:(cart.length>0||benefitItems.length>0||bdayDrink)&&total<=found.balance?1:0.35,fontSize:"1rem"}}
-                            onClick={placeOrder}>
-                            {total<=found.balance?"注文する":"残高が足りません"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
               )}
             </div>
           )}
-        </div>
+
+          {/* ══ 注文 ══ */}
+          {tab === "order" && (
+            <div className="nz-page">
+              {ready || myPendingOrder || (ordered && sentOrder) ? (
+                <OrderStatusCard order={myPendingOrder || sentOrder} ready={ready}
+                  onCancel={()=>{ if (window.confirm("この注文を取り消しますか？")) cancelOrder(); }}
+                  onDismiss={()=>{ setReady(null); setOrdered(false); }}
+                  onMore={()=>{ setOrdered(false); setReady(null); setViewMenu(true); }}
+                  justOrdered={ordered} okMsg={okMsg} okIcon={okIcon} okExtra={okExtra} okEmojis={okEmojis}/>
+              ) : null}
+              {(!(ready || myPendingOrder || (ordered && sentOrder)) || viewMenu) && (
+                <>
+                  <h2 className="nz-h">☕ 注文する</h2>
+                  {isSpecial && <div className="nz-note nz-note-purple">💜 スペシャル会員 — 全品無料です</div>}
+                  {isStaffAccount && <div className="nz-note nz-note-green">🟢 スタッフ割引 {discountRate}%OFF が自動で入ります</div>}
+                  {bdayMode && isBirthdayTicketActive(found) && (
+                    <BirthdayPicker menu={menu.filter(m=>!isSoldOut(m))} drink={bdayDrink} topping={bdayTopping} setDrink={setBdayDrink} setTopping={setBdayTopping}
+                      onQuit={()=>{ setBdayMode(false); setBdayDrink(null); setBdayTopping(null); }}/>
+                  )}
+                  {usual && cart.length===0 && (
+                    <button type="button" className="usual-btn nz-usual" onClick={useUsual}>
+                      <span style={{fontSize:"1.3rem"}}>🔁</span>
+                      <span style={{flex:1,textAlign:"left"}}><span style={{fontWeight:800,display:"block"}}>いつもの</span><span style={{fontSize:"0.75rem",opacity:0.8}}>前回：{usual.label}</span></span>
+                      <span style={{fontSize:"0.8rem",fontWeight:700}}>入れる →</span>
+                    </button>
+                  )}
+                  {showBenefit && (
+                    <BenefitOrderSection rank={benefitRank} ticketToppings={ticketToppingsHere} monthlyTopping={monthlyTopping}
+                      menu={menu.filter(m=>!isSoldOut(m))} benefitUsed={benefitUsed} benefitItems={benefitItems}
+                      setBenefitItems={setBenefitItems} setBenefitUsed={setBenefitUsed}
+                      designatedDrink={designatedDrink} availableTopping={availableTopping}/>
+                  )}
+                  <MoodPicker menu={menu.filter(m=>!isSoldOut(m))} onAdd={(it)=>{ addToCart(it); popSound(); }}/>
+                  {cleared !== 0 && <div key={cleared} className="cleared-note">また選んでね〜</div>}
+                  <OrderMenuGrid menu={menu} cart={cart} addToCart={addToCart} removeOne={removeOne}/>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ══ あそび ══ */}
+          {tab === "play" && (
+            <div className="nz-page">
+              <h2 className="nz-h">🎮 あそび</h2>
+              <DrinkRoulette menu={menu.filter(m=>!isSoldOut(m))} onPick={(it)=>{ addToCart(it); popSound(); setTab("order"); }}/>
+              <RankingBoard customers={customers} myId={found.id}/>
+              <BadgeShelf100 found={found} orders={badgeOrders} defaultOpen/>
+              <div className="nz-card" style={{marginTop:10}}>
+                <div className="nz-card-h">🎨 きせかえ</div>
+                <div style={{fontSize:"0.8rem",color:"var(--ink2,#8a7f76)",marginBottom:8}}>夜の空の色を選べます（夜モードのときに効きます）</div>
+                <ThemeButton/>
+              </div>
+            </div>
+          )}
+
+          {/* ══ じぶん ══ */}
+          {tab === "me" && (
+            <div className="nz-page">
+              <h2 className="nz-h">👤 じぶん</h2>
+              <div className="nz-card">
+                <div className="nz-me-head">
+                  <div className="nz-avatar big" aria-hidden="true">{rank.gem}</div>
+                  <div><div style={{fontWeight:900,fontSize:"1.1rem"}}>{found.name} さん</div>
+                    <div style={{fontSize:"0.8rem",color:"var(--ink2,#8a7f76)"}}>{rank.name} ・ 今年 {cyp}回 ・ 実績 {gotBadges}個</div></div>
+                </div>
+              </div>
+              <div className="nz-card" style={{marginTop:10}}>
+                <SettingRow icon="🔠" label="文字の大きさ">
+                  <Segmented value={textSize} options={[[0,"ふつう"],[1,"大きめ"],[2,"特大"]]} onChange={(v)=>{ setTextSize(v); applyTextSize(v); }}/>
+                </SettingRow>
+                <SettingRow icon="🌗" label="画面の色" sub="自動：18時〜5時は夜のネオン">
+                  <Segmented value={dayNight} options={[["auto","自動"],["day","昼"],["night","夜"]]} onChange={(v)=>{ setDayNight(v); setDayNightPref(v); }}/>
+                </SettingRow>
+                <SettingRow icon={sndOn ? "🔔" : "🔕"} label="効果音" sub="商品を押したときの「ぽっ」">
+                  <button type="button" className={"nz-toggle" + (sndOn ? " on" : "")} aria-pressed={sndOn} onClick={()=>{ const n=!sndOn; setSndOn(n); try { lsSet("niji_snd", n ? "on" : "off"); } catch {} if (n) { popSound(); unlockAch("niji_ach_snd", "効果音デビュー"); } }}><i/></button>
+                </SettingRow>
+              </div>
+              {!found.birthMonth && <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth} onUse={()=>{}}/>}
+              {found.birthMonth && <div className="nz-card" style={{marginTop:10}}><SettingRow icon="🎂" label="お誕生月" sub="変更はスタッフへ">{found.birthMonth}月</SettingRow></div>}
+              <div className="nz-card" style={{marginTop:10}}>
+                <button type="button" className="nz-card-btn" style={{padding:"12px 0"}} onClick={logoutAll}><span>別の番号で開く</span><span>→</span></button>
+                {sessLoad() && <button type="button" className="nz-card-btn nz-danger" style={{padding:"12px 0",borderTop:"1px solid var(--line,#e7ded3)"}}
+                  onClick={()=>{ if(!window.confirm("この端末の記憶を消します。次回は暗証番号の入力が必要になります。")) return; sessClear(); logoutAll(); }}>
+                  <span>🔓 この端末の記憶を消す</span><span>→</span></button>}
+              </div>
+              <div style={{textAlign:"center",fontSize:"0.7rem",color:"var(--ink4,#a79b90)",marginTop:16}}>虹カフェ v5 🌈</div>
+            </div>
+          )}
+
+          {/* ── 下に貼りつくカートのバー（注文タブで、何か選んでいるとき） ── */}
+          {tab === "order" && hasCart && !sheet && (
+            <button type="button" className="nz-cartbar rise" onClick={()=>setSheet(true)}>
+              <span className="nz-cartbar-n">{cartCount}</span>
+              <span style={{flex:1,textAlign:"left"}}><b>¥{total.toLocaleString()}</b><small>{total > found.balance ? ` 残高が足りません` : " 内容を確認"}</small></span>
+              <span className="go">注文へ →</span>
+            </button>
+          )}
+
+          {/* ── 確認シート ── */}
+          {sheet && (
+            <div className="nz-sheet-ov" onClick={()=>setSheet(false)}>
+              <div className="nz-sheet" onClick={(e)=>e.stopPropagation()}>
+                <div className="nz-sheet-bar" aria-hidden="true"/>
+                <h3 className="nz-sheet-h">この内容で注文します</h3>
+                <div className="nz-sheet-list">
+                  {cart.map(item=>(
+                    <div key={item.id} className="nz-row">
+                      <span style={{display:"flex",alignItems:"center",gap:8}}><DrinkIcon item={item} size={26}/>{item.name}</span>
+                      <span className="nz-qtybox">
+                        <button type="button" className="nz-qb" onClick={()=>removeOne(item.id)}>－</button><b>{item.qty}</b><button type="button" className="nz-qb" onClick={()=>addToCart(item)}>＋</button>
+                        <span style={{minWidth:56,textAlign:"right"}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                      </span>
+                    </div>
+                  ))}
+                  {benefitItems.map((item,i)=>(
+                    <div key={"b"+i} className="nz-row nz-free"><span>🎁 {item.emoji} {item.name}</span><span>無料</span></div>
+                  ))}
+                  {bdayDrink && [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])].map((item,i)=>(
+                    <div key={"bd"+i} className="nz-row nz-free"><span>🎂 {item.emoji} {item.name}</span><span>無料</span></div>
+                  ))}
+                </div>
+                <div className="nz-sheet-sum">
+                  {isSpecial && <div className="nz-row"><span style={{color:"#9c3fb5"}}>💜 スペシャル</span><span style={{color:"#9c3fb5"}}>全品無料</span></div>}
+                  {!isSpecial && staffDiscount>0 && <div className="nz-row"><span style={{color:"#3e9a5c"}}>🟢 スタッフ割引 {discountRate}%</span><span style={{color:"#3e9a5c"}}>－¥{staffDiscount.toLocaleString()}</span></div>}
+                  {!isSpecial && discount>0 && <div className="nz-row"><span style={{color:rank.color}}>{rank.benefit.icon} ランク割引</span><span style={{color:rank.color}}>－¥{discount.toLocaleString()}</span></div>}
+                  <div className="nz-row nz-row-total"><span>お支払い</span><b>¥{total.toLocaleString()}</b></div>
+                  <div className={"nz-after" + (total > found.balance ? " bad" : "")}>
+                    {total > found.balance ? `のこり ¥${found.balance.toLocaleString()} — ¥${(total-found.balance).toLocaleString()} 足りません（スタッフにチャージをお申し付けください）` : `お支払い後の残高 ¥${(found.balance-total).toLocaleString()}`}
+                  </div>
+                  {total === 500 && <div className="chip-pop" style={{position:"static",display:"inline-block",marginTop:6}}>ワンコイン！🪙</div>}
+                </div>
+                <button type="button" className="nz-primary" disabled={!canOrder} onClick={()=>{ setSheet(false); setViewMenu(false); placeOrder(); }}>
+                  {canOrder ? "これで注文する" : "残高が足りません"}
+                </button>
+                <div style={{display:"flex",gap:8,marginTop:8}}>
+                  <button type="button" className="nz-ghost" style={{flex:1}} onClick={()=>setSheet(false)}>まだ選ぶ</button>
+                  <button type="button" className="nz-ghost nz-danger" style={{flex:1}} onClick={()=>{ setSheet(false); setCart([]); setBenefitItems([]); setBenefitUsed(false); setBdayDrink(null); setBdayTopping(null); setCleared(Date.now()); setTimeout(()=>setCleared(0),1600); }}>ぜんぶ消す</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <TabBar tab={tab} setTab={(k)=>{ setTab(k); if (k !== "order") setSheet(false); }} dot={!!(myPendingOrder || ready)}/>
+        </>
       )}
     </div>
   );
@@ -4179,7 +4334,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   const [showCode,       setShowCode]       = useState(false);
   const [showHistory,    setShowHistory]    = useState(false);
   const [showYearHistory,setShowYearHistory]= useState(false);
-  const [posTab,         setPosTab]         = useState("order"); // "order" | "menu"
+  const [posTab,         setPosTab]         = useState("work");  // "work"（注文・お客さま・レジ）| "cash" | "menu" | "history" | "staffmgmt"
   const [pwPrompt,       setPwPrompt]       = useState(null);
   const [pwInput,   setPwInput]   = useState("");
   const [pwErr,     setPwErr]     = useState("");
@@ -4316,6 +4471,18 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
     update(updated);
   };
 
+  // トッピング特典（ブロンズ〜ゴールド）を、レジで1個ぶん使う（お店で渡す）
+  const useOneTopping = () => {
+    if (!customer) return;
+    const base = customers.find(c=>c.id===customer.id) || customer;
+    const r = getEffectiveRank(base);
+    const avail = getToppingAvailable(base, r);
+    if (avail <= 0) return;
+    if (!window.confirm(`${base.name} さんの今月のトッピング特典を1個ぶん使います（残り ${avail} → ${avail-1}）。よろしいですか？`)) return;
+    update({ ...base, toppingRemaining: avail - 1, toppingRemainingMonth: currentMonth(),
+      history: [{ type:"benefit", desc:`🧁 トッピング無料 1個ぶん（レジ）`, performer: staffName, date: new Date().toLocaleString("ja-JP") }, ...(base.history||[])].slice(0,60) });
+  };
+
   const requireManager = (fn) => {
     if (isManager) { fn(); return; }
     setPwTarget(()=>fn); setPwPrompt("auth"); setPwInput(""); setPwErr("");
@@ -4339,324 +4506,287 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   };
 
   const categories = [...new Set(menu.map(m=>m.category))];
+  // ── 新デザインのPOS：左「届いた注文」／中「お客さま」／右「レジ」 ──
+  const [posSub, setPosSub] = useState("orders");   // スマホ縦のときだけ使う切り替え（注文／お客さま・レジ）
+  const pendingCount = orders.filter(o=>o.status==="pending").length;
+  const liveCustomer = customer ? (customers.find(c=>c.id===customer.id) || customer) : null;
+  const pendingOfCustomer = customer ? (orders||[]).filter(o=>o.customerId===customer.id && o.status==="pending") : [];
+  const toggleSoldOut = (id) => {
+    const item = menuRaw.find(m=>m.id===id);
+    if (!item) return;
+    saveMenu(menuRaw.map(m=>m.id===id ? { ...m, soldOut: !m.soldOut } : m));
+  };
+  const soldOutCount = menuRaw.filter(m=>m.soldOut).length;
 
-  return (
-    <div style={S.root}>
-      {/* TOP BAR */}
-      <div className="glass" style={{...S.topbar,position:"sticky",top:0,zIndex:30}}>
-        {customer ? (
-          <button className="back-btn" style={{margin:0,fontSize:"0.85rem",color:"var(--gold,#b07c1e)",fontWeight:700}}
-            onClick={()=>{ setCustomer(null); setCart([]); }}>
-            ← 客を変える
-          </button>
-        ) : (
-          <button className="back-btn" style={{margin:0,fontSize:"0.85rem"}} onClick={()=>setScreen("home")}>← 退出</button>
-        )}
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {customer && (
-            <button className="back-btn" style={{margin:0,fontSize:"0.75rem",color:"var(--ink3,#9a8f85)"}} onClick={()=>setScreen("home")}>退出</button>
-          )}
-          <span style={{fontSize:"0.75rem",color:isManager?"#b07c1e":"#3b7fb8",background:"var(--card,#ffffff)",padding:"4px 12px",borderRadius:999}}>
-            {isManager?"👑":"👤"} {staffName}
-          </span>
-        </div>
+  const searchPane = (
+    <>
+      <div className="pos-th">👥 お客さま <span className="right">{customers.length}人</span></div>
+      <input className="pos-search" placeholder={isManager ? "名前 or 暗証番号で絞り込み" : "名前で絞り込み"} value={query} onChange={e=>setQuery(e.target.value)}/>
+      <div style={{overflowY:"auto",flex:1}}>
+        {customers.filter(c=>{
+            if (!query) return true;
+            if (isManager) return c.name.includes(query)||c.pin.includes(query);
+            return c.name.includes(query);
+          }).map(c=>{
+            const r=getEffectiveRank(c);
+            const u=isBenefitUsed(c);
+            const isAl=r.benefit.type==="always_discount";
+            const pend=(orders||[]).filter(o=>o.customerId===c.id && o.status==="pending").length;
+            return (
+              <div key={c.id} className="pos-c" onClick={()=>{ setCustomer(c); setCart([]); setPosSub("reg"); }}>
+                <div style={{width:12,height:12,borderRadius:"50%",background:r.color,flexShrink:0}}/>
+                <div style={{minWidth:0}}>
+                  <div className="nm">{c.name} {c.isVIP&&<span style={{color:"#a9791a"}}>⭐</span>}{c.isSpecial&&<span style={{color:"#9c3fb5"}}>💜</span>}</div>
+                  <div className="sub">
+                    {isManager && (
+                      <span onClick={(e)=>{ e.stopPropagation(); revealPin(c.id); }} style={{cursor:"pointer",borderBottom:"1px dotted #c3bab0"}}>
+                        暗証: {pinShown===c.id ? c.pin : "•".repeat(String(c.pin||"").length||4)}
+                      </span>
+                    )}
+                    {isManager && " · "}{r.gem}{r.name}
+                    {pend>0 && <span className="pos-pill pt-warn" style={{marginLeft:6}}>未処理 {pend}</span>}
+                  </div>
+                </div>
+                <div className="bal" style={{color:r.color}}>¥{c.balance.toLocaleString()}
+                  <div style={{fontSize:"0.68rem",fontWeight:700,color: isAl ? "#1f5aa8" : u ? "#9a91a8" : "#22794b"}}>{isAl ? "自動割引" : u ? "特典 使用済み" : "特典あり"}</div>
+                </div>
+              </div>
+            );
+          })}
       </div>
+      {isManager && <button className="pos-ghost" style={{marginTop:8}} onClick={()=>setPwPrompt("addCustomer")}>＋ 新規会員登録</button>}
+    </>
+  );
 
-      {/* 読み込みに失敗したときは、黙って見本データを出さずに、はっきり知らせる。
-          （何も言わずに古い／偽の一覧が出ていると、それを本物だと思って操作してしまう） */}
-      {(menu.length===0 || staffAccounts.length===0) && (
-        <div style={{background:"#fbebea",borderBottom:"1px solid #f0d6d4",color:"#a5453e",
-          padding:"10px 16px",fontSize:"0.85rem",lineHeight:1.5}}>
-          ⚠️ {menu.length===0 && staffAccounts.length===0 ? "メニューとスタッフ一覧" : menu.length===0 ? "メニュー" : "スタッフ一覧"}
-          を読み込めませんでした。通信状況を確認して、画面を開き直してください。
-          （この状態では保存できません）
-        </div>
-      )}
-
-      {/* TAB NAV（客未選択時のみ）
-          タブの帯は画面いっぱい、中のボタンは本文と同じ幅で中央に揃える。
-          （帯だけ1440px、中身は中央——という不揃いを避けるため） */}
-      {!customer && (
-        <div style={{background:"var(--card,#ffffff)",borderBottom:"1px solid var(--line,#e7ded3)"}}>
-        <div style={{display:"flex",overflowX:"auto",maxWidth:1080,margin:"0 auto"}}>
-          {[["order","👥 会員"],["menu","🍽 メニュー"],["cash","💵 現金注文"],["orders","📋 注文"],["history","🗂 履歴"],
-            ...(isManager?[["staffmgmt","🔐 スタッフ"]]:[])
-          ].map(([k,l])=>(
-            <button key={k} className={`pos-tab ${posTab===k?"pos-tab-active":""}`}
-              onClick={()=>setPosTab(k)} style={{position:"relative",flexShrink:0}}>
-              {l}
-              {k==="orders" && orders.filter(o=>o.status==="pending").length>0 && (
-                <span style={{position:"absolute",top:6,right:4,background:"#e8467f",color:"#fff",
-                  borderRadius:12,padding:"2px 9px",fontSize:"0.75rem",fontWeight:700,lineHeight:1.4}}>
-                  {orders.filter(o=>o.status==="pending").length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        </div>
-      )}
-
-      {/* ── 客未選択: 検索 ── */}
-      {!customer && posTab==="order" && (
-        <div className="pos-page" style={{paddingTop:14}}>
-          <h2 style={S.title}>お客様を検索</h2>
-          {/* 打ちながら絞り込まれるので、検索ボタンは無くしてある（1操作減る） */}
-          <div style={{marginBottom:12}}>
-            <input style={{...S.input,marginBottom:0}} placeholder={isManager ? "名前 or 暗証番号で絞り込み" : "名前で絞り込み"}
-              value={query} onChange={e=>setQuery(e.target.value)}/>
+  const customerPane = customer && (
+    <>
+      <div className="pos-th">
+        <button className="pos-sm" style={{padding:"4px 6px 4px 0"}} onClick={()=>{ setCustomer(null); setCart([]); }}>← 別のお客さま</button>
+      </div>
+      <div className="pos-mem" style={{borderTop:`5px solid ${rank.color}`}}>
+        <div className="pos-mh">
+          <div className="nz-avatar" style={{width:46,height:46,fontSize:"1.3rem"}}>{rank.gem}</div>
+          <div>
+            <div style={{fontWeight:900,fontSize:"1.15rem",color:"#3a2e4f"}}>{customer.name} {customer.isVIP&&"⭐"}{customer.isSpecial&&"💜"}</div>
+            <div className="rk" style={{color:rank.color}}>{rank.name} ・ 今年 {customer.currentYearPurchases ?? 0}回{customer.birthMonth ? ` ・ ${customer.birthMonth}月生まれ` : ""}</div>
           </div>
-          <div className="pos-list">
-            {customers.filter(c=>{
-                if (!query) return true;
-                if (isManager) return c.name.includes(query)||c.pin.includes(query);
-                return c.name.includes(query);
-              })
-              .map(c=>{
-                const r=getEffectiveRank(c);
-                const u=isBenefitUsed(c);
-                const isAl=r.benefit.type==="always_discount";
-                return (
-                  <div key={c.id} className="c-row" onClick={()=>setCustomer(c)}>
-                    <div style={{width:10,height:10,borderRadius:"50%",background:r.color,flexShrink:0}}/>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:"0.95rem"}}>{c.name} {c.isVIP&&<span style={{color:"#a9791a",fontSize:"0.85rem"}}>⭐</span>}{c.isSpecial&&<span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>💜</span>}</div>
-                      {/* 暗証番号は伏せておく。POSの画面はカウンター越しにお客様からも見えるため。
-                          「暗証」の部分を押したときだけ、その1人分を5秒だけ表示する。 */}
-                      <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>
-                        {isManager && (
-                          <span onClick={(e)=>{ e.stopPropagation(); revealPin(c.id); }}
-                            style={{cursor:"pointer",borderBottom:"1px dotted #c3bab0",paddingBottom:1}}>
-                            暗証: {pinShown===c.id ? c.pin : "•".repeat(String(c.pin||"").length||4)}
-                          </span>
-                        )}
-                        {isManager && " · "}{r.gem}{r.name}
-                      </div>
-                    </div>
-                    <div style={{textAlign:"right",display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
-                      <div style={{color:r.color,fontWeight:700}}>¥{c.balance.toLocaleString()}</div>
-                      {isAl
-                        ? <div style={S.tagAuto}>{r.benefit.icon} 自動割引</div>
-                        : u
-                          ? <div style={S.tagUsed}>特典使用済み</div>
-                          : <div style={S.tagAvail}>特典あり</div>
-                      }
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="pos-bal">¥{customer.balance.toLocaleString()}
+            {flash&&<div className={`flash flash-${flash.type}`}>{flash.type==="add"?"+":"-"}¥{flash.amount.toLocaleString()}</div>}
           </div>
-          {isManager && (
-            <button className="btn-ghost" style={{marginTop:14}} onClick={()=>setPwPrompt("addCustomer")}>
-              ＋ 新規会員登録
-            </button>
-          )}
         </div>
-      )}
-
-      {/* ── メニュー管理 ── */}
-      {!customer && posTab==="menu" && (
-        <MenuManager menu={menuRaw} saveMenu={saveMenu} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink}/>
-      )}
-      
-      {/* ── 現金注文 ── */}
-      {!customer && posTab==="cash" && (
-        <CashOrderPanel menu={menu} staffName={staffName} orders={orders} saveOrders={saveOrders}/>
-      )}
-
-      {/* ── 注文管理 ── */}
-      {!customer && posTab==="orders" && (
-        <OrdersPanel orders={orders} customers={customers} saveOrders={saveOrders} saveC={saveC} staffName={staffName}/>
-      )}
-
-      {/* ── スタッフ管理（マネージャーのみ） ── */}
-      {!customer && posTab==="staffmgmt" && isManager && (
-        <StaffMgmtPanel staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} customers={customers} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} menu={menu}/>
-      )}
-
-      {/* ── 会計履歴 ── */}
-      {!customer && posTab==="history" && (
-        <SalesHistoryPanel customers={customers} orders={orders}/>
-      )}
-      {customer && (
-        <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 44px)",overflow:"hidden",
-          width:"100%",maxWidth:1080,margin:"0 auto"}}>
-
-          {/* 客ストリップ */}
-          <div style={{...S.customerStrip, borderColor:rank.color+"44"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <span style={{color:rank.color,fontSize:"0.85rem",fontWeight:700}}>{rank.gem} {rank.name}</span>
-                  <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1rem"}}>{customer.name}</span>
-                </div>
-                {/* 特典ステータス */}
-                <div style={{...S.benefitStripBox, borderColor:rank.color+"44"}}>
-                  <span style={{color:rank.color,fontSize:"0.85rem"}}>{rank.benefit.icon} {rank.benefit.desc}</span>
-                  {isAlways
-                    ? <div style={S.tagAuto}>毎回自動</div>
-                    : used
-                      ? <div style={S.tagUsed}>使用済み</div>
-                      : <button className="tag-use-btn" style={{borderColor:rank.color,color:rank.color}} onClick={useBenefit}>
-                          ✓ 使用する
-                        </button>
-                  }
-                </div>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0,marginLeft:10}}>
-                <div style={{position:"relative",display:"inline-block"}}>
-                  <span style={{color:rank.color,fontWeight:800,fontSize:"1.15rem"}}>¥{customer.balance.toLocaleString()}</span>
-                  {flash&&<div className={`flash flash-${flash.type}`}>{flash.type==="add"?"+":"-"}¥{flash.amount.toLocaleString()}</div>}
-                </div>
-                <div style={{display:"flex",gap:4,marginTop:4,justifyContent:"flex-end"}}>
-                  <button className="pill-btn-hist" onClick={()=>setShowHistory(true)}>📋</button>
-                  <button className="pill-btn-year" onClick={()=>setShowYearHistory(true)}>📅</button>
-                  {isManager && <button className="pill-btn-code" onClick={()=>setShowCode(true)}>🔑</button>}
-                </div>
-              </div>
-            </div>
-            {/* 🎟 特典チケット（持ち越し特典）。トッピング券はお客様がアプリで使うのが基本だが、
-                レジで渡すときはここで「1回分使う」。ドリンク券はここでしか減らせない。 */}
-            {unusedTickets(customers.find(c=>c.id===customer.id) || customer).length > 0 && (
-              <div style={{marginTop:8,background:"#fff8e6",border:"1px solid #f0d99a",borderRadius:12,padding:"8px 12px"}}>
-                <div style={{fontSize:"0.75rem",fontWeight:800,color:"#b07c1e",marginBottom:4}}>🎟 特典チケット</div>
-                {unusedTickets(customers.find(c=>c.id===customer.id) || customer).map(t => (
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:"0.8rem",padding:"3px 0"}}>
-                    <span style={{fontWeight:700,color:t.color||"#b07c1e"}}>{t.gem} {t.label}</span>
-                    <span style={{flex:1,color:"var(--ink2,#8a7f76)"}}>{ticketRemainText(t)}</span>
-                    <button className="preset-btn" onClick={()=>{
-                      const per = t.kind === "topping" ? Math.min(t.perUse || 1, t.remaining) : 1;
-                      const what = t.kind === "topping" ? `トッピング${per}個ぶん` : "1杯ぶん";
-                      if (!window.confirm(`${customer.name} さんの「${t.label}」を ${what} 使います（お店で渡す）。よろしいですか？`)) return;
-                      const base = customers.find(c=>c.id===customer.id) || customer;
-                      const upd = applyTicketUse(base, [{ id: t.id, n: per }], `pos_${Date.now()}`);
-                      upd.history = [{ type:"benefit", desc:`🎟 ${t.label}（${what}）`, performer: staffName, date: new Date().toLocaleString("ja-JP") }, ...(base.history||[])].slice(0,60);
-                      update(upd);
-                    }}>使う</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{display:"flex",gap:6,marginTop:8}}>
-              {isManager && <button className="pill-btn-gold" onClick={doCharge}>🎫 +¥2,200</button>}
-              {isManager && <button className="pill-btn-dim" onClick={()=>{ if(window.confirm("直前のチャージ1回分を取り消します。\n残高 -¥2,200・購入回数 -1 でよろしいですか？")) undoCharge(); }}>↩️ チャージ取消</button>}
-              {isManager && <button className="pill-btn-dim" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
-              {!isManager && staffIsChief && <button className="pill-btn-dim" onClick={()=>setPinEdit(true)}>🔑 暗証番号を変更</button>}
-              {/* 実績100個の1杯無料券。お客様の画面に券が出ていたら、これで使用済みにする。
-                  券の判定はお客様の端末で行われるため、スタッフが目で確認してから押す運用。 */}
-              {!customer.freeDrinkUsedAt && (
-                <button className="pill-btn-dim" onClick={async ()=>{
-                  // サーバーに控えてある遊びの記録で実績数を数え、参考として表示する
-                  let note = "";
-                  try {
-                    const play = await dbGet("cafe_v4_play/" + customer.id);
-                    const { got } = badgeCount({ found: customer, orders: orders || [], play: play || {} });
-                    note = `\n（サーバーの記録では実績 ${got} 個${got < 100 ? "。100個に届いていないので、お客様の画面をよく確認してください" : ""}）`;
-                  } catch {}
-                  if (!window.confirm(`${customer.name} さんの「🎫 1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？${note}`)) return;
-                  const now = new Date().toLocaleString("ja-JP");
-                  saveC(customers.map(c=>c.id===customer.id ? {...c, freeDrinkUsedAt: now} : c));
-                  setCustomer({...(customers.find(c=>c.id===customer.id)||customer), freeDrinkUsedAt: now});
-                  alert("使用済みにしました。1杯ぶんは会計から外してください。");
-                }}>🎫 無料券を使う</button>
-              )}
-              {/* 誕生月の1杯券。誕生月で、今年まだ使っていない人にだけ出る */}
-              {isBirthdayTicketActive(customer) && (
-                <button className="pill-btn-dim" onClick={()=>{
-                  if (!window.confirm(`${customer.name} さんの「🎂 誕生月の1杯無料券」を使用済みにします。\n（${customer.birthMonth}月生まれ・${new Date().getFullYear()}年分）よろしいですか？`)) return;
-                  saveC(customers.map(c=>c.id===customer.id ? {...c, birthdayUsedYear: String(new Date().getFullYear())} : c));
-                  setCustomer({...(customers.find(c=>c.id===customer.id)||customer), birthdayUsedYear: String(new Date().getFullYear())});
-                  alert("使用済みにしました。1杯ぶんは会計から外してください。");
-                }}>🎂 誕生月券を使う</button>
-              )}
-            </div>
-          </div>
-
-          {/* メニューグリッド。広い画面では列が増えるので、スクロールがぐっと減る */}
-          <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
-            {categories.map(cat=>(
-              <div key={cat} style={{marginBottom:14}}>
-                <div style={S.catLabel}>{cat}</div>
-                <div className="menu-grid-auto">
-                  {menu.filter(m=>m.category===cat).map(item=>{
-                    const inCart=cart.find(c=>c.id===item.id);
-                    return (
-                      <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`} onClick={()=>addToCart(item)}>
-                        <DrinkIcon item={item} size={40}/>
-                        <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
-                        <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
-                        {inCart&&<div style={S.cartBadge}>{inCart.qty}</div>}
-                      </button>
-                    );
-                  })}
-                </div>
+        <div className="pos-tags">
+          {isAlways ? <span className="pt-auto">{rank.benefit.icon} {rank.benefit.desc}（毎回自動）</span>
+            : getToppingMax(rank) > 0 ? (getToppingAvailable(liveCustomer, rank) > 0
+                ? <span className="pt-ok">🧁 トッピング無料 今月あと {getToppingAvailable(liveCustomer, rank)} 個</span>
+                : <span className="pt-used">🧁 トッピング特典：今月分は使い切り</span>)
+            : rank.benefit.type==="monthly" ? (used
+                ? <span className="pt-used">{rank.benefit.icon} {rank.benefit.desc}：使用済み</span>
+                : <span className="pt-ok">{rank.benefit.icon} {rank.benefit.desc}：まだ使えます</span>)
+            : <span className="pt-used">特典なし</span>}
+          {unusedTickets(liveCustomer).length > 0 && <span className="pt-gold">🎟 持ち越し券 {unusedTickets(liveCustomer).length}枚</span>}
+          {isBirthdayTicketActive(customer) && <span className="pt-pink">🎂 誕生月の1杯 未使用</span>}
+          {pendingOfCustomer.length > 0 && <span className="pt-warn">⚠ アプリ注文 未処理 {pendingOfCustomer.length}件</span>}
+        </div>
+        {pendingOfCustomer.length > 0 && (
+          <div className="pos-warn">この方はアプリから注文中です。左の「届いた注文」で「できました」を押すと、そこで残高が引かれます。レジで重ねて決済しないでください。</div>
+        )}
+        <div className="pos-mact" style={{marginTop:10}}>
+          {isManager && <button className="pos-charge" onClick={doCharge}>🎫 チャージ +¥2,200</button>}
+          {rank.benefit.type==="monthly" && getToppingMax(rank)===0 && !used && <button className="pos-ghost" style={{borderColor:rank.color,color:rank.color}} onClick={useBenefit}>✓ 特典を使う（お店で渡す）</button>}
+          {getToppingMax(rank)>0 && getToppingAvailable(liveCustomer, rank)>0 && <button className="pos-ghost" style={{borderColor:rank.color,color:rank.color}} onClick={useOneTopping}>🧁 トッピング1個ぶん使う</button>}
+        </div>
+        <div className="pos-mact" style={{marginTop:6}}>
+          <button className="pos-ghost" onClick={()=>setShowHistory(true)}>📋 履歴</button>
+          <button className="pos-ghost" onClick={()=>setShowYearHistory(true)}>📅 年間</button>
+          {isManager && <button className="pos-ghost" onClick={()=>setShowCode(true)}>🔑 暗証</button>}
+          {isManager && <button className="pos-ghost" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
+          {!isManager && staffIsChief && <button className="pos-ghost" onClick={()=>setPinEdit(true)}>🔑 暗証番号を変更</button>}
+          {isManager && <button className="pos-ghost danger" onClick={()=>{ if(window.confirm("直前のチャージ1回分を取り消します。\n残高 -¥2,200・購入回数 -1 でよろしいですか？")) undoCharge(); }}>↩️ チャージ取消</button>}
+        </div>
+        {/* 🎟 特典チケット（持ち越し）。ドリンク券はここでしか減らせない */}
+        {unusedTickets(liveCustomer).length > 0 && (
+          <div className="pos-tix">
+            <div style={{fontSize:"0.75rem",fontWeight:800,color:"#b07c1e",marginBottom:4}}>🎟 持ち越し特典チケット</div>
+            {unusedTickets(liveCustomer).map(t => (
+              <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:"0.8rem",padding:"3px 0"}}>
+                <span style={{fontWeight:700,color:t.color||"#b07c1e"}}>{t.gem} {t.label}</span>
+                <span style={{flex:1,color:"#7a6f8c"}}>{ticketRemainText(t)}</span>
+                <button className="pos-ghost" onClick={()=>{
+                  const per = t.kind === "topping" ? Math.min(t.perUse || 1, t.remaining) : 1;
+                  const what = t.kind === "topping" ? `トッピング${per}個ぶん` : "1杯ぶん";
+                  if (!window.confirm(`${customer.name} さんの「${t.label}」を ${what} 使います（お店で渡す）。よろしいですか？`)) return;
+                  const base = liveCustomer;
+                  const upd = applyTicketUse(base, [{ id: t.id, n: per }], `pos_${Date.now()}`);
+                  upd.history = [{ type:"benefit", desc:`🎟 ${t.label}（${what}）`, performer: staffName, date: new Date().toLocaleString("ja-JP") }, ...(base.history||[])].slice(0,60);
+                  update(upd);
+                }}>使う</button>
               </div>
             ))}
           </div>
+        )}
+        <div className="pos-mact" style={{marginTop:8}}>
+          {!customer.freeDrinkUsedAt && (
+            <button className="pos-ghost" onClick={async ()=>{
+              let note = "";
+              try {
+                const play = await dbGet("cafe_v4_play/" + customer.id);
+                const { got } = badgeCount({ found: customer, orders: orders || [], play: play || {} });
+                note = `\n（サーバーの記録では実績 ${got} 個${got < 100 ? "。100個に届いていないので、お客様の画面をよく確認してください" : ""}）`;
+              } catch {}
+              if (!window.confirm(`${customer.name} さんの「🏆 1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？${note}`)) return;
+              const now = new Date().toLocaleString("ja-JP");
+              saveC(customers.map(c=>c.id===customer.id ? {...c, freeDrinkUsedAt: now} : c));
+              setCustomer({...liveCustomer, freeDrinkUsedAt: now});
+              alert("使用済みにしました。1杯ぶんは会計から外してください。");
+            }}>🏆 無料券を使う</button>
+          )}
+          {isBirthdayTicketActive(customer) && (
+            <button className="pos-ghost" style={{borderColor:"#ff9fbf",color:"#b0284f"}} onClick={()=>{
+              if (!window.confirm(`${customer.name} さんの「🎂 誕生月の1杯無料券」を使用済みにします。\n（${customer.birthMonth}月生まれ・${new Date().getFullYear()}年分）よろしいですか？`)) return;
+              saveC(customers.map(c=>c.id===customer.id ? {...c, birthdayUsedYear: String(new Date().getFullYear())} : c));
+              setCustomer({...liveCustomer, birthdayUsedYear: String(new Date().getFullYear())});
+              alert("使用済みにしました。1杯ぶんは会計から外してください。");
+            }}>🎂 誕生月券を使う</button>
+          )}
+        </div>
+      </div>
+    </>
+  );
 
-          {/* カート */}
-          <div style={S.cartPanel}>
-            {cart.length===0 ? (
-              <div style={{color:"var(--ink4,#a79b90)",textAlign:"center",fontSize:"0.85rem",padding:"8px 0"}}>商品を選んでください</div>
-            ) : (
-              <>
-                <div style={{maxHeight:100,overflowY:"auto",marginBottom:6}}>
-                  {cart.map(item=>(
-                    <div key={item.id} style={S.cartRow}>
-                      <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>{item.emoji} {item.name}</span>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <button className="qty-btn" onClick={()=>removeOne(item.id)}>－</button>
-                        <span style={{color:"var(--ink,#3d3630)",minWidth:18,textAlign:"center",fontWeight:700}}>{item.qty}</span>
-                        <button className="qty-btn" onClick={()=>addToCart(item)}>＋</button>
-                        <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem",minWidth:56,textAlign:"right"}}>
-                          ¥{(item.price*item.qty).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* 割引・合計 */}
-                <div style={{paddingTop:8,borderTop:"1px solid var(--line,#e7ded3)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>小計</span>
-                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>¥{subtotal.toLocaleString()}</span>
-                  </div>
-                  {!isSpecialCustomer && discount>0 && (
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                      <span style={{color:rank.color,fontSize:"0.85rem"}}>{rank.benefit.icon} {rank.benefit.desc}</span>
-                      <span style={{color:rank.color,fontWeight:700,fontSize:"0.85rem"}}>－¥{discount.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {!isSpecialCustomer && posStaffDiscount>0 && (
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                      <span style={{color:"#3e9a5c",fontSize:"0.85rem"}}>🟢 スタッフ割引 {posLinkedStaff.discountRate ?? 10}%</span>
-                      <span style={{color:"#3e9a5c",fontWeight:700,fontSize:"0.85rem"}}>－¥{posStaffDiscount.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {isSpecialCustomer && (
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                      <span style={{color:"#9c3fb5",fontSize:"0.85rem"}}>💜 スペシャル（全品無料）</span>
-                      <span style={{color:"#9c3fb5",fontWeight:700,fontSize:"0.85rem"}}>－¥{subtotal.toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>合計</span>
-                    <span style={{color:"var(--ink,#3d3630)",fontWeight:800,fontSize:"1.4rem"}}>¥{total.toLocaleString()}</span>
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    <button className="btn-clear" onClick={()=>setCart([])}>クリア</button>
-                    <button className="btn-pay" onClick={doPayment}
-                      disabled={total>customer.balance}
-                      style={{opacity:total<=customer.balance?1:0.35}}>
-                      {total<=customer.balance ? `¥${total.toLocaleString()} を決済` : "残高不足"}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
+  const soldOutPane = (
+    <>
+      <div className="pos-th">🚫 今日の売り切れ <span className="right">{soldOutCount ? `${soldOutCount}品` : "なし"}</span></div>
+      <div style={{fontSize:"0.78rem",color:"#7a6f8c",marginBottom:8,lineHeight:1.6}}>押すとお客さまの画面で灰色になり、注文できなくなります。もう一度押すと戻ります。</div>
+      {categories.map(cat=>(
+        <div key={cat}>
+          <div className="pos-cat">{cat}</div>
+          <div className="pos-so">
+            {menuRaw.filter(m=>m.category===cat).map(m=>(
+              <button key={m.id} className={"pos-sob" + (m.soldOut ? " off" : "")} onClick={()=>toggleSoldOut(m.id)}>{m.soldOut ? "🚫 " : ""}{m.name}</button>
+            ))}
           </div>
         </div>
+      ))}
+      <div style={{marginTop:"auto",paddingTop:12,fontSize:"0.75rem",color:"#a9a0b8"}}>左でお客さまを選ぶと、ここがレジになります</div>
+    </>
+  );
+
+  const registerPane = customer && (
+    <>
+      <div className="pos-th">🧾 レジ <span className="right">{customer.name} さん</span></div>
+      <div style={{flex:1,overflowY:"auto",minHeight:0}}>
+        {categories.map(cat=>(
+          <div key={cat}>
+            <div className="pos-cat">{cat}</div>
+            <div className="pos-grid">
+              {menu.filter(m=>m.category===cat).map(item=>{
+                const inCart=cart.find(c=>c.id===item.id);
+                return (
+                  <button key={item.id} className={"pos-pi" + (inCart?" on":"") + (item.soldOut?" so":"")} onClick={()=>addToCart(item)}>
+                    <DrinkIcon item={item} size={34}/>
+                    <div style={{marginTop:2}}>{item.name}</div>
+                    <span className="price">¥{item.price}</span>
+                    {inCart&&<span className="q">{inCart.qty}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="pos-cart">
+        {cart.length===0 ? (
+          <div style={{color:"#a9a0b8",textAlign:"center",fontSize:"0.85rem",padding:"6px 0"}}>商品を押すとここに入ります</div>
+        ) : (
+          <>
+            <div style={{maxHeight:140,overflowY:"auto"}}>
+              {cart.map(item=>(
+                <div key={item.id} className="pos-cr">
+                  <span>{item.name}</span>
+                  <span className="nz-qtybox">
+                    <button className="nz-qb" onClick={()=>removeOne(item.id)}>－</button><b>{item.qty}</b><button className="nz-qb" onClick={()=>addToCart(item)}>＋</button>
+                    <span style={{minWidth:56,textAlign:"right",fontWeight:700}}>¥{(item.price*item.qty).toLocaleString()}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:"0.8rem",color:"#7a6f8c",marginTop:6}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span>小計</span><span>¥{subtotal.toLocaleString()}</span></div>
+              {!isSpecialCustomer && discount>0 && <div style={{display:"flex",justifyContent:"space-between",color:rank.color}}><span>{rank.benefit.icon} {rank.benefit.desc}</span><span>－¥{discount.toLocaleString()}</span></div>}
+              {!isSpecialCustomer && posStaffDiscount>0 && <div style={{display:"flex",justifyContent:"space-between",color:"#3e9a5c"}}><span>🟢 スタッフ割引 {posLinkedStaff.discountRate ?? 10}%</span><span>－¥{posStaffDiscount.toLocaleString()}</span></div>}
+              {isSpecialCustomer && <div style={{display:"flex",justifyContent:"space-between",color:"#9c3fb5"}}><span>💜 スペシャル（全品無料）</span><span>－¥{subtotal.toLocaleString()}</span></div>}
+            </div>
+            <div className="pos-tot"><span>合計</span><b>¥{total.toLocaleString()}</b></div>
+            <div style={{fontSize:"0.75rem",color: total>customer.balance ? "#c94a45" : "#a9a0b8",marginBottom:8}}>
+              {total>customer.balance ? `残高 ¥${customer.balance.toLocaleString()} — ¥${(total-customer.balance).toLocaleString()} 足りません` : `決済後の残高 ¥${(customer.balance-total).toLocaleString()}`}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="pos-ghost" onClick={()=>setCart([])}>クリア</button>
+              <button className="pos-pay" onClick={doPayment} disabled={total>customer.balance}>
+                {total<=customer.balance ? `¥${total.toLocaleString()} を決済` : "残高不足"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="pos-shell">
+      {/* TOP BAR */}
+      <div className="pos-topbar">
+        <button className="back-btn" style={{margin:0,fontSize:"0.85rem"}} onClick={()=>setScreen("home")}>← 退出</button>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <PosSoundButton/>
+          <span className="pos-who">{isManager?"👑":"👤"} {staffName}</span>
+        </div>
+      </div>
+
+      {(menu.length===0 || staffAccounts.length===0) && (
+        <div style={{background:"#fbebea",borderBottom:"1px solid #f0d6d4",color:"#a5453e",padding:"10px 16px",fontSize:"0.85rem",lineHeight:1.5}}>
+          ⚠️ {menu.length===0 && staffAccounts.length===0 ? "メニューとスタッフ一覧" : menu.length===0 ? "メニュー" : "スタッフ一覧"}
+          を読み込めませんでした。通信状況を確認して、画面を開き直してください。（この状態では保存できません）
+        </div>
+      )}
+
+      {/* ナビ */}
+      <div className="pos-nav">
+        {[["work","🧾 注文・レジ"],["cash","💵 現金注文"],["menu","🍽 メニュー"],["history","🗂 履歴"],
+          ...(isManager?[["staffmgmt","🔐 スタッフ"]]:[])
+        ].map(([k,l])=>(
+          <button key={k} className={`pos-navb ${posTab===k?"on":""}`} onClick={()=>setPosTab(k)}>
+            {l}{k==="work" && pendingCount>0 && <span className="cnt">{pendingCount}</span>}
+          </button>
+        ))}
+      </div>
+
+      {posTab==="work" && (
+        <>
+          <div className="pos-sub">
+            <button className={`pos-navb ${posSub==="orders"?"on":""}`} style={{flex:1}} onClick={()=>setPosSub("orders")}>🔔 届いた注文{pendingCount>0 && <span className="cnt">{pendingCount}</span>}</button>
+            <button className={`pos-navb ${posSub==="reg"?"on":""}`} style={{flex:1}} onClick={()=>setPosSub("reg")}>👥 お客さま・レジ</button>
+          </div>
+          <div className="pos3">
+            <div className={"col" + (posSub==="orders" ? " show" : "")}>
+              <OrdersPanel orders={orders} customers={customers} saveOrders={saveOrders} saveC={saveC} staffName={staffName}/>
+            </div>
+            <div className={"col" + (posSub==="reg" ? " show" : "")}>{customer ? customerPane : searchPane}</div>
+            <div className={"col" + (posSub==="reg" ? " show" : "")}>{customer ? registerPane : soldOutPane}</div>
+          </div>
+        </>
+      )}
+      {posTab==="menu" && (
+        <MenuManager menu={menuRaw} saveMenu={saveMenu} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink}/>
+      )}
+      {posTab==="cash" && (
+        <CashOrderPanel menu={menu} staffName={staffName} orders={orders} saveOrders={saveOrders}/>
+      )}
+      {posTab==="staffmgmt" && isManager && (
+        <StaffMgmtPanel staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} customers={customers} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} menu={menu}/>
+      )}
+      {posTab==="history" && (
+        <SalesHistoryPanel customers={customers} orders={orders}/>
       )}
 
       {/* ── モーダル群 ── */}
@@ -5312,9 +5442,56 @@ function SalesHistoryPanel({ customers, orders }) {
 }
 
 // ── ORDERS PANEL ─────────────────────────
+// 「2026/9/20 14:03:22」の形の時刻から、いま何分たったかを数える（読めなければ0）
+function ageMinutes(createdAt) {
+  const m = String(createdAt || "").match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+)(?::(\d+))?/);
+  if (!m) return 0;
+  const t = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)).getTime();
+  return Math.max(0, Math.floor((Date.now() - t) / 60000));
+}
+// POS の通知音「ピンポン」。一度「🔔 通知音」を押して許可してもらう（ブラウザの決まりで、無操作では鳴らせない）
+const posSndOn = () => { try { return localStorage.getItem("niji_pos_snd") === "on"; } catch { return false; } };
+function posNotify() {
+  if (posSndOn()) { try { if (_audioCtx && _audioCtx.state === "suspended") _audioCtx.resume(); } catch {} dingSound(); }
+  try { navigator.vibrate && navigator.vibrate([80, 60, 80]); } catch {}
+}
+function PosSoundButton() {
+  const [on, setOn] = useState(posSndOn);
+  const toggle = () => {
+    const n = !on; setOn(n);
+    try { localStorage.setItem("niji_pos_snd", n ? "on" : "off"); } catch {}
+    if (n) { try { _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)(); _audioCtx.resume && _audioCtx.resume(); } catch {} dingSound(); }
+  };
+  useEffect(() => {
+    // 画面を開き直した後、最初のタップで音を出せる状態に戻す
+    const wake = () => { try { if (_audioCtx && _audioCtx.state === "suspended") _audioCtx.resume(); } catch {} };
+    document.addEventListener("pointerdown", wake);
+    return () => document.removeEventListener("pointerdown", wake);
+  }, []);
+  return <button className="pos-snd" style={on ? {} : {background:"#fff",borderColor:"#eee3ea",color:"#a9a0b8"}} onClick={toggle} title="新しい注文が届いたときの音">{on ? "🔔 通知音 ON" : "🔕 通知音 OFF"}</button>;
+}
+
 function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
   const pending   = orders.filter(o=>o.status==="pending").sort((a,b)=>a.createdAt>b.createdAt?1:-1);
   const completed = orders.filter(o=>o.status==="completed").sort((a,b)=>a.completedAt<b.completedAt?1:-1).slice(0,10);
+  // 新しく届いた注文は25秒だけ点滅し、通知音が鳴る。経過時間の色分けは30秒ごとに計算し直す
+  const seenRef = useRef(null);
+  const [fresh, setFresh] = useState({});
+  const [tick, setTick] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setTick(Date.now()), 15000); return () => clearInterval(t); }, []);
+  const pendKey = pending.map(o=>o.orderId).join(",");
+  useEffect(() => {
+    const ids = pending.map(o=>o.orderId);
+    if (seenRef.current === null) { seenRef.current = new Set(ids); return; }
+    const newIds = ids.filter(id => !seenRef.current.has(id));
+    if (newIds.length) {
+      const now = Date.now();
+      setFresh(f => { const n = { ...f }; newIds.forEach(id => { n[id] = now; }); return n; });
+      setTick(now);
+      posNotify();
+    }
+    seenRef.current = new Set(ids);
+  }, [pendKey]);
 
   const completeOrder = (order) => {
     const now = new Date().toLocaleString("ja-JP");
@@ -5406,118 +5583,58 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     saveOrders(orders.filter(o=>o.orderId!==order.orderId));
   };
 
+  const orderTag = (order) => order.isKeiroGift ? ["🎁 敬老の日", "pt-pink"] : order.isBirthdayGift ? ["🎂 誕生日", "pt-pink"] : order.isVipGift ? ["⭐ VIPギフト", "pt-gold"]
+    : order.isCash ? ["💵 現金", "pt-ok"] : order.isSpecial ? ["💜 スペシャル", "pt-used"] : [order.rankName, "pt-used"];
   return (
-    <div className="pos-page" style={{paddingTop:14}}>
-      <h2 style={{...S.title,margin:"0 0 14px"}}>注文管理</h2>
-
-      {/* 受付中 */}
-      <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:8}}>
-        受付中 {pending.length>0&&<span style={{color:"#c21354",fontWeight:700}}>({pending.length}件)</span>}
-      </div>
-
+    <>
+      <div className="pos-th">🔔 届いた注文 {pending.length>0 && <span className="cnt">{pending.length}</span>}<span className="right">古い順</span></div>
       {pending.length===0 ? (
-        <div style={{textAlign:"center",color:"var(--ink4,#a79b90)",padding:"24px 0",fontSize:"0.85rem",
-          background:"var(--card,#ffffff)",borderRadius:12,marginBottom:20}}>
-          現在注文はありません
-        </div>
-      ) : (
-        <div className="pos-list" style={{marginBottom:20}}>
-          {pending.map(order=>(
-            <div key={order.orderId} style={{
-              background:"#eef3df",border:`1px solid ${order.rankColor}55`,
-              borderRadius:16,padding:"12px 14px",
-              boxShadow:`0 0 12px ${order.rankColor}18`,
-            }}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                <div>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                    <span style={{fontSize:"0.95rem"}}>{order.rankGem}</span>
-                    <span style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1rem"}}>{order.customerName}</span>
-                    {order.isKeiroGift
-                      ? <span style={{color:"#c2185b",fontSize:"0.75rem",border:"1px solid #ff6ec7aa",borderRadius:999,padding:"2px 9px",fontWeight:800,background:"#fff0f7"}}>🎁 敬老の日スペシャル</span>
-                      : order.isBirthdayGift
-                      ? <span style={{color:"#c2185b",fontSize:"0.75rem",border:"1px solid #ff9ac6aa",borderRadius:999,padding:"2px 9px",fontWeight:800,background:"#fff0f7"}}>🎂 誕生日プレゼント</span>
-                      : order.isVipGift
-                      ? <span style={{color:"#a9791a",fontSize:"0.75rem",border:"1px solid #e8c14a55",borderRadius:999,padding:"2px 9px",fontWeight:700}}>⭐ VIPギフト</span>
-                      : order.isCash
-                        ? <span style={{color:"#3e9a5c",fontSize:"0.75rem",border:"1px solid #7cc39455",borderRadius:999,padding:"2px 9px",fontWeight:700}}>💵 現金</span>
-                        : order.isSpecial
-                          ? <span style={{color:"#9c3fb5",fontSize:"0.75rem",border:"1px solid #c98ada55",borderRadius:999,padding:"2px 9px",fontWeight:700}}>💜 スペシャル</span>
-                          : <span style={{color:order.rankColor,fontSize:"0.75rem",border:`1px solid ${order.rankColor}55`,borderRadius:999,padding:"2px 9px"}}>{order.rankName}</span>
-                    }
-                  </div>
-                  <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>{order.createdAt}</div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{color:"var(--ink,#3d3630)",fontWeight:800,fontSize:"1.15rem"}}>¥{order.total.toLocaleString()}</div>
-                  {order.discount>0&&<div style={{color:order.rankColor,fontSize:"0.75rem"}}>割引 -¥{order.discount.toLocaleString()}</div>}
-                </div>
-              </div>
-              <div style={{borderTop:"1px solid #dfe7cd",paddingTop:8,marginBottom:10}}>
-                {(order.items||[]).map((item,i)=>(
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:3}}>
-                    <span style={{color:"var(--ink2,#8a7f76)"}}>{item.emoji} {item.name} × {item.qty}</span>
-                    <span style={{color:"var(--ink2,#8a7f76)"}}>¥{(item.price*item.qty).toLocaleString()}</span>
-                  </div>
-                ))}
-                {(order.benefitItems||[]).map((item,i)=>(
-                  <div key={"b"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:3}}>
-                    <span style={{color:order.rankColor||"#a9791a"}}>🎁 {item.emoji} {item.name} × {item.qty}（特典）</span>
-                    <span style={{color:"#3e9a5c"}}>無料</span>
-                  </div>
-                ))}
-                {(order.birthdayItems||[]).map((item,i)=>(
-                  <div key={"bd"+i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85rem",marginBottom:3}}>
-                    <span style={{color:"#c2185b",fontWeight:700}}>🎂 {item.emoji} {item.name}（誕生日プレゼント）</span>
-                    <span style={{color:"#c2185b",fontWeight:700}}>無料</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <button className="btn-danger" style={{padding:"8px",fontSize:"0.85rem"}}
-                  onClick={()=>deleteOrder(order)}>キャンセル</button>
-                {order.staffLinked && order.staffLinked===staffName ? (
-                  <div style={{flex:1,background:"var(--panel2,#f6f1ea)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"10px",
-                    color:"var(--ink3,#9a8f85)",fontSize:"0.85rem",textAlign:"center"}}>
-                    🔒 自分の注文は完了できません
-                  </div>
-                ) : (
-                  <button className="btn-complete" onClick={()=>completeOrder(order)}>
-                    ✓ 作成完了・決済する
-                  </button>
-                )}
-              </div>
+        <div className="pos-empty">いま届いている注文はありません<br/><span style={{fontSize:"0.72rem"}}>お客さまがアプリで注文すると、ここに出て音が鳴ります</span></div>
+      ) : pending.map(order=>{
+        const mins = ageMinutes(order.createdAt);
+        const isNew = fresh[order.orderId] && (tick - fresh[order.orderId] < 25000);
+        const [tagL, tagC] = orderTag(order);
+        const mine = order.staffLinked && order.staffLinked===staffName;
+        return (
+          <div key={order.orderId} className={"pos-ord" + (isNew ? " new" : mins >= 5 ? " late" : mins >= 3 ? " warn" : "")}>
+            <div className="on">
+              <span>{order.rankGem}</span><b>{order.customerName}</b>
+              <span className={"pos-pill " + tagC}>{tagL}</span>
+              <span className="pos-ago">{isNew ? "新着！" : mins < 1 ? "たった今" : `${mins}分前`}</span>
+            </div>
+            <div className="pos-oi">
+              {(order.items||[]).map((it,i)=>(<div key={i}>{it.emoji} {it.name} × {it.qty}<span className="amt">¥{(it.price*it.qty).toLocaleString()}</span></div>))}
+              {(order.benefitItems||[]).map((it,i)=>(<div key={"b"+i}>🎁 {it.emoji} {it.name}{it.qty>1?` × ${it.qty}`:""}<span className="free">特典・無料</span></div>))}
+              {(order.birthdayItems||[]).map((it,i)=>(<div key={"d"+i}>🎂 {it.emoji} {it.name}<span className="free">誕生日・無料</span></div>))}
+              {order.makaiItem && <div>🍚 {order.makaiItem.name}<span className="free">賄い</span></div>}
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:"0.78rem",color:"#7a6f8c",marginBottom:8}}>
+              <span>{String(order.createdAt||"").split(" ")[1] || order.createdAt}</span>
+              <span>お支払い <b style={{fontSize:"1.05rem",color:"#3a2e4f"}}>¥{Number(order.total||0).toLocaleString()}</b>{order.discount>0 && <span style={{marginLeft:6}}>（割引 -¥{order.discount.toLocaleString()}）</span>}</span>
+            </div>
+            <div className="pos-obtns">
+              <button className="pos-sm danger" onClick={()=>deleteOrder(order)}>取り消す</button>
+              {mine ? (
+                <div style={{flex:1,textAlign:"center",fontSize:"0.8rem",color:"#a9a0b8",padding:10}}>🔒 自分の注文は完了できません</div>
+              ) : (
+                <button className="pos-done" onClick={()=>completeOrder(order)}>🔔 できました（お渡し・決済）</button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {completed.length>0 && (
+        <div className="pos-doneList">
+          <div className="pos-th" style={{fontSize:"0.8rem",color:"#a9a0b8"}}>✓ 済み（直近10件）</div>
+          {completed.map(order=>(
+            <div key={order.orderId} className="pos-doneRow">
+              <span><b style={{color:"#3a2e4f"}}>{order.customerName}</b> <span style={{marginLeft:6}}>{String(order.completedAt||"").split(" ")[1] || ""}</span></span>
+              <span>¥{Number(order.total||0).toLocaleString()} <span style={{marginLeft:6,fontSize:"0.72rem"}}>{order.completedBy || "スタッフ"}</span></span>
             </div>
           ))}
         </div>
       )}
-
-      {/* 完了済み */}
-      {completed.length>0&&(
-        <>
-          <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:8}}>完了済み（直近10件）</div>
-          {/* 以前は opacity:0.7 をかけていて、金額も担当者も読み取りにくかった。
-              「済んだもの」という区別は背景の色でつけて、文字はそのまま読める濃さにする。 */}
-          <div className="pos-list">
-            {completed.map(order=>(
-              <div key={order.orderId} style={{background:"var(--panel2,#f6f1ea)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"10px 12px"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <span style={{color:"var(--ink,#3d3630)",fontSize:"0.85rem",fontWeight:700}}>{order.customerName}</span>
-                    <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",marginLeft:8}}>{order.completedAt}</span>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{color:"#3e9a5c",fontSize:"0.85rem",fontWeight:700}}>¥{order.total.toLocaleString()}</span>
-                    <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>{order.completedBy || "スタッフ"}</span>
-                    <span style={{color:"#3e9a5c",fontSize:"0.75rem"}}>✓ 完了</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -7182,4 +7299,305 @@ body:not(.night) .mood-on { color:#c2447e; background:#fdeaf3; }
   70%  { opacity:1; transform:translateY(-14px) scale(1.0); }
   100% { opacity:0; transform:translateY(-22px) scale(0.9); }
 }
+
+/* ══════════════════════════════════════════
+   🌈 新デザイン（2026-09-20）
+   ══════════════════════════════════════════
+   昼はパステル（body.pastel）、夜は今までのネオン（body.night）。
+   色は全部 CSS変数経由なので、同じ部品がどちらの配色でも動く。 */
+body.pastel {
+  --ink:#3a2e4f; --ink-strong:#2b2140; --ink2:#7a6f8c; --ink3:#a9a0b8; --ink4:#bfb7cb;
+  --card:#ffffff; --panel2:#f6eff5; --line:#eee3ea; --barbg:#f0e6ea; --gold:#c98a12;
+  --blush:#ffd6e0; --sky:#cde9ff; --mint:#d6f5e3; --lav:#e6dbff; --peach:#ffe3c9; --coral:#ff7a9e; --sun:#ffc94d;
+  --bar:#3a2e4f;
+  background:#fff7f0;
+}
+body.night { --blush:rgba(255,110,199,0.22); --sky:rgba(77,238,234,0.18); --mint:rgba(116,247,161,0.18); --lav:rgba(178,141,255,0.22); --peach:rgba(255,184,119,0.2); --coral:#ff6ec7; --sun:#ffd166; --bar:#1a163a; }
+body.pastel .approot { background:#fff7f0 !important; color:var(--ink); }
+body.pastel .approot::before { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:
+    radial-gradient(700px 520px at 92% -8%, rgba(255,214,224,0.75), transparent 60%),
+    radial-gradient(620px 520px at -8% 104%, rgba(205,233,255,0.75), transparent 60%),
+    radial-gradient(520px 420px at 50% 60%, rgba(230,219,255,0.4), transparent 70%); }
+/* 昼のホーム：夜の飾りは休み、看板はパステルのグラデ文字に */
+body.pastel .star, body.pastel .float-emoji, body.pastel .big-moon, body.pastel .shooting-star, body.pastel .stardust, body.pastel .star-real { display:none !important; }
+body.pastel .aurora { opacity:0.9; }
+body.pastel .neon-ch { color:transparent; text-shadow:none; animation:none;
+  background:linear-gradient(135deg,#ff7a9e,#ffb877,#ffc94d,#5cc286,#5b8ddc,#b28dff); -webkit-background-clip:text; background-clip:text; }
+body.pastel .secret-toast { background:#fff; color:var(--ink); border-color:var(--line); }
+body.pastel .welcome-toast { background:#fff; color:var(--ink); border-color:var(--line); box-shadow:0 10px 30px rgba(58,46,79,0.18); }
+body.pastel .btn-crystal { color:var(--ink2); }
+body.pastel .ach-toast { background:#fff; color:#c98a12; border-color:#ffd166; box-shadow:0 10px 24px rgba(58,46,79,0.18); }
+body.pastel .chip-pop { color:#b0284f; background:var(--blush); border-color:#ff9fbf; }
+body.pastel .delta-up { color:#22794b; text-shadow:none; }
+body.pastel .tab-btn.active { background:var(--lav); color:var(--ink); }
+body.pastel .rankup-ov { background:rgba(58,46,79,0.72); }
+body.pastel .toy-btn, body.pastel .mood-chip { background:#fff; box-shadow:0 4px 12px rgba(58,46,79,0.06); border-color:var(--line); }
+body.pastel .mood-on { color:#b0284f; background:var(--blush); border-color:#ff9fbf; }
+body.pastel .badge { background:#faf6fb; }
+body.pastel .toy-panel { box-shadow:0 8px 20px rgba(58,46,79,0.06); border-radius:20px; }
+body.pastel .usual-btn { border-color:#ffd166; background:linear-gradient(135deg,#fff8e6,#ffefc2); color:#5a3a12; }
+body.pastel .tix-wallet { box-shadow:0 10px 26px rgba(217,164,65,0.3); }
+body.pastel .menu-item { border-radius:16px; box-shadow:0 4px 12px rgba(58,46,79,0.06); }
+body.pastel .btn-pay { background:var(--coral); color:#fff; box-shadow:0 8px 20px rgba(255,122,158,0.35); }
+body.pastel .keiro-in, body.pastel .bday-in { background:linear-gradient(160deg,#241c5a,#1a1244); }
+/* 文字の大きさ */
+body.bigtext2 { font-size:132%; }
+
+/* ── 画面の枠と上のあいさつ ── */
+.nz-shell { max-width:480px; margin:0 auto; padding:14px 16px calc(112px + env(safe-area-inset-bottom)); min-height:100vh; position:relative; }
+.nz-page { display:flex; flex-direction:column; gap:12px; }
+.nz-top { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.nz-avatar { width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg,var(--blush,#ffd6e0),var(--lav,#e6dbff)); display:flex; align-items:center; justify-content:center; font-size:1.25rem; box-shadow:inset 0 0 0 2px rgba(255,255,255,0.8); flex-shrink:0; }
+.nz-avatar.big { width:56px; height:56px; font-size:1.6rem; }
+.nz-top-t { font-size:0.75rem; color:var(--ink2,#8a7f76); }
+.nz-top-n { font-weight:800; font-size:1.05rem; color:var(--ink,#3d3630); }
+.nz-bell { width:40px; height:40px; border-radius:14px; background:var(--card,#fff); border:1px solid var(--line,#e7ded3); display:flex; align-items:center; justify-content:center; position:relative; cursor:pointer; font-size:1.05rem; box-shadow:0 4px 12px rgba(58,46,79,0.08); font-family:inherit; }
+.nz-bell i { position:absolute; top:8px; right:8px; width:9px; height:9px; border-radius:50%; background:var(--coral,#ff7a9e); box-shadow:0 0 0 2px var(--card,#fff); animation:nzPulse 1.4s ease-in-out infinite; }
+@keyframes nzPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.35); } }
+.nz-h { font-size:1.15rem; font-weight:900; margin:2px 0 0; color:var(--ink,#3d3630); }
+
+/* ── 残高カード ── */
+.nz-wallet { border-radius:24px !important; padding:18px 18px 16px !important; color:#fff; position:relative; overflow:hidden;
+  box-shadow:0 14px 34px rgba(120,90,180,0.35); border:1px solid rgba(255,255,255,0.35) !important; margin-bottom:0 !important; text-shadow:0 1px 3px rgba(40,20,60,0.25); }
+.nz-wallet::after { content:""; position:absolute; right:-30px; top:-30px; width:150px; height:150px; border-radius:50%; background:rgba(255,255,255,0.22); pointer-events:none; }
+.nz-wallet::before { content:""; position:absolute; left:-20px; bottom:-60px; width:130px; height:130px; border-radius:50%; background:rgba(255,255,255,0.14); pointer-events:none; }
+.nz-w-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; position:relative; z-index:1; }
+.nz-w-rank { font-size:0.8rem; font-weight:800; letter-spacing:0.06em; background:rgba(255,255,255,0.22); border:1px solid rgba(255,255,255,0.45); border-radius:999px; padding:3px 10px; }
+.nz-w-label { font-size:0.72rem; opacity:0.92; letter-spacing:0.12em; font-weight:700; margin-top:14px; position:relative; z-index:1; }
+.nz-w-bal { font-size:2.5rem; font-weight:900; letter-spacing:-0.02em; line-height:1.1; margin-top:2px; font-variant-numeric:tabular-nums; position:relative; z-index:1; cursor:pointer; }
+.nz-w-sub { font-size:0.72rem; opacity:0.9; margin-top:3px; }
+.nz-w-foot { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:0.82rem; position:relative; z-index:1; }
+.nz-w-next b { font-weight:900; }
+.nz-ring { width:40px; height:40px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  background:conic-gradient(#fff 0 var(--p,0%), rgba(255,255,255,0.3) var(--p,0%) 100%); }
+.nz-ring b { width:30px; height:30px; border-radius:50%; background:rgba(60,40,100,0.5); display:flex; align-items:center; justify-content:center; font-size:0.85rem; font-weight:900; }
+.nz-ring-soon { animation:barPulse 1.4s ease-in-out infinite; }
+.nz-wallet .neko { top:10px; right:14px; }
+.nz-wallet .holo-layer { mix-blend-mode:soft-light; }
+
+/* ── ホームの部品 ── */
+.nz-quick { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.nz-q { background:var(--card,#fff); border:1px solid var(--line,#e7ded3); border-radius:18px; padding:10px 6px; text-align:center; font-size:0.78rem; font-weight:800; color:var(--ink,#3d3630); cursor:pointer; font-family:inherit; box-shadow:0 6px 16px rgba(58,46,79,0.06); position:relative; }
+.nz-q .ic { width:44px; height:44px; border-radius:14px; margin:0 auto 6px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; }
+.nz-q.dim { opacity:0.45; }
+.nz-q-sub { display:block; font-size:0.62rem; font-weight:500; color:var(--ink3,#9a8f85); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nz-sec { display:flex; justify-content:space-between; align-items:baseline; font-size:0.85rem; font-weight:800; color:var(--ink,#3d3630); margin-top:4px; }
+.nz-link { background:transparent; border:none; color:var(--ink3,#9a8f85); font-size:0.75rem; font-family:inherit; cursor:pointer; padding:0; }
+.nz-strip { display:flex; gap:10px; overflow-x:auto; padding:2px 2px 6px; margin:0 -2px; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; }
+.nz-strip::-webkit-scrollbar { display:none; }
+.nz-tk { min-width:156px; scroll-snap-align:start; border-radius:18px; padding:12px; text-align:left; font-size:0.72rem; position:relative; border:none; font-family:inherit; cursor:pointer; color:var(--ink,#3d3630); background:var(--panel2,#f6f1ea); box-shadow:0 6px 16px rgba(58,46,79,0.06); }
+.nz-tk b { display:block; font-size:0.88rem; margin:22px 0 2px; }
+.nz-tk .d { position:absolute; right:10px; top:10px; font-size:1.3rem; }
+.nz-tk-month { background:var(--mint,#d6f5e3); } .nz-tk-bonus { background:var(--peach,#ffe3c9); } .nz-tk-bday { background:var(--blush,#ffd6e0); }
+.nz-tk-free { background:var(--lav,#e6dbff); }
+.nz-tk-keiro { background:linear-gradient(120deg,#ff6ec7,#ffd166,#4deeea,#b28dff); background-size:300% 300%; animation:rainbowShift 4s ease infinite; color:#2b2140; }
+body.night .nz-tk { color:#f2edff; }
+.nz-banner { display:flex; align-items:center; gap:10px; width:100%; border:none; border-radius:18px; padding:12px 14px; font-family:inherit; cursor:pointer; text-align:left;
+  background:var(--sky,#cde9ff); color:var(--ink,#3d3630); box-shadow:0 8px 20px rgba(58,46,79,0.08); }
+.nz-banner b { display:block; font-size:0.95rem; } .nz-banner small { display:block; font-size:0.72rem; opacity:0.8; }
+.nz-banner-ready { background:var(--mint,#d6f5e3); animation:nzBlink 1.2s ease-in-out infinite; }
+@keyframes nzBlink { 0%,100% { box-shadow:0 8px 20px rgba(58,46,79,0.08); } 50% { box-shadow:0 8px 28px rgba(92,194,134,0.6); } }
+.nz-card { background:var(--card,#fff); border:1px solid var(--line,#e7ded3); border-radius:20px; padding:14px 16px; box-shadow:0 8px 20px rgba(58,46,79,0.06); }
+.nz-card-h { font-weight:900; margin-bottom:8px; }
+.nz-card-btn { width:100%; display:flex; justify-content:space-between; align-items:center; background:transparent; border:none; font-family:inherit; font-size:0.95rem; color:var(--ink,#3d3630); cursor:pointer; padding:0; text-align:left; }
+.nz-card.nz-card-btn { padding:14px 16px; margin-top:12px; }
+.nz-note { border-radius:14px; padding:10px 14px; font-size:0.85rem; font-weight:700; }
+.nz-note-purple { background:#f5eafa; color:#9c3fb5; } .nz-note-green { background:#e9f5ec; color:#3e9a5c; }
+body.night .nz-note-purple { background:rgba(201,138,218,0.16); } body.night .nz-note-green { background:rgba(116,247,161,0.14); }
+
+/* ── ログイン ── */
+.nz-login { background:var(--card,#fff); border:1px solid var(--line,#e7ded3); border-radius:26px; padding:20px 18px 22px; box-shadow:0 12px 30px rgba(58,46,79,0.08); margin-top:40px; display:flex; flex-direction:column; gap:12px; }
+.nz-login .back-btn { align-self:flex-start; }
+.nz-login-logo { font-size:3rem; text-align:center; }
+.nz-login-title { margin:0; text-align:center; font-size:1.2rem; font-weight:900; color:var(--ink,#3d3630); }
+.nz-login-hint { margin:0; text-align:center; color:var(--ink2,#8a7f76); font-size:0.85rem; }
+.nz-input { border-radius:14px !important; font-size:1.3rem !important; text-align:center; letter-spacing:0.3em; padding:14px !important; }
+.nz-check { display:flex; align-items:flex-start; gap:10px; font-size:0.85rem; color:var(--ink2,#8a7f76); cursor:pointer; }
+.nz-check input { width:20px; height:20px; margin-top:1px; accent-color:var(--coral,#ff7a9e); }
+.nz-check small { display:block; font-size:0.72rem; color:var(--ink3,#9a8f85); }
+
+/* ── 共通ボタン ── */
+.nz-primary { width:100%; border:none; border-radius:16px; padding:15px; font-family:inherit; font-weight:900; font-size:1.05rem; background:var(--coral,#ff7a9e); color:#fff; cursor:pointer; box-shadow:0 10px 22px rgba(255,122,158,0.4); }
+.nz-primary:disabled { opacity:0.4; box-shadow:none; cursor:default; }
+.nz-ghost { background:var(--panel2,#f6f1ea); border:1px solid var(--line,#e7ded3); color:var(--ink2,#8a7f76); border-radius:14px; padding:12px; font-family:inherit; font-size:0.9rem; font-weight:700; cursor:pointer; }
+.nz-danger { color:#c94a45 !important; }
+body.night .nz-danger { color:#ff9a94 !important; }
+
+/* ── 注文：チップとカード ── */
+.nz-chips { display:flex; gap:8px; overflow-x:auto; padding:4px 2px 8px; position:sticky; top:0; z-index:15; background:linear-gradient(var(--bg-top,#fff7f0), rgba(255,247,240,0)); }
+body.night .nz-chips { background:linear-gradient(#131029, rgba(19,16,41,0)); }
+.nz-chips::-webkit-scrollbar { display:none; }
+.nz-chip { white-space:nowrap; border-radius:999px; padding:8px 14px; font-size:0.82rem; font-weight:800; background:var(--card,#fff); color:var(--ink2,#8a7f76); border:1px solid var(--line,#e7ded3); font-family:inherit; cursor:pointer; box-shadow:0 4px 10px rgba(58,46,79,0.06); flex-shrink:0; }
+.nz-chip.on { background:var(--bar,#3a2e4f); color:#fff; border-color:transparent; }
+body.night .nz-chip.on { background:rgba(255,110,199,0.25); color:#ffd9ec; border-color:rgba(255,110,199,0.55); box-shadow:0 0 16px rgba(255,110,199,0.3); }
+.nz-menu { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.nz-m { background:var(--card,#fff); border:1px solid var(--line,#e7ded3); border-radius:20px; padding:10px 10px 10px; position:relative; box-shadow:0 6px 16px rgba(58,46,79,0.07); cursor:pointer; user-select:none; transition:transform 0.12s; }
+.nz-m:active { transform:scale(0.97); }
+.nz-m.on { border-color:var(--coral,#ff7a9e); box-shadow:0 8px 20px rgba(255,122,158,0.25); }
+.nz-m .pic { height:74px; border-radius:14px; display:flex; align-items:center; justify-content:center; margin-bottom:8px; position:relative; }
+.nz-m .nm { font-size:0.82rem; font-weight:800; line-height:1.25; min-height:2.5em; color:var(--ink,#3d3630); }
+.nz-m .pr { display:flex; justify-content:space-between; align-items:center; margin-top:4px; font-size:0.9rem; font-weight:900; color:var(--ink,#3d3630); }
+.nz-m .add { width:28px; height:28px; border-radius:50%; background:var(--bar,#3a2e4f); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.05rem; flex-shrink:0; }
+body.night .nz-m .add { background:rgba(255,255,255,0.18); }
+.nz-m.so { opacity:0.55; cursor:default; } .nz-m.so .pic { filter:grayscale(1); } .nz-m.so .add { background:#b9b2c4; }
+.nz-so-tag { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) rotate(-8deg); background:var(--ink,#3a2e4f); color:#fff; font-size:0.72rem; font-weight:900; border-radius:999px; padding:3px 10px; white-space:nowrap; }
+.nz-qtybox { display:inline-flex; align-items:center; gap:6px; font-weight:900; }
+.nz-qtybox b { min-width:16px; text-align:center; display:inline-block; }
+.nz-qb { width:28px; height:28px; border-radius:50%; border:1px solid var(--line,#e7ded3); background:var(--panel2,#f6f1ea); color:var(--ink,#3d3630); font-size:1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; font-family:inherit; padding:0; }
+.nz-m .plus-one { top:8px; left:12px; }
+.nz-m .hot-tag { bottom:auto; top:8px; right:8px; }
+.nz-usual { margin-bottom:0; }
+
+/* ── カートのバー・確認シート ── */
+.nz-cartbar { position:fixed; bottom:calc(86px + env(safe-area-inset-bottom)); left:16px; right:16px; margin:0 auto; width:calc(100% - 32px); max-width:448px; z-index:41;
+  background:var(--bar,#3a2e4f); color:#fff; border:none; border-radius:20px; padding:12px 14px; display:flex; align-items:center; gap:10px; font-family:inherit; cursor:pointer; text-align:left;
+  box-shadow:0 12px 28px rgba(58,46,79,0.35); }
+body.night .nz-cartbar { background:rgba(30,24,70,0.96); border:1px solid rgba(255,255,255,0.16); box-shadow:0 12px 34px rgba(0,0,0,0.5); }
+.nz-cartbar b { font-size:1.15rem; } .nz-cartbar small { font-size:0.72rem; opacity:0.8; margin-left:6px; }
+.nz-cartbar-n { width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,0.18); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:0.9rem; }
+.nz-cartbar .go { background:var(--coral,#ff7a9e); border-radius:999px; padding:9px 14px; font-weight:900; font-size:0.9rem; white-space:nowrap; }
+.nz-sheet-ov { position:fixed; inset:0; background:rgba(40,30,60,0.45); z-index:60; display:flex; align-items:flex-end; justify-content:center; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+.nz-sheet { width:100%; max-width:480px; background:var(--card,#fff); border-radius:28px 28px 0 0; padding:10px 16px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto; box-shadow:0 -12px 40px rgba(58,46,79,0.25); animation:nzUp 0.35s cubic-bezier(0.34,1.3,0.64,1); color:var(--ink,#3d3630); }
+body.night .nz-sheet { background:#1b1640; border:1px solid rgba(255,255,255,0.14); }
+@keyframes nzUp { from { transform:translateY(100%); } to { transform:translateY(0); } }
+.nz-sheet-bar { width:44px; height:5px; border-radius:999px; background:var(--line,#e7ded3); margin:0 auto 12px; }
+.nz-sheet-h { margin:0 0 8px; font-size:1.05rem; font-weight:900; }
+.nz-row { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:0.88rem; padding:7px 0; border-bottom:1px dashed var(--line,#e7ded3); }
+.nz-row.nz-free { color:#22794b; font-weight:700; } body.night .nz-row.nz-free { color:#74f7a1; }
+.nz-row-total { border-bottom:none; font-size:1rem; margin-top:4px; } .nz-row-total b { font-size:1.5rem; font-weight:900; }
+.nz-sheet-sum { margin:6px 0 12px; }
+.nz-after { font-size:0.78rem; color:var(--ink3,#9a8f85); } .nz-after.bad { color:#c94a45; font-weight:700; }
+
+/* ── 注文のいま ── */
+.nz-status { background:var(--card,#fff); border:1px solid var(--line,#e7ded3); border-radius:24px; padding:18px 16px 16px; text-align:center; box-shadow:0 10px 26px rgba(58,46,79,0.08); position:relative; overflow:hidden; }
+.nz-status-ready { border-color:#5cc286; box-shadow:0 10px 30px rgba(92,194,134,0.35); }
+.nz-cup { width:110px; height:110px; margin:0 auto; border-radius:50%; background:linear-gradient(135deg,var(--sky,#cde9ff),var(--mint,#d6f5e3)); display:flex; align-items:center; justify-content:center; }
+.nz-status-ready .nz-cup { background:linear-gradient(135deg,var(--mint,#d6f5e3),var(--sun,#ffc94d)); }
+.nz-cup .steam path { animation:nzSteam 2.2s ease-in-out infinite; }
+.nz-cup .steam path:nth-child(2) { animation-delay:0.5s; } .nz-cup .steam path:nth-child(3) { animation-delay:1s; }
+@keyframes nzSteam { 0% { transform:translateY(0); opacity:0.2; } 50% { opacity:0.9; } 100% { transform:translateY(-8px); opacity:0; } }
+.nz-status-title { font-size:1.2rem; font-weight:900; margin-top:10px; color:var(--ink,#3d3630); }
+.nz-status-ready .nz-status-title { color:#22794b; } body.night .nz-status-ready .nz-status-title { color:#74f7a1; }
+.nz-status-sub { font-size:0.82rem; color:var(--ink2,#8a7f76); margin-top:4px; line-height:1.6; }
+.nz-steps { display:flex; justify-content:space-between; align-items:flex-start; margin:14px 4px 6px; position:relative; }
+.nz-steps::before { content:""; position:absolute; left:16%; right:16%; top:18px; height:4px; background:var(--line,#e7ded3); border-radius:2px; }
+.nz-steps::after { content:""; position:absolute; left:16%; width:0; top:18px; height:4px; background:linear-gradient(90deg,var(--coral,#ff7a9e),#ffb0c8); border-radius:2px; transition:width 0.6s ease; }
+.nz-steps.s2::after { width:34%; } .nz-steps.s3::after { width:68%; background:linear-gradient(90deg,#5cc286,#9fe3b8); }
+.nz-st { position:relative; z-index:1; text-align:center; font-size:0.66rem; color:var(--ink3,#9a8f85); font-weight:700; width:33%; }
+.nz-st .o { width:40px; height:40px; border-radius:50%; margin:0 auto 4px; display:flex; align-items:center; justify-content:center; background:var(--line,#e7ded3); font-size:1.05rem; }
+.nz-st.done .o { background:var(--coral,#ff7a9e); color:#fff; } .nz-st.done { color:var(--ink,#3d3630); }
+.nz-status-ready .nz-st.done .o { background:#5cc286; }
+.nz-st.now .o { background:var(--card,#fff); box-shadow:0 0 0 3px var(--coral,#ff7a9e); animation:nzPulseRing 1.4s ease-in-out infinite; } .nz-st.now { color:var(--ink,#3d3630); }
+@keyframes nzPulseRing { 0%,100% { box-shadow:0 0 0 3px var(--coral,#ff7a9e); } 50% { box-shadow:0 0 0 9px rgba(255,122,158,0.25); } }
+.nz-status-items { text-align:left; margin-top:8px; }
+.nz-status-time { font-size:0.72rem; color:var(--ink3,#9a8f85); margin-top:8px; }
+.nz-status .nz-primary { margin-top:12px; background:#5cc286; box-shadow:0 10px 22px rgba(92,194,134,0.4); }
+/* できあがりの瞬間、画面全体がミントに2回またたく */
+body.nz-flash .approot { animation:nzFlashBg 0.7s ease 3; }
+@keyframes nzFlashBg { 0%,100% { filter:none; } 50% { filter:brightness(1.08) saturate(1.3) hue-rotate(-20deg); } }
+
+/* ── じぶん（設定） ── */
+.nz-me-head { display:flex; align-items:center; gap:12px; }
+.nz-set { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line,#e7ded3); flex-wrap:wrap; }
+.nz-set:last-child { border-bottom:none; }
+.nz-set-ic { width:36px; height:36px; border-radius:12px; background:var(--panel2,#f6f1ea); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+.nz-set-l { font-weight:800; font-size:0.92rem; color:var(--ink,#3d3630); } .nz-set-s { font-size:0.72rem; color:var(--ink3,#9a8f85); }
+.nz-set-r { margin-left:auto; font-weight:800; }
+.nz-seg { display:inline-flex; background:var(--panel2,#f6f1ea); border-radius:999px; padding:3px; gap:2px; }
+.nz-seg-b { border:none; background:transparent; border-radius:999px; padding:7px 12px; font-family:inherit; font-size:0.8rem; font-weight:800; color:var(--ink3,#9a8f85); cursor:pointer; }
+.nz-seg-b.on { background:var(--card,#fff); color:var(--ink,#3d3630); box-shadow:0 2px 8px rgba(58,46,79,0.12); }
+body.night .nz-seg-b.on { background:rgba(255,255,255,0.18); color:#fff; }
+.nz-toggle { width:50px; height:30px; border-radius:999px; border:none; background:#cfc8d8; position:relative; cursor:pointer; padding:0; transition:background 0.2s; }
+.nz-toggle i { position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; transition:left 0.2s; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+.nz-toggle.on { background:#5cc286; } .nz-toggle.on i { left:23px; }
+
+/* ── 下のタブバー ── */
+.nz-tabbar { position:fixed; bottom:0; left:0; right:0; margin:0 auto; width:100%; max-width:480px; z-index:40;
+  background:var(--card,#fff); border-radius:28px 28px 0 0; padding:8px 8px calc(10px + env(safe-area-inset-bottom));
+  display:flex; justify-content:space-around; align-items:flex-end; box-shadow:0 -8px 24px rgba(58,46,79,0.10); border-top:1px solid var(--line,#e7ded3); }
+body.night .nz-tabbar { background:rgba(22,18,52,0.94); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,0.12); box-shadow:0 -10px 34px rgba(0,0,0,0.5); }
+.nz-tb { background:transparent; border:none; font-family:inherit; text-align:center; font-size:0.64rem; color:var(--ink3,#9a8f85); font-weight:800; cursor:pointer; padding:0; width:64px; }
+.nz-tb .i { width:44px; height:44px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-size:1.25rem; margin:0 auto 2px; position:relative; transition:background 0.18s; }
+.nz-tb .l { display:block; }
+.nz-tb.on { color:var(--ink,#3d3630); } .nz-tb.on .i { background:var(--lav,#e6dbff); }
+body.night .nz-tb.on { color:#ffd9ec; } body.night .nz-tb.on .i { background:rgba(255,255,255,0.14); box-shadow:0 0 16px rgba(255,110,199,0.35); }
+.nz-tb.mid .i { background:linear-gradient(135deg,var(--coral,#ff7a9e),#ff9fbf); color:#fff; width:58px; height:58px; border-radius:20px; margin-top:-24px; box-shadow:0 10px 22px rgba(255,122,158,0.45); font-size:1.6rem; }
+.nz-tb.mid.on .i { background:linear-gradient(135deg,#ff5f8c,#ff8fb3); }
+.nz-dot { position:absolute; top:6px; right:6px; width:11px; height:11px; border-radius:50%; background:#5cc286; box-shadow:0 0 0 2px #fff; animation:nzPulse 1.4s ease-in-out infinite; }
+
+/* ══ スタッフ側（POS）：3列レイアウト ══ */
+.pos-shell { background:#fbf7f3; min-height:100vh; }
+.pos-nav { display:flex; gap:6px; overflow-x:auto; padding:8px 12px; max-width:1400px; margin:0 auto; }
+.pos-nav::-webkit-scrollbar { display:none; }
+.pos-navb { flex-shrink:0; border:1px solid #eee3ea; background:#fff; color:#7a6f8c; border-radius:999px; padding:9px 14px; font-family:inherit; font-size:0.88rem; font-weight:800; cursor:pointer; position:relative; white-space:nowrap; }
+.pos-navb.on { background:#3a2e4f; color:#fff; border-color:transparent; }
+.pos-navb .cnt { margin-left:6px; background:#ff7a9e; color:#fff; border-radius:999px; padding:1px 8px; font-size:0.72rem; }
+.pos3 { display:grid; grid-template-columns:1.05fr 1.05fr 1fr; gap:14px; padding:6px 14px 14px; max-width:1400px; margin:0 auto; height:calc(100vh - 100px); }
+.pos3 > .col { min-width:0; overflow-y:auto; border-radius:22px; background:#fff; border:1px solid #eee3ea; padding:12px; box-shadow:0 8px 20px rgba(58,46,79,0.05); display:flex; flex-direction:column; }
+.pos-sub { display:none; }
+@media (max-width:899px) {
+  .pos3 { display:block; height:auto; padding:6px 12px 14px; }
+  .pos3 > .col { display:none; margin-bottom:12px; }
+  .pos3 > .col.show { display:flex; }
+  .pos-sub { display:flex; gap:6px; padding:6px 12px 0; }
+}
+.pos-th { font-weight:900; font-size:0.95rem; display:flex; align-items:center; gap:8px; margin-bottom:8px; color:#3a2e4f; }
+.pos-th .cnt { background:#ff7a9e; color:#fff; border-radius:999px; padding:1px 9px; font-size:0.75rem; }
+.pos-th .right { margin-left:auto; font-size:0.72rem; font-weight:600; color:#a9a0b8; }
+.pos-ord { background:#fff; border-radius:18px; padding:12px 14px; margin-bottom:10px; box-shadow:0 6px 16px rgba(58,46,79,0.07); border:1px solid #eee3ea; border-left:6px solid #e6dbff; }
+.pos-ord.new { border-left-color:#ff7a9e; background:#fff5f8; animation:posBlink 1.6s ease-in-out infinite; }
+@keyframes posBlink { 0%,100% { box-shadow:0 6px 16px rgba(58,46,79,0.07); } 50% { box-shadow:0 6px 24px rgba(255,122,158,0.5); } }
+.pos-ord.warn { border-left-color:#ffc94d; } .pos-ord.late { border-left-color:#e8467f; }
+.pos-ord .on { font-size:0.95rem; display:flex; align-items:center; gap:6px; flex-wrap:wrap; } .pos-ord .on b { font-size:1.1rem; color:#3a2e4f; }
+.pos-ago { margin-left:auto; font-size:0.75rem; font-weight:800; color:#a9a0b8; white-space:nowrap; }
+.pos-ord.warn .pos-ago { color:#9a5a12; } .pos-ord.late .pos-ago { color:#c21354; }
+.pos-pill { border-radius:999px; padding:2px 9px; font-size:0.7rem; font-weight:800; white-space:nowrap; }
+.pos-oi { font-size:0.9rem; margin:8px 0; line-height:1.7; color:#3a2e4f; }
+.pos-oi .free { color:#22794b; font-size:0.75rem; font-weight:800; margin-left:4px; }
+.pos-oi .amt { float:right; color:#7a6f8c; font-size:0.82rem; }
+.pos-obtns { display:flex; gap:8px; align-items:center; }
+.pos-done { flex:1; border:none; border-radius:14px; padding:13px; font-family:inherit; font-weight:900; font-size:1rem; background:linear-gradient(135deg,#ffb84d,#ffd166); color:#5a3a12; cursor:pointer; box-shadow:0 6px 16px rgba(255,184,77,0.35); }
+.pos-done:disabled { opacity:0.45; cursor:default; box-shadow:none; }
+.pos-sm { background:transparent; border:none; color:#a9a0b8; font-family:inherit; font-size:0.78rem; cursor:pointer; padding:8px; }
+.pos-sm.danger { color:#c94a45; }
+.pos-empty { text-align:center; color:#a9a0b8; font-size:0.85rem; padding:26px 0; background:#faf6fb; border-radius:16px; }
+.pos-doneList { margin-top:8px; }
+.pos-doneRow { display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; padding:8px 10px; background:#faf6fb; border-radius:12px; margin-bottom:6px; color:#7a6f8c; }
+.pos-snd { border:1px solid #ffd166; background:#fff8e6; color:#9a5a12; border-radius:999px; padding:6px 12px; font-family:inherit; font-size:0.78rem; font-weight:800; cursor:pointer; }
+.pos-search { width:100%; background:#faf6fb; border:1px solid #eee3ea; border-radius:14px; padding:12px 14px; font-size:1rem; font-family:inherit; outline:none; margin-bottom:8px; }
+.pos-c { display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #eee3ea; border-radius:16px; padding:10px 12px; margin-bottom:6px; cursor:pointer; }
+.pos-c:hover { background:#faf6fb; }
+.pos-c .nm { font-weight:800; font-size:0.95rem; color:#3a2e4f; } .pos-c .sub { color:#a9a0b8; font-size:0.72rem; }
+.pos-c .bal { margin-left:auto; text-align:right; font-weight:900; font-size:1rem; }
+.pos-mem { background:linear-gradient(135deg,#fff7f0,#fff); border:1px solid #eee3ea; border-radius:20px; padding:14px; box-shadow:0 8px 20px rgba(58,46,79,0.06); }
+.pos-mh { display:flex; align-items:center; gap:10px; }
+.pos-mh .rk { font-size:0.72rem; color:#7a6f8c; font-weight:700; }
+.pos-bal { margin-left:auto; font-size:1.9rem; font-weight:900; font-variant-numeric:tabular-nums; color:#3a2e4f; position:relative; }
+.pos-tags { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0; font-size:0.72rem; font-weight:800; }
+.pos-tags span { border-radius:999px; padding:4px 10px; }
+.pt-ok { background:#d6f5e3; color:#22794b; } .pt-used { background:#f0e6ea; color:#9a91a8; } .pt-auto { background:#cde9ff; color:#1f5aa8; } .pt-warn { background:#fff3cd; color:#7a5a00; } .pt-pink { background:#ffd6e0; color:#b0284f; } .pt-gold { background:#ffe9b8; color:#9a5a12; }
+.pos-mact { display:flex; gap:6px; flex-wrap:wrap; }
+.pos-charge { flex:1; min-width:150px; border:none; border-radius:14px; padding:13px; font-family:inherit; font-weight:900; font-size:0.95rem; background:linear-gradient(135deg,#ffb84d,#ffd166); color:#5a3a12; cursor:pointer; box-shadow:0 6px 16px rgba(255,184,77,0.3); }
+.pos-ghost { border:1px solid #eee3ea; background:#fff; color:#7a6f8c; border-radius:12px; padding:9px 11px; font-family:inherit; font-size:0.8rem; font-weight:700; cursor:pointer; }
+.pos-ghost.danger { color:#c94a45; border-color:#f0d6d4; background:#fff8f7; }
+.pos-warn { margin-top:10px; background:#fff3cd; color:#7a5a00; border-radius:12px; padding:9px 12px; font-size:0.78rem; font-weight:700; line-height:1.5; }
+.pos-tix { margin-top:10px; background:#fff8e6; border:1px solid #f0d99a; border-radius:14px; padding:8px 12px; }
+.pos-so { display:flex; gap:6px; flex-wrap:wrap; }
+.pos-sob { border-radius:999px; padding:7px 12px; font-size:0.8rem; font-weight:700; background:#fff; border:1px solid #eee3ea; color:#7a6f8c; font-family:inherit; cursor:pointer; }
+.pos-sob.off { background:#e9e4ea; color:#9a91a8; text-decoration:line-through; }
+.pos-cat { font-size:0.72rem; font-weight:800; color:#a9a0b8; letter-spacing:0.08em; margin:10px 0 6px; }
+.pos-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:6px; }
+.pos-pi { background:#fff; border:1px solid #eee3ea; border-radius:14px; padding:8px 4px 6px; text-align:center; font-size:0.72rem; line-height:1.3; cursor:pointer; font-family:inherit; color:#3a2e4f; position:relative; }
+.pos-pi:hover { background:#faf6fb; } .pos-pi.on { border-color:#ff7a9e; background:#fff5f8; }
+.pos-pi.so { opacity:0.45; text-decoration:line-through; }
+.pos-pi .price { display:block; font-weight:900; font-size:0.82rem; color:#7a6f8c; }
+.pos-pi .q { position:absolute; top:4px; right:4px; background:#ff7a9e; color:#fff; border-radius:999px; font-size:0.7rem; font-weight:900; padding:1px 7px; }
+.pos-cart { margin-top:auto; background:#faf6fb; border-radius:18px; padding:12px; font-size:0.85rem; position:sticky; bottom:0; }
+.pos-cr { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px dashed #eee3ea; color:#3a2e4f; }
+.pos-tot { display:flex; justify-content:space-between; align-items:baseline; margin-top:8px; font-size:0.95rem; color:#3a2e4f; } .pos-tot b { font-size:1.5rem; font-weight:900; }
+.pos-pay { flex:1; border:none; border-radius:14px; padding:14px; font-family:inherit; font-weight:900; font-size:1rem; background:#3a2e4f; color:#fff; cursor:pointer; }
+.pos-pay:disabled { opacity:0.4; cursor:default; }
+.pos-topbar { display:flex; justify-content:space-between; align-items:center; padding:8px 14px; background:#fff; border-bottom:1px solid #eee3ea; position:sticky; top:0; z-index:30; }
+.pos-who { font-size:0.8rem; background:#f6eff5; padding:5px 12px; border-radius:999px; color:#3a2e4f; font-weight:700; }
 `;
