@@ -2810,10 +2810,10 @@ function CountUp({ value }) {
 // ══════════════════════════════════════════
 //  🌈 新デザイン（2026-09-20）：昼はパステル、夜はネオン
 // ══════════════════════════════════════════
-// 昼（5時〜18時）はやわらかいパステル、夜（18時〜5時）はいまのネオンガラス。
-// 「じぶん」タブで「自動／昼／夜」に固定もできる（端末に記憶）。
+// ふだんは、やわらかいパステル（明るい画面）。夜のネオンガラスは選んだ人だけ。
+// 「じぶん」タブで「明るい／よる／自動（18時〜5時だけネオン）」を選べる（端末に記憶）。
 const DAYNIGHT_KEY = "niji_daynight";
-const dayNightPref = () => { try { return localStorage.getItem(DAYNIGHT_KEY) || "auto"; } catch { return "auto"; } };
+const dayNightPref = () => { try { return localStorage.getItem(DAYNIGHT_KEY) || "day"; } catch { return "day"; } };
 const setDayNightPref = (v) => { try { lsSet(DAYNIGHT_KEY, v); } catch {} try { window.dispatchEvent(new Event("niji-daynight")); } catch {} };
 const isNightNow = () => {
   const p = dayNightPref();
@@ -3732,8 +3732,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 <SettingRow icon="🔠" label="文字の大きさ">
                   <Segmented value={textSize} options={[[0,"ふつう"],[1,"大きめ"],[2,"特大"]]} onChange={(v)=>{ setTextSize(v); applyTextSize(v); }}/>
                 </SettingRow>
-                <SettingRow icon="🌗" label="画面の色" sub="自動：18時〜5時は夜のネオン">
-                  <Segmented value={dayNight} options={[["auto","自動"],["day","昼"],["night","夜"]]} onChange={(v)=>{ setDayNight(v); setDayNightPref(v); }}/>
+                <SettingRow icon="🌗" label="画面の色" sub="「自動」は18時〜5時だけ夜のネオンになります">
+                  <Segmented value={dayNight} options={[["day","明るい"],["night","よる"],["auto","自動"]]} onChange={(v)=>{ setDayNight(v); setDayNightPref(v); }}/>
                 </SettingRow>
                 <SettingRow icon={sndOn ? "🔔" : "🔕"} label="効果音" sub="商品を押したときの「ぽっ」">
                   <button type="button" className={"nz-toggle" + (sndOn ? " on" : "")} aria-pressed={sndOn} onClick={()=>{ const n=!sndOn; setSndOn(n); try { lsSet("niji_snd", n ? "on" : "off"); } catch {} if (n) { popSound(); unlockAch("niji_ach_snd", "効果音デビュー"); } }}><i/></button>
@@ -7320,10 +7320,15 @@ body.pastel .approot::before { content:""; position:fixed; inset:0; z-index:-1; 
     radial-gradient(620px 520px at -8% 104%, rgba(205,233,255,0.75), transparent 60%),
     radial-gradient(520px 420px at 50% 60%, rgba(230,219,255,0.4), transparent 70%); }
 /* 昼のホーム：夜の飾りは休み、看板はパステルのグラデ文字に */
-body.pastel .star, body.pastel .float-emoji, body.pastel .big-moon, body.pastel .shooting-star, body.pastel .stardust, body.pastel .star-real { display:none !important; }
+body.pastel .star, body.pastel .big-moon, body.pastel .shooting-star, body.pastel .stardust, body.pastel .star-real { display:none !important; }
+body.pastel .float-emoji { opacity:0.55; }
 body.pastel .aurora { opacity:0.9; }
-body.pastel .neon-ch { color:transparent; text-shadow:none; animation:none;
-  background:linear-gradient(135deg,#ff7a9e,#ffb877,#ffc94d,#5cc286,#5b8ddc,#b28dff); -webkit-background-clip:text; background-clip:text; }
+/* 明るい画面では、看板の文字は1文字ずつ違うパステル色（ネオンの光は夜だけ） */
+body.pastel .neon-ch { color:#e8759b; text-shadow:0 2px 0 rgba(255,255,255,0.9), 0 3px 8px rgba(58,46,79,0.10); }
+body.pastel .neon-ch:nth-child(2) { color:#e8944a; }
+body.pastel .neon-ch:nth-child(3) { color:#5b93c9; }
+body.pastel .neon-ch:nth-child(4) { color:#8a7cc4; }
+body.pastel .neon-flicker { animation:neonOn 1.1s both; }
 body.pastel .secret-toast { background:#fff; color:var(--ink); border-color:var(--line); }
 body.pastel .welcome-toast { background:#fff; color:var(--ink); border-color:var(--line); box-shadow:0 10px 30px rgba(58,46,79,0.18); }
 body.pastel .btn-crystal { color:var(--ink2); }
