@@ -371,6 +371,13 @@ export default async function handler(req, res) {
         } else {
           order.isBirthdayGift = false; order.birthdayItems = [];
         }
+        // 🚫 売り切れ（スタッフが POS で印を付けた品）は受け付けない
+        {
+          const menu = arr(await fbGet("cafe_v4_menu").catch(() => null));
+          const soldIds = new Set(menu.filter((m) => m && m.soldOut).map((m) => String(m.id)));
+          const hit = [...arr(order.items), ...arr(order.benefitItems), ...arr(order.birthdayItems)].find((i) => i && soldIds.has(String(i.id)));
+          if (hit) return send(res, 409, { error: `「${hit.name}」は本日売り切れです。別の品をお選びください` });
+        }
         const list = arr(await fbGet("cafe_v4_orders"));
         // 同じ人の、同じ種類（通常／VIPギフト／敬老の日）の未処理注文を置き換える
         const kind = (o) => o.isVipGift ? "vip" : o.isKeiroGift ? "keiro" : "normal";
