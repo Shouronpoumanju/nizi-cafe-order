@@ -5552,8 +5552,12 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     }
     const customer = customers.find(c=>c.id===order.customerId);
     if (!customer) { alert("会員が見つかりません"); return; }
+    // 残高が足りないまま完了すると、残高は0円になるのに売上には満額が記録されてしまい、
+    // 帳簿と実際が合わなくなる（レジの会計は前から「残高不足」で止めている）。
+    // ここも同じ扱いにして、先にチャージしてもらう。
     if (order.total > customer.balance) {
-      if (!window.confirm(`残高不足です（残高: ¥${customer.balance.toLocaleString()} / 合計: ¥${order.total.toLocaleString()}）\n続行しますか？`)) return;
+      alert(`残高が足りません。\n\n${customer.name} さん\n　のこり ¥${customer.balance.toLocaleString()}\n　ご注文 ¥${order.total.toLocaleString()}\n　不足 ¥${(order.total - customer.balance).toLocaleString()}\n\n「👥 お客さま」からチャージしてから、もう一度「できました」を押してください。`);
+      return;
     }
     const itemText = [
       ...(order.items||[]).map(i=>`${i.name}×${i.qty}`),
