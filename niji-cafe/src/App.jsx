@@ -2987,7 +2987,7 @@ function OrderStatusCard({ order, ready, onCancel, onDismiss, justOrdered, okMsg
         <button type="button" className="nz-primary" onClick={onDismiss}>OK！ いただきます</button>
       ) : (
         <div style={{display:"flex",gap:8,marginTop:12}}>
-          <button type="button" className="nz-ghost" style={{flex:1}} onClick={onMore}>追加で注文</button>
+          <button type="button" className="nz-ghost" style={{flex:1}} onClick={onMore}>品を足す・変える</button>
           <button type="button" className="nz-ghost nz-danger" style={{flex:1}} onClick={onCancel}>取り消す</button>
         </div>
       )}
@@ -3533,7 +3533,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     if (!picks.length) return null;
     return { picks, label: picks.map(p => `${p.name}×${p.qty}`).join("、") };
   })();
-  const useUsual = () => { if (!usual) return; setCart(usual.picks); setTab("order"); popSound(); try { navigator.vibrate && navigator.vibrate(12); } catch {} };
+  // 注文中に新しくカートを作って出すと、サーバー側で前の注文が置き換わって消えてしまう。
+  // 注文中のときは「品を足す・変える」だけを入口にする（そこは取り消してから作り直すので安全）。
+  const orderingNow = () => !!myPendingOrder && !viewMenu;
+  const useUsual = () => {
+    if (!usual) return;
+    if (orderingNow()) { setTab("order"); return; }
+    setCart(usual.picks); setTab("order"); popSound(); try { navigator.vibrate && navigator.vibrate(12); } catch {}
+  };
   // 使えるチケットの一覧（ホームの横並び用）
   const ticketChips = found ? [
     ...(keiroTarget(found) && keiroIsDay() && !keiroUsed(found) ? [{ k:"keiro", cls:"nz-tk-keiro", icon:"🎁", t:"敬老の日", s:"特別な一杯を無料で" }] : []),
@@ -3675,7 +3682,18 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 <OrderStatusCard order={myPendingOrder || sentOrder} ready={ready}
                   onCancel={()=>{ if (window.confirm("この注文を取り消しますか？")) cancelOrder(); }}
                   onDismiss={()=>{ setReady(null); setOrdered(false); }}
-                  onMore={()=>{ setOrdered(false); setReady(null); setViewMenu(true); }}
+                  onMore={()=>{
+                    if (!myPendingOrder) { setOrdered(false); setReady(null); setViewMenu(true); return; }
+                    if (!window.confirm("いまの注文をいったん取り消して、選び直します。\n前に選んだ品はカートに入ったままなので、足したいものを選んで、もう一度「注文する」を押してください。\n\nよろしいですか？")) return;
+                    // いま頼んでいる有料の品を、そのままカートへ戻す（売り切れになった品は外す）
+                    const keep = (myPendingOrder.items || []).map(it => {
+                      const m = menu.find(x => x.id === it.id) || menu.find(x => x.name === it.name);
+                      return (m && !isSoldOut(m)) ? { ...m, qty: it.qty || 1 } : null;
+                    }).filter(Boolean);
+                    cancelOrder();
+                    setCart(keep);
+                    setOrdered(false); setReady(null); setViewMenu(true);
+                  }}
                   justOrdered={ordered} okMsg={okMsg} okIcon={okIcon} okExtra={okExtra} okEmojis={okEmojis}/>
               ) : null}
               {(!(ready || myPendingOrder || (ordered && sentOrder)) || viewMenu) && (
@@ -3712,7 +3730,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           {tab === "play" && (
             <div className="nz-page">
               <h2 className="nz-h">🎮 あそび</h2>
-              <DrinkRoulette menu={menu.filter(m=>!isSoldOut(m))} onPick={(it)=>{ addToCart(it); popSound(); setTab("order"); }}/>
+              <DrinkRoulette menu={menu.filter(m=>!isSoldOut(m))} onPick={(it)=>{ if (orderingNow()) { setTab("order"); return; } addToCart(it); popSound(); setTab("order"); }}/>
               <RankingBoard customers={customers} myId={found.id}/>
               <BadgeShelf100 found={found} orders={badgeOrders} defaultOpen/>
               <div className="nz-card" style={{marginTop:10}}>
@@ -3758,7 +3776,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           )}
 
           {/* ── 下に貼りつくカートのバー（注文タブで、何か選んでいるとき） ── */}
-          {tab === "order" && hasCart && !sheet && (
+          {tab === "order" && hasCart && !sheet && !orderingNow() && (
             <button type="button" className="nz-cartbar rise" onClick={()=>setSheet(true)}>
               <span className="nz-cartbar-n">{cartCount}</span>
               <span style={{flex:1,textAlign:"left"}}><b>¥{total.toLocaleString()}</b><small>{total > found.balance ? ` 残高が足りません` : " 内容を確認"}</small></span>
