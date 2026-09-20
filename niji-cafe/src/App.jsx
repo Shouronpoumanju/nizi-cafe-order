@@ -4347,6 +4347,16 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
     setTimeout(() => setPinShown(cur => (cur === id ? null : cur)), 5000);
   };
 
+  // 読み込みの警告は、本当に取得できていないときだけ出す。
+  // ログイン直後は取得が終わるまでの一瞬だけ空になるので、
+  // すぐ出すと毎回「読み込めませんでした」が光って驚かせてしまう。
+  const [showLoadWarn, setShowLoadWarn] = useState(false);
+  useEffect(() => {
+    if (menu.length > 0 && staffAccounts.length > 0) { setShowLoadWarn(false); return; }
+    const t = setTimeout(() => setShowLoadWarn(true), 3500);
+    return () => clearTimeout(t);
+  }, [menu.length, staffAccounts.length]);
+
   const isManager = staffRole === "manager";
   const canEditPin = isManager || staffIsChief;
   const [pinEdit, setPinEdit] = useState(false);
@@ -4743,7 +4753,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
         </div>
       </div>
 
-      {(menu.length===0 || staffAccounts.length===0) && (
+      {showLoadWarn && (menu.length===0 || staffAccounts.length===0) && (
         <div style={{background:"#fbebea",borderBottom:"1px solid #f0d6d4",color:"#a5453e",padding:"10px 16px",fontSize:"0.85rem",lineHeight:1.5}}>
           ⚠️ {menu.length===0 && staffAccounts.length===0 ? "メニューとスタッフ一覧" : menu.length===0 ? "メニュー" : "スタッフ一覧"}
           を読み込めませんでした。通信状況を確認して、画面を開き直してください。（この状態では保存できません）
@@ -5483,7 +5493,14 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
   useEffect(() => {
     const ids = pending.map(o=>o.orderId);
     if (seenRef.current === null) { seenRef.current = new Set(ids); return; }
-    const newIds = ids.filter(id => !seenRef.current.has(id));
+    // 「新着」とみなすのは、初めて見る注文のうち“さっき入ったもの”だけ。
+    // これが無いと、ログインや画面の再読み込みのたびに、前からある注文まで
+    // 全部が点滅して通知音が鳴ってしまう（お店で誤解のもとになる）。
+    const newIds = ids.filter(id => {
+      if (seenRef.current.has(id)) return false;
+      const o = pending.find(p => p && p.orderId === id);
+      return !!o && ageMinutes(o.createdAt) < 2;
+    });
     if (newIds.length) {
       const now = Date.now();
       setFresh(f => { const n = { ...f }; newIds.forEach(id => { n[id] = now; }); return n; });
