@@ -2079,9 +2079,10 @@ function FreeDrinkTicket({ found }) {
       <div style={{fontSize:"0.8rem",opacity:0.85,marginBottom:8}}>
         実績バッジ100個達成おめでとうございます
       </div>
-      <div style={{fontSize:"0.78rem",opacity:0.8}}>
+      <div style={{fontSize:"0.78rem",opacity:0.9,marginBottom:8}}>
         この画面をスタッフにお見せください
       </div>
+      <ExpiryPill kind="none" dark/>
       <div style={{fontSize:"0.68rem",opacity:0.6,marginTop:8}}>{found.name} 様</div>
     </div>
   );
@@ -2141,7 +2142,7 @@ const ticketRemainText = (t) => t.kind === "topping" ? `🧁 トッピング無�
 
 // お客様のチケット画面に出る「特典チケット入れ」。ランク色の半券として並ぶ。
 // 新しい券が届いたときは、一度だけ全画面でお知らせする。
-function BonusTicketWallet({ found }) {
+function BonusTicketWallet({ found, onUse }) {
   const tickets = unusedTickets(found);
   const [show, setShow] = useState(false);
   useEffect(() => {
@@ -2175,10 +2176,11 @@ function BonusTicketWallet({ found }) {
         </div>
       )}
       <div className="tix-wallet pop">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-          <span style={{fontWeight:800,color:"#6b4a00"}}>🎟 持ち越し特典チケット</span>
-          <span style={{fontSize:"0.8rem",color:"#8a6a1a"}}>{tickets.length}枚 ・ 今月の特典とは別に使えます</span>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8,flexWrap:"wrap"}}>
+          <span style={{fontWeight:800,color:"#6b4a00"}}>🎟 持ち越し特典チケット {tickets.length}枚</span>
+          <ExpiryPill kind="none"/>
         </div>
+        <div style={{fontSize:"0.75rem",color:"#8a6a1a",marginBottom:8}}>今月の特典とは別に使えます。使い切るまでずっと持っておけます。</div>
         <div style={{display:"grid",gap:8}}>
           {tickets.map((t) => (
             <div key={t.id} className="tix-stub" style={{borderLeft:`6px solid ${t.color || "#d9a441"}`}}>
@@ -2188,13 +2190,18 @@ function BonusTicketWallet({ found }) {
                 <div style={{fontSize:"0.78rem",color:"#6b4a00",marginTop:2}}>{ticketRemainText(t)}</div>
                 <div style={{fontSize:"0.68rem",color:"#8a6a1a",marginTop:2}}>{t.issuedAt ? `${String(t.issuedAt).split(" ")[0]} 発行` : ""}</div>
               </div>
-              <div className="tix-tag">持ち越し</div>
+              <div className="tix-tag">{t.kind === "topping" ? "アプリで使える" : "レジで使う"}</div>
             </div>
           ))}
         </div>
+        {hasTopping && onUse && (
+          <button type="button" className="nz-tix-use" style={{background:"#4a3a12",color:"#ffe9a8"}} onClick={onUse}>
+            🧁 このチケットを使って注文する →
+          </button>
+        )}
         <div style={{fontSize:"0.75rem",color:"#8a6a1a",marginTop:8,textAlign:"center",lineHeight:1.6}}>
-          {hasTopping && <div>「🛒 注文する」の 🎁 特典の欄で、今月の分と同じように選べます（今月の分を使い切ってもチケット分は選べます）</div>}
-          {hasDrink && <div>ドリンクの券は、レジでこの画面をお見せください</div>}
+          {hasTopping && <div>今月の分を使い切っていても、こちらの分は選べます</div>}
+          {hasDrink && <div>🍹 ドリンクの券は、レジでこの画面をお見せください</div>}
         </div>
       </div>
     </>
@@ -2206,7 +2213,7 @@ function BonusTicketWallet({ found }) {
 const RANK_TIX_CLASS = { "ブロンズ":"mtix-bronze", "シルバー":"mtix-silver", "ゴールド":"mtix-gold", "プラチナ":"mtix-platinum",
   "チタン":"mtix-titanium", "サファイア":"mtix-sapphire", "ルビー":"mtix-ruby", "エメラルド":"mtix-emerald", "ダイヤモンド":"mtix-diamond" };
 const RANK_TIER = { "ブロンズ":1, "シルバー":2, "ゴールド":3, "プラチナ":4, "チタン":5, "サファイア":6, "ルビー":7, "エメラルド":8, "ダイヤモンド":9 };
-function MonthlyBenefitTicket({ found, rank }) {
+function MonthlyBenefitTicket({ found, rank, onUse }) {
   if (!rank || rank.benefit.type === "none") return null;
   const isAlways = rank.benefit.type === "always_discount";
   const tmax = getToppingMax(rank);
@@ -2222,9 +2229,9 @@ function MonthlyBenefitTicket({ found, rank }) {
         <span key={i} className="mtix-spark" aria-hidden="true" style={{left:`${(i*17+7)%100}%`,top:`${(i*29+11)%100}%`,animationDelay:`${(i%5)*0.35}s`}}>✦</span>
       ))}
       <div className="mtix-sheen" aria-hidden="true"/>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",position:"relative"}}>
-        <div style={{fontSize:"0.72rem",fontWeight:800,letterSpacing:"0.12em",opacity:0.85}}>🎁 今月の特典チケット</div>
-        <div style={{fontSize:"0.7rem",opacity:0.8}}>{monthLabel}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",position:"relative",gap:8,flexWrap:"wrap"}}>
+        <div style={{fontSize:"0.72rem",fontWeight:800,letterSpacing:"0.12em",opacity:0.85}}>🎁 今月の特典チケット（{monthLabel}）</div>
+        {!isAlways && <ExpiryPill kind="month" dark/>}
       </div>
       <div style={{display:"flex",alignItems:"center",gap:14,marginTop:10,position:"relative"}}>
         <div className="mtix-gem">{rank.gem}</div>
@@ -2237,9 +2244,13 @@ function MonthlyBenefitTicket({ found, rank }) {
       <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:10,position:"relative"}}>
         {isAlways ? "お会計のたびに自動で引かれます"
           : used ? "来月1日に新しい特典チケットが届きます"
-          : tmax > 0 ? "「🛒 注文する」の 🎁 特典の欄で選べます（レジでも使えます）"
-          : "「🛒 注文する」の 🎁 特典の欄で選べます（レジでも使えます）"}
+          : "下のボタンを押すと、そのまま注文の画面で使えます（レジでも使えます）"}
       </div>
+      {!isAlways && !used && onUse && (
+        <button type="button" className="nz-tix-use" onClick={onUse}>
+          {tmax > 0 ? "🧁 この特典を使って注文する →" : "☕ この特典を使って注文する →"}
+        </button>
+      )}
     </div>
   );
 }
@@ -2379,7 +2390,7 @@ function KeiroTicket({ found, orders, onClaim, onCancel }) {
         {[...Array(12)].map((_, i) => (
           <span key={i} className="mtix-spark keiro-spark" aria-hidden="true" style={{left:`${(i*23+5)%100}%`,top:`${(i*41+9)%100}%`,animationDelay:`${(i%6)*0.3}s`}}>✦</span>
         ))}
-        <div className="keiro-eyebrow"><span>🎁 敬老の日 特別プレゼント</span><span>9月20日 限定</span></div>
+        <div className="keiro-eyebrow" style={{gap:8,flexWrap:"wrap"}}><span>🎁 敬老の日 特別プレゼント</span><ExpiryPill kind="today" dark/></div>
         <div className="keiro-title keiro-grad">感謝の一杯を、あなたに。</div>
         <div style={{fontSize:"0.82rem",color:"#c9bfe6",marginTop:4,lineHeight:1.6}}>いつもありがとうございます。今日だけの特別ドリンクを1杯、無料でお贈りします。</div>
         <div className="keiro-drink">
@@ -2462,7 +2473,7 @@ function BirthdayTicket({ found, onSetMonth, onUse }) {
       {[...Array(6)].map((_, i) => (
         <span key={i} className="bday-spark" aria-hidden="true" style={{left:`${(i*37+6)%100}%`,top:`${(i*53+8)%100}%`,animationDelay:`${(i%4)*0.4}s`}}>✦</span>
       ))}
-      <div className="bday-eyebrow"><span>🎂 お誕生月のプレゼント</span><span>{found.birthMonth}月{lastDay}日まで</span></div>
+      <div className="bday-eyebrow" style={{gap:8,flexWrap:"wrap"}}><span>🎂 お誕生月のプレゼント</span><ExpiryPill kind="month" dark/></div>
       <div className="cake" aria-hidden="true"><svg viewBox="0 0 96 80">
         <g className="flame"><ellipse cx="30" cy="16" rx="4" ry="7" fill="#ffd166"/><ellipse cx="30" cy="18" rx="2" ry="4" fill="#fff8d6"/></g>
         <g className="flame"><ellipse cx="48" cy="12" rx="4" ry="7" fill="#ffd166"/><ellipse cx="48" cy="14" rx="2" ry="4" fill="#fff8d6"/></g>
@@ -2874,6 +2885,27 @@ const catTint = (cat) => /コーヒー/.test(cat || "") ? "var(--peach,#ffe3c9)"
   : "var(--lav,#e6dbff)";
 const isSoldOut = (item) => !!(item && item.soldOut);
 
+// チケットの「いつまで使えるか」。どの券でも同じ形で、大きく目立つように出す。
+// kind: "today"（今日だけ）／"month"（今月末まで）／"none"（期限なし）
+function expiryInfo(kind) {
+  const now = new Date();
+  if (kind === "today") return { text: "今日かぎり", left: "今日まで", urgent: true };
+  if (kind === "month") {
+    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const days = Math.max(0, Math.round((last - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000));
+    return { text: `${last.getMonth() + 1}月${last.getDate()}日まで`, left: days === 0 ? "今日まで" : `あと${days}日`, urgent: days <= 3 };
+  }
+  return { text: "期限なし", left: "", urgent: false };
+}
+function ExpiryPill({ kind, dark }) {
+  const e = expiryInfo(kind);
+  return (
+    <span className={"nz-exp" + (e.urgent ? " urgent" : "") + (dark ? " dark" : "")}>
+      <b>⏳ {e.text}</b>{e.left && <span>{e.left}</span>}
+    </span>
+  );
+}
+
 // 下のタブバー（ホーム／チケット／☕注文／あそび／じぶん）
 function TabBar({ tab, setTab, dot }) {
   const T = [["home","🏠","ホーム"],["tickets","🎫","チケット"],["order","☕","注文"],["play","🎮","あそび"],["me","👤","じぶん"]];
@@ -3158,6 +3190,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [sheet,        setSheet]        = useState(false);   // 注文の確認シート
   const [viewMenu,     setViewMenu]     = useState(false);   // 注文中でもメニューを見る（追加注文）
   const [ready,        setReady]        = useState(null);    // できあがった注文（お知らせ中）
+  const [benefitOpen,  setBenefitOpen]  = useState(false);   // 注文画面の「🎁 特典」の欄を開いているか
   const [sentOrder,    setSentOrder]    = useState(null);    // いま送った注文（サーバーから戻るまでの控え）
   const pendRef = useRef(new Set());                          // 見守っている未処理注文のID
 
@@ -3542,14 +3575,24 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     setCart(usual.picks); setTab("order"); popSound(); try { navigator.vibrate && navigator.vibrate(12); } catch {}
   };
   // 使えるチケットの一覧（ホームの横並び用）
+  const expMonth = expiryInfo("month");
   const ticketChips = found ? [
-    ...(keiroTarget(found) && keiroIsDay() && !keiroUsed(found) ? [{ k:"keiro", cls:"nz-tk-keiro", icon:"🎁", t:"敬老の日", s:"特別な一杯を無料で" }] : []),
-    ...(isBirthdayTicketActive(found) ? [{ k:"bday", cls:"nz-tk-bday", icon:"🎂", t:"誕生月の一杯", s:"お好きなドリンク無料" }] : []),
+    ...(keiroTarget(found) && keiroIsDay() && !keiroUsed(found) ? [{ k:"keiro", cls:"nz-tk-keiro", icon:"🎁", t:"敬老の日", s:"特別な一杯を無料で", exp:"今日かぎり", urgent:true }] : []),
+    ...(isBirthdayTicketActive(found) ? [{ k:"bday", cls:"nz-tk-bday", icon:"🎂", t:"誕生月の一杯", s:"お好きなドリンク無料", exp:expMonth.text, urgent:expMonth.urgent }] : []),
     ...(rank && rank.benefit.type !== "none" ? [{ k:"month", cls:"nz-tk-month", icon: rank.benefit.icon, t:"今月の特典",
-        s: isAlways ? "毎回自動で割引" : isToppingRank ? (toppingFullyUsed ? "今月分は使い切り" : `トッピング あと${monthlyTopping}個`) : (used ? "使用済み" : rank.benefit.desc) }] : []),
-    ...(unusedTickets(found).length ? [{ k:"bonus", cls:"nz-tk-bonus", icon:"🎟", t:"持ち越しチケット", s:`${unusedTickets(found).length}枚あります` }] : []),
-    ...(gotBadges >= 100 && !found.freeDrinkUsedAt ? [{ k:"free", cls:"nz-tk-free", icon:"🏆", t:"1杯無料券", s:"実績100個のごほうび" }] : []),
+        s: isAlways ? "毎回自動で割引" : isToppingRank ? (toppingFullyUsed ? "今月分は使い切り" : `トッピング あと${monthlyTopping}個`) : (used ? "使用済み" : rank.benefit.desc),
+        exp: isAlways ? "" : expMonth.text, urgent: !isAlways && expMonth.urgent }] : []),
+    ...(unusedTickets(found).length ? [{ k:"bonus", cls:"nz-tk-bonus", icon:"🎟", t:"持ち越しチケット", s:`${unusedTickets(found).length}枚あります`, exp:"期限なし" }] : []),
+    ...(gotBadges >= 100 && !found.freeDrinkUsedAt ? [{ k:"free", cls:"nz-tk-free", icon:"🏆", t:"1杯無料券", s:"実績100個のごほうび", exp:"期限なし" }] : []),
   ] : [];
+
+  // チケットを押したら、そのまま注文の画面へ行き「🎁 特典」の欄を開く。
+  // （いままでは押しても何も起きず、自分で注文タブへ行って「使用する」を探す必要があった）
+  const goUseBenefit = () => {
+    if (orderingNow()) { setTab("order"); return; }   // 注文中は「品を足す・変える」から
+    setTab("order"); setBenefitOpen(true);
+    setTimeout(() => { try { const el = document.getElementById("nz-benefit"); if (el) el.scrollIntoView({ behavior:"smooth", block:"center" }); } catch {} }, 250);
+  };
 
   const logoutAll = () => { playDetach(); custToken.current = null; setBoot(null); setFound(null); setInput(""); setTab("home"); };
 
@@ -3625,8 +3668,13 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   <div className="nz-sec"><span>使えるチケット</span><button type="button" className="nz-link" onClick={()=>setTab("tickets")}>すべて見る →</button></div>
                   <div className="nz-strip">
                     {ticketChips.map(c => (
-                      <button key={c.k} type="button" className={"nz-tk " + c.cls} onClick={()=>{ if (c.k==="bday") { setBdayMode(true); setTab("order"); } else setTab("tickets"); }}>
+                      <button key={c.k} type="button" className={"nz-tk " + c.cls} onClick={()=>{
+                        if (c.k==="bday") { setBdayMode(true); setTab("order"); }
+                        else if ((c.k==="month" || c.k==="bonus") && showBenefit) { goUseBenefit(); }
+                        else setTab("tickets");
+                      }}>
                         <span className="d">{c.icon}</span><b>{c.t}</b><span>{c.s}</span>
+                        {c.exp && <span className={"nz-tk-exp" + (c.urgent ? " urgent" : "")}>⏳ {c.exp}</span>}
                       </button>
                     ))}
                   </div>
@@ -3642,8 +3690,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             <div className="nz-page">
               <h2 className="nz-h">🎫 チケット</h2>
               <KeiroTicket found={found} orders={orders} onClaim={claimKeiro} onCancel={cancelKeiro}/>
-              <MonthlyBenefitTicket found={found} rank={rank}/>
-              <BonusTicketWallet found={found}/>
+              <MonthlyBenefitTicket found={found} rank={rank} onUse={showBenefit ? goUseBenefit : null}/>
+              <BonusTicketWallet found={found} onUse={showBenefit ? goUseBenefit : null}/>
               <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth} onUse={()=>{ setBdayMode(true); setTab("order"); }}/>
               {gotBadges >= 100 && <FreeDrinkTicket found={found}/>}
               {found.isVIP && (
@@ -3713,10 +3761,13 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     </button>
                   )}
                   {showBenefit && (
-                    <BenefitOrderSection rank={benefitRank} ticketToppings={ticketToppingsHere} monthlyTopping={monthlyTopping}
-                      menu={menu.filter(m=>!isSoldOut(m))} benefitUsed={benefitUsed} benefitItems={benefitItems}
-                      setBenefitItems={setBenefitItems} setBenefitUsed={setBenefitUsed}
-                      designatedDrink={designatedDrink} availableTopping={availableTopping}/>
+                    <div id="nz-benefit">
+                      <BenefitOrderSection rank={benefitRank} ticketToppings={ticketToppingsHere} monthlyTopping={monthlyTopping}
+                        menu={menu.filter(m=>!isSoldOut(m))} benefitUsed={benefitUsed} benefitItems={benefitItems}
+                        setBenefitItems={setBenefitItems} setBenefitUsed={setBenefitUsed}
+                        designatedDrink={designatedDrink} availableTopping={availableTopping}
+                        open={benefitOpen} setOpen={setBenefitOpen}/>
+                    </div>
                   )}
                   <MoodPicker menu={menu.filter(m=>!isSoldOut(m))} onAdd={(it)=>{ addToCart(it); popSound(); }}/>
                   {cleared !== 0 && <div key={cleared} className="cleared-note">また選んでね〜</div>}
@@ -3934,8 +3985,7 @@ function VipPresentTab({ found, vipGiftDrink, orders, saveOrders, saveC, custome
 }
 
 // ── BENEFIT ORDER SECTION ────────────────
-function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefitItems, setBenefitUsed, designatedDrink, availableTopping, ticketToppings = 0, monthlyTopping = 0 }) {
-  const [open, setOpen] = useState(false);
+function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefitItems, setBenefitUsed, designatedDrink, availableTopping, ticketToppings = 0, monthlyTopping = 0, open, setOpen }) {
 
   const benefitName = rank.benefit.desc;
   const benefitIcon = rank.benefit.icon;
@@ -7650,4 +7700,29 @@ body.night .nz-tb.on { color:#ffd9ec; } body.night .nz-tb.on .i { background:rgb
 .pos-pay:disabled { opacity:0.4; cursor:default; }
 .pos-topbar { display:flex; justify-content:space-between; align-items:center; padding:8px 14px; background:#fff; border-bottom:1px solid #eee3ea; position:sticky; top:0; z-index:30; }
 .pos-who { font-size:0.8rem; background:#f6eff5; padding:5px 12px; border-radius:999px; color:#3a2e4f; font-weight:700; }
+
+/* ── チケットの有効期限（どの券でも同じ形で、はっきり見せる） ── */
+.nz-exp { display:inline-flex; align-items:center; gap:7px; border-radius:999px; padding:5px 12px;
+  font-size:0.76rem; white-space:nowrap; background:#fff; color:#8a5a12; border:1.5px solid #f0d99a;
+  box-shadow:0 2px 6px rgba(58,46,79,0.10); }
+.nz-exp b { font-weight:900; }
+.nz-exp span { font-weight:700; opacity:0.75; border-left:1px solid currentColor; padding-left:7px; }
+.nz-exp.dark { background:rgba(255,255,255,0.20); color:#fff; border-color:rgba(255,255,255,0.55); text-shadow:0 1px 2px rgba(0,0,0,0.25); }
+.nz-exp.urgent { background:#ffe6ee; color:#c2185b; border-color:#ff9ac6; animation:nzExpPulse 1.8s ease-in-out infinite; }
+.nz-exp.dark.urgent { background:rgba(255,110,199,0.45); color:#fff; border-color:#ffd6e8; }
+@keyframes nzExpPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .nz-exp.urgent { animation:none !important; } }
+
+/* チケットの「これを使って注文する」ボタン */
+.nz-tix-use { width:100%; margin-top:12px; border:none; border-radius:14px; padding:14px;
+  font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer; position:relative;
+  background:rgba(255,255,255,0.95); color:#3a2e4f; box-shadow:0 4px 14px rgba(0,0,0,0.2); }
+.nz-tix-use:active { transform:scale(0.98); }
+
+/* ホームの横並びチケットにも期限を出す */
+.nz-tk { padding-bottom:30px; }
+.nz-tk-exp { position:absolute; left:12px; bottom:10px; font-size:0.66rem; font-weight:800;
+  background:rgba(255,255,255,0.8); color:#8a5a12; border-radius:999px; padding:2px 8px; white-space:nowrap; }
+.nz-tk-exp.urgent { background:#ffe6ee; color:#c2185b; }
+body.night .nz-tk-exp { background:rgba(255,255,255,0.2); color:#ffe9a8; }
 `;
