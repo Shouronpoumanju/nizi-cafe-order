@@ -133,8 +133,15 @@ export default async function handler(req, res) {
         if (full) extra.myArchive = arr(archive).filter((o) => String(o.customerId) === String(me.id));
         const linked = [...arr(staff), ...arr(mgrs)]
           .find((s) => s.linkedCustomerId && String(s.linkedCustomerId) === String(me.id));
+        // 🏆 みんなのランキング（ホームに出す）。
+        // 出すのは「名前・ランクの土台になる回数・今年の回数」だけ。
+        // 残高・暗証番号・誕生月・履歴などは一切含めない。
+        const ranking = arr(customers)
+          .map((c) => ({ id: String(c.id), name: c.name, rankBasis: Number(c.rankBasis) || 0, purchases: Number(c.currentYearPurchases) || 0 }))
+          .sort((a, b) => (b.rankBasis - a.rankBasis) || (b.purchases - a.purchases) || String(a.name).localeCompare(String(b.name)));
         return send(res, 200, { value: {
           customer: mine,
+          ranking,
           myOrders: arr(orders).filter((o) => String(o.customerId) === String(me.id)),
           menu: menu || null,
           designatedDrink: dd || null,
