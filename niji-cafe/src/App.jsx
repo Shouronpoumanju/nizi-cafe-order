@@ -1069,6 +1069,8 @@ export default function App() {
   return (
     <div className="approot" style={S.root}>
       <style>{CSS}</style>
+      {/* きせかえ（背景の色）。疑似要素だとその場で塗り直されないので、本物の要素を敷く */}
+      <div className="nz-bgtint" aria-hidden="true"/>
       {screen==="home"     && <Home setScreen={changeScreen} setStaffRole={setStaffRole}/>}
       {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} managerAccounts={managerAccounts} vipGiftDrink={vipGiftDrink} setScreen={changeScreen}/>}
       {screen==="login"    && <StaffLogin setScreen={changeScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} setStaffIsChief={setStaffIsChief} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
@@ -2721,13 +2723,35 @@ function NekoMascot() {
 
 // 🎨 きせかえ。夜空の色味を4種類から選べる（端末に記憶される）
 const NIGHT_THEMES = [
-  { n: "よる",     h: "0deg"   },
+  { n: "ふつう",   h: "0deg"   },
   { n: "ゆうやけ", h: "-45deg" },
   { n: "うみ",     h: "70deg"  },
   { n: "もり",     h: "150deg" },
 ];
+// 背景の色（きせかえ）。
+// ※ 背景は ::before（疑似要素）に描いているが、Chrome は「受け継いだ色の変数」が変わっても
+//    疑似要素を塗り直してくれないことがある。そのため **クラスで指定**して確実に切り替える。
+const bgThemeLoad = () => { try { return Number(localStorage.getItem("niji_theme") || 0) % NIGHT_THEMES.length; } catch { return 0; } };
+const applyBgTheme = (i) => {
+  try {
+    const n = ((Number(i) || 0) % NIGHT_THEMES.length + NIGHT_THEMES.length) % NIGHT_THEMES.length;
+    const b = document.body;
+    // 背景そのものを描いている要素（.approot）にも印を付ける。
+    // body だけに付けても、Chrome は .approot::before を塗り直してくれない（読み込み直すと効く、という症状になる）。
+    const ap = document.querySelector(".approot");
+    for (let k = 0; k < NIGHT_THEMES.length; k++) {
+      b.classList.toggle("nzth" + k, k === n);
+      if (ap) ap.classList.toggle("nzth" + k, k === n);
+    }
+    b.style.setProperty("--nh", NIGHT_THEMES[n].h);   // 漂う光（本物の要素）はこれで効く
+    localStorage.setItem("niji_theme", String(n));
+    try { window.dispatchEvent(new Event("niji-bgtheme")); } catch {}
+  } catch {}
+};
+const applySavedTheme = () => applyBgTheme(bgThemeLoad());
 function ThemeButton() {
-  const [i, setI] = useState(() => { try { return Number(localStorage.getItem("niji_theme") || 0) % NIGHT_THEMES.length; } catch { return 0; } });
+  const [i, setI] = useState(bgThemeLoad);
+  useEffect(() => { const f = () => setI(bgThemeLoad()); window.addEventListener("niji-bgtheme", f); return () => window.removeEventListener("niji-bgtheme", f); }, []);
   const next = () => {
     const j = (i + 1) % NIGHT_THEMES.length;
     setI(j);
@@ -2740,7 +2764,7 @@ function ThemeButton() {
       if (seen.size >= NIGHT_THEMES.length) unlockAch("niji_ach_theme", "きせかえ名人");
       bumpAch("niji_cnt_themeN", 10, "niji_ach_theme10", "きせかえ10回");
     } catch {}
-    document.body.style.setProperty("--nh", NIGHT_THEMES[j].h);
+    applyBgTheme(j);
   };
   return <button className="theme-btn" onClick={next}>🎨 {NIGHT_THEMES[i].n}</button>;
 }
@@ -2849,8 +2873,11 @@ function ThemeMode() {
   }, []);
   useEffect(() => {
     document.body.classList.toggle("pastel", !night);
+    applySavedTheme();
     return () => document.body.classList.remove("pastel");
   }, [night]);
+  // 画面が入れ替わって .approot が作り直されても、選んだ色を当て直す
+  useEffect(() => { const t = setInterval(applySavedTheme, 1500); return () => clearInterval(t); }, []);
   return night ? <NightMode/> : null;
 }
 
@@ -2858,8 +2885,11 @@ function ThemeMode() {
 const textSizeLoad = () => { try { const v = localStorage.getItem("nz_bigtext"); return v === "2" ? 2 : v === "1" ? 1 : 0; } catch { return 0; } };
 const applyTextSize = (n) => {
   try {
-    document.body.classList.toggle("bigtext", n === 1);
-    document.body.classList.toggle("bigtext2", n === 2);
+    // ※ html に付けるのが大事。画面の文字はほとんど rem 指定で、rem は html の文字サイズが基準。
+    //    body に付けても rem は変わらないので、前は押しても何も起きなかった。
+    const h = document.documentElement;
+    h.classList.toggle("bigtext", n === 1);
+    h.classList.toggle("bigtext2", n === 2);
     localStorage.setItem("nz_bigtext", String(n));
   } catch {}
 };
@@ -2922,13 +2952,103 @@ function TabBar({ tab, setTab, dot }) {
   );
 }
 
+// ランクを表す紋章。まわりに光の輪、中にランクの宝石。上のランクほど輪が回って輝く。
+function RankEmblem({ rank, size = 58 }) {
+  const tier = RANK_TIER[rank.name] || 0;
+  return (
+    <span className={"nz-emblem" + (tier >= 6 ? " shine" : "") + (tier >= 9 ? " top" : "")}
+      style={{width:size, height:size}} aria-label={rank.name}>
+      <span className="nz-emblem-gem" style={{fontSize: Math.round(size * 0.46)}}>{rank.gem}</span>
+    </span>
+  );
+}
+
+// ランクアップまで、あと何回か。次のランクでもらえるものも見せる。
+function RankUpCard({ found, rank, next, cyp, onSeeRanks }) {
+  const cur = getRank(cyp);
+  const from = next ? cur.min : 0;
+  const pct = next ? Math.min(100, Math.max(6, ((cyp - from) / (next.min - from)) * 100)) : 100;
+  const left = next ? next.min - cyp : 0;
+  return (
+    <div className="nz-rankup">
+      <div className="nz-rankup-head">
+        <span className="nz-rankup-eyebrow">🏅 いまのランク</span>
+        <button type="button" className="nz-link" onClick={onSeeRanks}>ランク表を見る →</button>
+      </div>
+      <div className="nz-rankup-now">
+        <RankEmblem rank={rank} size={54}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div className="nz-rankup-name" style={{color:rank.color}}>{rank.name}</div>
+          <div className="nz-rankup-benefit">{rank.benefit.icon} {rank.benefit.desc}</div>
+        </div>
+        <div className="nz-rankup-count"><b>{cyp}</b><span>回 / 今年</span></div>
+      </div>
+      {next ? (
+        <>
+          <div className="nz-rankup-bar"><i style={{width:`${pct}%`, background:`linear-gradient(90deg, ${rank.color}, ${next.color})`}}/></div>
+          <div className="nz-rankup-goal">
+            <div className="nz-rankup-left">
+              あと <b style={{color:next.color}}>{left}回</b> で
+              <span className="nz-rankup-nextname" style={{color:next.color}}>{next.gem} {next.name}</span>
+            </div>
+            <RankEmblem rank={next} size={40}/>
+          </div>
+          <div className="nz-rankup-reward" style={{borderColor:next.color+"55", background:next.color+"12"}}>
+            <span style={{fontSize:"1.2rem"}}>🎁</span>
+            <div><b style={{color:next.color}}>{next.name}になると</b>
+              <div>{next.benefit.icon} {next.benefit.desc}</div></div>
+          </div>
+        </>
+      ) : (
+        <div className="nz-rankup-reward" style={{borderColor:rank.color+"55", background:rank.color+"12"}}>
+          <span style={{fontSize:"1.2rem"}}>👑</span>
+          <div><b style={{color:rank.color}}>最高ランクです！</b>
+            <div>いつもありがとうございます</div></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 🏆 みんなのランキング（サーバーから名前とランクだけ受け取る）
+function RankingHome({ ranking, myId, onMore }) {
+  if (!Array.isArray(ranking) || ranking.length === 0) return null;
+  const medals = ["🥇","🥈","🥉"];
+  const myIdx = ranking.findIndex((r) => String(r.id) === String(myId));
+  const top = ranking.slice(0, 5);
+  const showMeSeparately = myIdx >= 5;
+  const row = (c, i) => {
+    const r = getRank(Math.max(c.rankBasis, c.purchases));
+    const isMe = String(c.id) === String(myId);
+    return (
+      <div key={c.id} className={"nz-rank-row" + (isMe ? " me" : "")} style={isMe ? {borderColor:r.color+"66", background:r.color+"14"} : null}>
+        <span className="nz-rank-no">{i < 3 ? medals[i] : i + 1}</span>
+        <RankEmblem rank={r} size={30}/>
+        <span className="nz-rank-name">{c.name}{isMe && <b className="nz-rank-me" style={{color:r.color,borderColor:r.color+"66",background:r.color+"1e"}}>あなた</b>}</span>
+        <span className="nz-rank-val" style={{color:r.color}}>{r.name}</span>
+      </div>
+    );
+  };
+  return (
+    <div className="nz-ranking">
+      <div className="nz-rankup-head">
+        <span className="nz-rankup-eyebrow">🏆 みんなのランキング</span>
+        <span className="nz-rankup-eyebrow" style={{opacity:0.7}}>{ranking.length}人</span>
+      </div>
+      {top.map(row)}
+      {showMeSeparately && (<><div className="nz-rank-dots">・・・</div>{row(ranking[myIdx], myIdx)}</>)}
+      {onMore && <button type="button" className="nz-link" style={{marginTop:8}} onClick={onMore}>実績バッジを見る →</button>}
+    </div>
+  );
+}
+
 // 残高カード（ランクの色・次のランクまでの輪っか・ホログラム）
 function WalletCard({ found, rank, next, cyp, pct, badgeOrders, tapBalance, delta, coinBurst, sleepy }) {
   const h = hallRank(badgeCount({ found, orders: badgeOrders }).got);
   return (
     <HoloCard className={`nz-wallet ticket-card card-in ${(h || {}).cls || ""}`} style={{background: walletGrad(rank)}}>
       <div className="card-sheen" aria-hidden="true"/>
-      <NekoMascot/>
+      <span className="nz-w-emblem"><RankEmblem rank={rank} size={56}/></span>
       {found.balance >= 10000 && <SparkleRain emoji="✨"/>}
       {String(found.balance).includes("777") && <SparkleRain emoji="🪙"/>}
       <div className="nz-w-head">
@@ -3184,8 +3304,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [remember,     setRemember]     = useState(true);   // この端末で記憶する
   const [autoBusy,     setAutoBusy]     = useState(() => !!sessLoad());
   const [textSize,     setTextSize]     = useState(textSizeLoad);
-  useEffect(() => { applyTextSize(textSize); return () => { try { document.body.classList.remove("bigtext"); document.body.classList.remove("bigtext2"); } catch {} }; }, [textSize]);
+  useEffect(() => { applyTextSize(textSize); return () => { try { document.documentElement.classList.remove("bigtext"); document.documentElement.classList.remove("bigtext2"); } catch {} }; }, [textSize]);
   const [dayNight,     setDayNight]     = useState(dayNightPref);
+  const [bgTheme,      setBgTheme]      = useState(bgThemeLoad);
+  useEffect(() => { const f = () => setBgTheme(bgThemeLoad()); window.addEventListener("niji-bgtheme", f); return () => window.removeEventListener("niji-bgtheme", f); }, []);
   const [sndOn,        setSndOn]        = useState(() => { try { return localStorage.getItem("niji_snd") === "on"; } catch { return false; } });
   const [sheet,        setSheet]        = useState(false);   // 注文の確認シート
   const [viewMenu,     setViewMenu]     = useState(false);   // 注文中でもメニューを見る（追加注文）
@@ -3372,6 +3494,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // 実績の判定には、アーカイブへ移された過去の自分の注文も含める
   // （本体は新しい60件しか残らないため、これが無いと「50杯」などに届かない）
   const badgeOrders     = boot ? [...(boot.myOrders || []), ...(boot.myArchive || [])] : allOrders;
+  // 🏆 みんなのランキング（サーバーが名前とランクだけ送ってくる）。
+  // 昔のつなぎ方（全会員をブラウザに配る）のときは、手元の一覧から作る。
+  const ranking = boot ? (boot.ranking || [])
+    : (allCustomers || []).map(c => ({ id:String(c.id), name:c.name, rankBasis:c.rankBasis||0, purchases:c.currentYearPurchases||0 }))
+        .sort((a,b) => (b.rankBasis-a.rankBasis) || (b.purchases-a.purchases));
   const menu            = decorateMenu(boot ? (boot.menu || menuProp) : menuProp);
   const designatedDrink = decorateItem(boot ? boot.designatedDrink : ddProp);
   const vipGiftDrink    = decorateItem(boot ? boot.vipGiftDrink : vipProp);
@@ -3680,6 +3807,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   </div>
                 </>
               )}
+              {/* 🏅 ランクアップまで（次の特典を見せて、あと何回か分かるように） */}
+              <RankUpCard found={found} rank={rank} next={next} cyp={cyp}
+                onSeeRanks={()=>{ setTab("tickets"); setShowRanks(true); }}/>
+              {/* 🏆 みんなのランキング */}
+              <RankingHome ranking={ranking} myId={found.id} onMore={()=>setTab("play")}/>
               {/* 今日の一節（聖書 新改訳2017） */}
               <TodayVerse/>
             </div>
@@ -3782,7 +3914,12 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
             <div className="nz-page">
               <h2 className="nz-h">🎮 あそび</h2>
               <DrinkRoulette menu={menu.filter(m=>!isSoldOut(m))} onPick={(it)=>{ if (orderingNow()) { setTab("order"); return; } addToCart(it); popSound(); setTab("order"); }}/>
-              <RankingBoard customers={customers} myId={found.id}/>
+              <div className="nz-card" style={{marginTop:10,position:"relative",minHeight:78}}>
+                <div className="nz-card-h">🐈‍⬛ 看板猫</div>
+                <div style={{fontSize:"0.8rem",color:"var(--ink2,#8a7f76)"}}>そっとなでると、返事をしてくれます</div>
+                <NekoMascot/>
+              </div>
+              <RankingHome ranking={ranking} myId={found.id}/>
               <BadgeShelf100 found={found} orders={badgeOrders} defaultOpen/>
               <div className="nz-card" style={{marginTop:10}}>
                 <div className="nz-card-h">🎨 きせかえ</div>
@@ -3809,6 +3946,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 </SettingRow>
                 <SettingRow icon="🌗" label="画面の色" sub="「自動」は18時〜5時だけ夜のネオンになります">
                   <Segmented value={dayNight} options={[["day","明るい"],["night","よる"],["auto","自動"]]} onChange={(v)=>{ setDayNight(v); setDayNightPref(v); }}/>
+                </SettingRow>
+                <SettingRow icon="🎨" label="背景の色" sub="押すと画面のうしろの色が変わります">
+                  <Segmented value={bgTheme} options={NIGHT_THEMES.map((t,i)=>[i,t.n])} onChange={(v)=>{ setBgTheme(v); applyBgTheme(v); }}/>
                 </SettingRow>
                 <SettingRow icon={sndOn ? "🔔" : "🔕"} label="効果音" sub="商品を押したときの「ぽっ」">
                   <button type="button" className={"nz-toggle" + (sndOn ? " on" : "")} aria-pressed={sndOn} onClick={()=>{ const n=!sndOn; setSndOn(n); try { lsSet("niji_snd", n ? "on" : "off"); } catch {} if (n) { popSound(); unlockAch("niji_ach_snd", "効果音デビュー"); } }}><i/></button>
@@ -7100,7 +7240,7 @@ body.night .toy-btn { box-shadow:0 0 14px rgba(178,141,255,0.15); }
   box-shadow:0 6px 28px rgba(255,110,199,0.45);
   border:2px dashed rgba(255,255,255,0.7); }
 /* 文字を大きく（年配の方向け） */
-body.bigtext { font-size:117%; }
+html.bigtext, body.bigtext { font-size:117%; }
 /* チケット／注文の切り替えは、スクロールしても上に貼り付く */
 .cv-tabs { position:sticky; top:6px; z-index:20; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); box-shadow:0 4px 14px rgba(0,0,0,0.08); }
 body.night .cv-tabs { background:rgba(30,24,60,0.75) !important; }
@@ -7413,7 +7553,9 @@ body.pastel .approot::before { content:""; position:fixed; inset:0; z-index:-1; 
   background:
     radial-gradient(700px 520px at 92% -8%, rgba(255,214,224,0.75), transparent 60%),
     radial-gradient(620px 520px at -8% 104%, rgba(205,233,255,0.75), transparent 60%),
-    radial-gradient(520px 420px at 50% 60%, rgba(230,219,255,0.4), transparent 70%); }
+    radial-gradient(520px 420px at 50% 60%, rgba(230,219,255,0.4), transparent 70%);
+  filter:hue-rotate(var(--nh,0deg)) saturate(1.05); transition:filter 0.6s ease; }
+body.pastel .aurora { filter:blur(42px) hue-rotate(var(--nh,0deg)); }
 /* 昼のホーム：夜の飾りは休み、看板はパステルのグラデ文字に */
 body.pastel .star, body.pastel .big-moon, body.pastel .shooting-star, body.pastel .stardust, body.pastel .star-real { display:none !important; }
 body.pastel .float-emoji { opacity:0.55; }
@@ -7442,7 +7584,7 @@ body.pastel .menu-item { border-radius:16px; box-shadow:0 4px 12px rgba(58,46,79
 body.pastel .btn-pay { background:var(--coral); color:#fff; box-shadow:0 8px 20px rgba(255,122,158,0.35); }
 body.pastel .keiro-in, body.pastel .bday-in { background:linear-gradient(160deg,#241c5a,#1a1244); }
 /* 文字の大きさ */
-body.bigtext2 { font-size:132%; }
+html.bigtext2, body.bigtext2 { font-size:132%; }
 
 /* ── 画面の枠と上のあいさつ ── */
 .nz-shell { max-width:480px; margin:0 auto; padding:14px 16px calc(112px + env(safe-area-inset-bottom)); min-height:100vh; position:relative; }
@@ -7725,4 +7867,71 @@ body.night .nz-tb.on { color:#ffd9ec; } body.night .nz-tb.on .i { background:rgb
   background:rgba(255,255,255,0.8); color:#8a5a12; border-radius:999px; padding:2px 8px; white-space:nowrap; }
 .nz-tk-exp.urgent { background:#ffe6ee; color:#c2185b; }
 body.night .nz-tk-exp { background:rgba(255,255,255,0.2); color:#ffe9a8; }
+
+/* ── ランクの紋章（残高カードの角・ランキング・ランクアップ） ── */
+.nz-emblem { position:relative; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+  border-radius:50%; background:radial-gradient(circle at 34% 28%, #fff, rgba(255,255,255,0.72));
+  box-shadow:0 4px 14px rgba(58,46,79,0.25), inset 0 0 0 2px rgba(255,255,255,0.95); }
+.nz-emblem::before { content:""; position:absolute; inset:-4px; border-radius:50%; z-index:-1;
+  background:conic-gradient(from 0deg, rgba(255,255,255,0.95), rgba(255,255,255,0.15), rgba(255,255,255,0.95), rgba(255,255,255,0.15), rgba(255,255,255,0.95)); }
+.nz-emblem.shine::before { animation:spin 7s linear infinite; }
+.nz-emblem.top::before { background:conic-gradient(from 0deg,#ff6ec7,#ffd166,#74f7a1,#4deeea,#b28dff,#ff6ec7); animation:spin 4s linear infinite; }
+.nz-emblem-gem { line-height:1; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.2)); }
+@media (prefers-reduced-motion: reduce) { .nz-emblem::before { animation:none !important; } }
+.nz-w-emblem { position:absolute; top:14px; right:14px; z-index:4; }
+
+/* ── ランクアップまで ── */
+.nz-rankup { background:var(--card,#fff); border:1px solid var(--line,#e7ded3); border-radius:22px; padding:16px;
+  box-shadow:0 10px 26px rgba(58,46,79,0.08); }
+.nz-rankup-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.nz-rankup-eyebrow { font-size:0.78rem; font-weight:900; letterSpacing:0.06em; color:var(--ink,#3d3630); }
+.nz-rankup-now { display:flex; align-items:center; gap:12px; }
+.nz-rankup-name { font-size:1.25rem; font-weight:900; line-height:1.2; }
+.nz-rankup-benefit { font-size:0.8rem; color:var(--ink2,#8a7f76); margin-top:2px; }
+.nz-rankup-count { text-align:right; color:var(--ink2,#8a7f76); font-size:0.7rem; line-height:1.1; }
+.nz-rankup-count b { display:block; font-size:1.5rem; color:var(--ink,#3d3630); font-variant-numeric:tabular-nums; }
+.nz-rankup-bar { margin-top:14px; height:14px; border-radius:999px; background:var(--barbg,#f0e6ea); overflow:hidden; }
+.nz-rankup-bar i { display:block; height:100%; border-radius:999px; transition:width 0.8s cubic-bezier(0.2,0.9,0.3,1);
+  background-size:200% 100%; animation:rainbowShift 3.5s ease infinite; }
+.nz-rankup-goal { display:flex; align-items:center; gap:10px; margin-top:10px; }
+.nz-rankup-left { flex:1; font-size:0.95rem; color:var(--ink2,#8a7f76); }
+.nz-rankup-left b { font-size:1.45rem; font-weight:900; margin:0 2px; }
+.nz-rankup-nextname { font-weight:900; margin-left:4px; }
+.nz-rankup-reward { display:flex; align-items:center; gap:10px; margin-top:12px; border:1.5px dashed; border-radius:14px; padding:10px 12px; font-size:0.82rem; color:var(--ink2,#8a7f76); }
+.nz-rankup-reward b { display:block; font-size:0.9rem; }
+
+/* ── みんなのランキング ── */
+.nz-ranking { background:var(--card,#fff); border:1px solid var(--line,#e7ded3); border-radius:22px; padding:14px 14px 16px;
+  box-shadow:0 10px 26px rgba(58,46,79,0.08); }
+.nz-rank-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:14px;
+  border:1px solid var(--line,#e7ded3); background:var(--panel2,#f6eff5); margin-bottom:6px; }
+.nz-rank-row.me { border-width:1.5px; }
+.nz-rank-no { min-width:26px; text-align:center; font-weight:900; font-size:1rem; color:var(--ink3,#9a8f85); }
+.nz-rank-name { flex:1; min-width:0; font-weight:800; font-size:0.95rem; color:var(--ink,#3d3630);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nz-rank-me { font-size:0.68rem; font-weight:800; border:1px solid; border-radius:999px; padding:1px 7px; margin-left:6px; }
+.nz-rank-val { font-size:0.8rem; font-weight:800; white-space:nowrap; }
+.nz-rank-dots { text-align:center; color:var(--ink4,#a79b90); letter-spacing:0.3em; font-size:0.7rem; padding:2px 0 6px; }
+
+/* ── きせかえ（背景の色）。疑似要素はクラスで指定しないと塗り直されないので、色ごとに書く ── */
+.nz-bgtint { position:fixed; inset:0; z-index:-1; pointer-events:none; background:none; }
+/* 明るい画面のきせかえ */
+body.pastel .approot.nzth1 .nz-bgtint, body.pastel .nz-bgtint.nzth1 {
+  background:radial-gradient(900px 620px at 85% -5%, rgba(255,186,130,0.55), transparent 62%),
+             radial-gradient(760px 560px at -5% 105%, rgba(255,158,186,0.45), transparent 60%); }
+body.pastel .approot.nzth2 .nz-bgtint, body.pastel .nz-bgtint.nzth2 {
+  background:radial-gradient(900px 620px at 85% -5%, rgba(130,196,255,0.55), transparent 62%),
+             radial-gradient(760px 560px at -5% 105%, rgba(150,230,220,0.45), transparent 60%); }
+body.pastel .approot.nzth3 .nz-bgtint, body.pastel .nz-bgtint.nzth3 {
+  background:radial-gradient(900px 620px at 85% -5%, rgba(160,224,150,0.55), transparent 62%),
+             radial-gradient(760px 560px at -5% 105%, rgba(226,232,140,0.45), transparent 60%); }
+/* 夜のきせかえ */
+body.night .approot.nzth1 .nz-bgtint { mix-blend-mode:screen;
+  background:radial-gradient(1000px 700px at 85% -8%, rgba(255,120,90,0.45), transparent 62%); }
+body.night .approot.nzth2 .nz-bgtint { mix-blend-mode:screen;
+  background:radial-gradient(1000px 700px at 85% -8%, rgba(60,170,255,0.45), transparent 62%); }
+body.night .approot.nzth3 .nz-bgtint { mix-blend-mode:screen;
+  background:radial-gradient(1000px 700px at 85% -8%, rgba(90,220,140,0.45), transparent 62%); }
+/* 画面のふちにも、選んだ色をうっすら出す（変えたことが分かるように） */
+body.pastel.nzth1 { background:#fff4ec; } body.pastel.nzth2 { background:#f0f8ff; } body.pastel.nzth3 { background:#f2faf1; }
 `;
