@@ -67,6 +67,20 @@ const CUSTOMER_WRITABLE = [
 ];
 // 🎁 敬老の日 特別プレゼント（2026-09-20・対象の方だけ・お一人1回）。画面側の KEIRO と同じ内容
 const KEIRO = { year: "2026", date: "2026/9/20", names: ["えつこ", "ちえこ", "ゆうこ", "まきやま", "よこやま"] };
+// 🎁 特別チケット（App.jsx の SPECIALS と同じ内容にしておくこと）。
+// お名前で対象を決める方式。1枚＝ドリンク1杯＋トッピング1つまで無料。
+// 使った枚数は会員データの specialUsed に入れる（例 { win_2026: 2 }）。ここでしか増やさない。
+const SPECIALS = [
+  { id: "sp_bday_2026", n: 1, until: "2027/9/30", names: ["まり", "えがわ", "まつおたかし", "よこやま"] },
+  { id: "win_2026",     n: 5, until: "2027/9/30", names: ["よこやま"] },
+];
+const specialById = (id) => SPECIALS.find((s) => s.id === String(id)) || null;
+const specialUsedN = (c, id) => Number(((c && c.specialUsed) || {})[String(id)]) || 0;
+const specialExpired = (sp) => {
+  const [y, m, d] = String(sp.until).split("/").map(Number);
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) > Date.UTC(y, m - 1, d);
+};
 const jstToday = () => { const d = new Date(Date.now() + 9 * 3600 * 1000); return `${d.getUTCFullYear()}/${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
 
 const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
@@ -362,6 +376,8 @@ export default async function handler(req, res) {
         }
         // 🎂 誕生日の一杯：誕生月・今年未使用のときだけ。無料の品はドリンク1＋トッピング1まで、価格は必ず0
         let bdayCustomers = null, bdayIndex = -1;
+        // 特別チケットを使う注文では、誕生月の券は使わない（両方いっぺんには使えない）
+        if (order.specialGiftId) order.isBirthdayGift = false;
         if (order.isBirthdayGift) {
           bdayCustomers = arr(await fbGet("cafe_v4_customers"));
           bdayIndex = bdayCustomers.findIndex((c) => String(c.id) === String(me.id));
@@ -376,7 +392,36 @@ export default async function handler(req, res) {
           order.birthdayItems = [...drinks, ...tops].map((i) => ({ ...i, price: 0, qty: 1 }));
           bdayCustomers[bdayIndex] = { ...mine, birthdayUsedYear: year };
         } else {
-          order.isBirthdayGift = false; order.birthdayItems = [];
+          // 誕生月の券ではない。特別チケットで出す注文なら、選んだ品はこの下で確かめるので残す。
+          order.isBirthdayGift = false;
+          if (!order.specialGiftId) order.birthdayItems = [];
+        }
+        // 🎁 特別チケット：対象者・期限内・残り枚数あり、のときだけ ¥0 で受け付ける。
+        // 中身は「ドリンク1杯＋トッピング1つまで」。値段は必ず 0 に直してから保存する。
+        let spCustomers = null, spIndex = -1, spec = null;
+        if (order.specialGiftId) {
+          spec = specialById(order.specialGiftId);
+          if (!spec) return send(res, 400, { error: "このチケットは使えません" });
+          if (specialExpired(spec)) return send(res, 400, { error: "このチケットは有効期限が過ぎています" });
+          spCustomers = arr(await fbGet("cafe_v4_customers"));
+          spIndex = spCustomers.findIndex((c) => String(c.id) === String(me.id));
+          const mine = spCustomers[spIndex];
+          if (!mine || !spec.names.includes(String(mine.name || "").trim())) {
+            return send(res, 403, { error: "このチケットの対象ではありません" });
+          }
+          const used = specialUsedN(mine, spec.id);
+          if (used >= spec.n) return send(res, 409, { error: "このチケットは使い切りました" });
+          const bi = arr(order.birthdayItems);
+          const drinks = bi.filter((i) => i && i.category !== "トッピング");
+          const tops   = bi.filter((i) => i && i.category === "トッピング");
+          if (drinks.length !== 1 || tops.length > 1) {
+            return send(res, 400, { error: "このチケットはドリンク1杯とトッピング1つまでです" });
+          }
+          order.birthdayItems = [...drinks, ...tops].map((i) => ({ ...i, price: 0, qty: 1 }));
+          order.isBirthdayGift = false;   // 誕生月の一杯とは別ものとして扱う
+          spCustomers[spIndex] = { ...mine, specialUsed: { ...(mine.specialUsed || {}), [spec.id]: used + 1 } };
+        } else {
+          order.specialGiftId = null;
         }
         // 🚫 売り切れ（スタッフが POS で印を付けた品）は受け付けない
         {
@@ -393,6 +438,7 @@ export default async function handler(req, res) {
         );
         await fbPut("cafe_v4_orders", [order, ...kept]);
         if (bdayCustomers) await fbPut("cafe_v4_customers", bdayCustomers);
+        if (spCustomers) await fbPut("cafe_v4_customers", spCustomers);
         return send(res, 200, { ok: true });
       }
       case "cancelMyOrder": {
@@ -406,6 +452,17 @@ export default async function handler(req, res) {
         // 済んだ注文は取り消せない（残高が動いた後なので）
         if (target.status !== "pending") return send(res, 400, { error: "この注文はもう取り消せません" });
         await fbPut("cafe_v4_orders", list.filter((o) => o.orderId !== target.orderId));
+        // 🎁 特別チケットを取り消したら、1枚戻る
+        if (target.specialGiftId) {
+          const sp = specialById(target.specialGiftId);
+          const cl = arr(await fbGet("cafe_v4_customers"));
+          const i = cl.findIndex((c) => String(c.id) === String(me.id));
+          if (sp && i >= 0) {
+            const used = specialUsedN(cl[i], sp.id);
+            cl[i] = { ...cl[i], specialUsed: { ...(cl[i].specialUsed || {}), [sp.id]: Math.max(0, used - 1) } };
+            await fbPut("cafe_v4_customers", cl);
+          }
+        }
         // 🎂 誕生日の一杯を取り消したら、券はまた使える
         if (target.isBirthdayGift) {
           const cl = arr(await fbGet("cafe_v4_customers"));
