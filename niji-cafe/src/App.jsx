@@ -2270,6 +2270,40 @@ const keiroIsDay = () => jstToday() === KEIRO.date;
 const keiroTarget = (c) => !!c && KEIRO.names.includes(String(c.name || "").trim());
 const keiroUsed = (c) => String((c && c.keiroGiftUsed) || "") === KEIRO.year;
 
+// ══════════════════════════════════════════
+//  🎁 特別チケット（のあさんが贈る、期限つきの無料券）
+// ══════════════════════════════════════════
+// 敬老の日と同じで「お名前で対象を決める」方式。会員データに券を登録しなくても配れる。
+// 1枚＝お好きなドリンク1杯＋トッピング1つまで無料（タピオカもOK）。
+// 使った枚数だけ会員データの specialUsed に記録する（例 { win_2026: 2 }）。
+//   ・増やせるのはサーバー（placeMyOrder）だけ。お客様の画面からは書き換えられない。
+//   ・注文を取り消す／スタッフが注文を消すと、1枚ぶん戻る。
+const SPECIALS = [
+  { id: "sp_bday_2026", icon: "🎂", cls: "bday", title: "お誕生日 特別チケット",
+    n: 1, until: "2027/9/30", names: ["まり", "えがわ", "まつおたかし", "よこやま"],
+    note: "お誕生日おめでとうございます。いつもありがとうございます！",
+    foot: "※ いつもの誕生月の一杯とは別のプレゼントです" },
+  { id: "win_2026", icon: "🏆", cls: "win", title: "優勝チケット",
+    n: 5, until: "2027/9/30", names: ["よこやま"],
+    note: "教会のレクリエーション 優勝おめでとうございます！",
+    foot: "※ 1枚につきドリンク1杯。5枚あるので5杯ぶんです" },
+];
+const SPECIAL_BY_ID = (id) => SPECIALS.find((s) => s.id === String(id)) || null;
+const specialUsedN = (c, id) => Number(((c && c.specialUsed) || {})[String(id)]) || 0;
+const specialLeft  = (c, sp) => Math.max(0, (Number(sp.n) || 0) - specialUsedN(c, sp.id));
+const specialIsTarget = (c, sp) => !!c && sp.names.includes(String(c.name || "").trim());
+// 有効期限は「その日の終わりまで」。日本時間で見る。
+const specialExpired = (sp) => {
+  const [y, m, d] = String(sp.until).split("/").map(Number);
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return today > Date.UTC(y, m - 1, d);
+};
+// その人がいま使える特別チケット
+const mySpecials = (c) => SPECIALS.filter((sp) => specialIsTarget(c, sp) && !specialExpired(sp) && specialLeft(c, sp) > 0);
+// スタッフ用：対象者なら（使い切っていても）券の状況を出す
+const allSpecialsOf = (c) => SPECIALS.filter((sp) => specialIsTarget(c, sp) && !specialExpired(sp));
+
 // 🎉 クラッカーの演出（Canvas）。左右の角から紙吹雪とリボンが勢いよく飛び出し、
 // ひらひら舞い落ちる。途中で真ん中からもう一発。約7秒で自然に止まる。
 function keiroPopper(canvas, durationMs) {
@@ -2545,16 +2579,16 @@ function BirthdayShow({ found }) {
 }
 
 // 注文画面で、誕生日の一杯（＋トッピング1つ）をメニューから選ぶ
-function BirthdayPicker({ menu, drink, topping, setDrink, setTopping, onQuit }) {
+function BirthdayPicker({ menu, drink, topping, setDrink, setTopping, onQuit, title }) {
   const drinks = menu.filter((m) => m && m.category !== "トッピング");
   const tops = menu.filter((m) => m && m.category === "トッピング");
   const cats = [...new Set(drinks.map((m) => m.category))];
   return (
     <div className="bday" style={{marginTop:0,marginBottom:14}}><div className="bday-in" style={{textAlign:"left"}}>
-      <div className="bday-eyebrow"><span>🎂 お誕生日の一杯をえらぶ</span><button className="btn-quiet" style={{width:"auto",padding:"2px 8px"}} onClick={onQuit}>やめる</button></div>
+      <div className="bday-eyebrow"><span>{title || "🎂 お誕生日の一杯をえらぶ"}</span><button className="btn-quiet" style={{width:"auto",padding:"2px 8px"}} onClick={onQuit}>やめる</button></div>
       {!drink ? (
         <>
-          <div style={{color:"#f5efff",fontWeight:800,marginTop:8}}>① お好きなドリンクを1つ（無料）</div>
+          <div style={{color:"#f5efff",fontWeight:800,marginTop:8}}>① お好きなドリンクを1杯（無料）</div>
           {cats.map((cat) => (
             <div key={cat} style={{marginTop:8}}>
               <div style={{color:"#c9bfe6",fontSize:"0.75rem",marginBottom:4}}>{cat}</div>
@@ -2585,6 +2619,41 @@ function BirthdayPicker({ menu, drink, topping, setDrink, setTopping, onQuit }) 
         </>
       )}
     </div></div>
+  );
+}
+
+// 🎁 特別チケットの半券。チケット画面に出る。押すとメニューから1杯えらべる。
+function SpecialTicket({ found, sp, onUse, disabled }) {
+  const left = specialLeft(found, sp);
+  if (left <= 0) return null;
+  return (
+    <div className={"nz-sp " + (sp.cls || "")}>
+      <div className="nz-sp-in">
+        {[...Array(5)].map((_, i) => (
+          <span key={i} className="nz-sp-spark" aria-hidden="true"
+            style={{left:`${(i*41+8)%100}%`, top:`${(i*57+10)%100}%`, animationDelay:`${(i%4)*0.45}s`}}>✦</span>
+        ))}
+        <div className="nz-sp-top">
+          <span className="nz-sp-eyebrow">{sp.icon} {sp.title}</span>
+          <ExpiryPill kind={sp.until} dark/>
+        </div>
+        <div className="nz-sp-body">
+          <div className="nz-sp-amt"><b>{left}</b><span>枚</span></div>
+          <div className="nz-sp-txt">
+            <b>お好きなドリンク 1杯 無料</b>
+            トッピングも1つ無料（タピオカもOK）。
+            {sp.n > 1 ? ` 1枚で1杯ぶん、あと${left}杯 お使いいただけます。` : ""}
+          </div>
+        </div>
+        <div className="nz-sp-note">{sp.note}</div>
+        {disabled ? (
+          <div className="nz-sp-wait">いま注文中です。届いてから、またお使いいただけます</div>
+        ) : (
+          <button className="btn-pay nz-sp-btn" onClick={onUse}>{sp.icon} この券で一杯えらぶ →</button>
+        )}
+        <div className="nz-sp-foot">{found.name} 様　{sp.foot || ""}</div>
+      </div>
+    </div>
   );
 }
 
@@ -2917,8 +2986,17 @@ const isSoldOut = (item) => !!(item && item.soldOut);
 
 // チケットの「いつまで使えるか」。どの券でも同じ形で、大きく目立つように出す。
 // kind: "today"（今日だけ）／"month"（今月末まで）／"none"（期限なし）
+//       "2027/9/30" のような日付を渡すと、その日まで
 function expiryInfo(kind) {
   const now = new Date();
+  if (typeof kind === "string" && kind.indexOf("/") > 0) {
+    const [y, m, d] = kind.split("/").map(Number);
+    const end   = new Date(y, m - 1, d);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const days  = Math.max(0, Math.round((end - today) / 86400000));
+    const left  = days === 0 ? "今日まで" : days >= 60 ? `あと${Math.floor(days / 30)}か月` : `あと${days}日`;
+    return { text: `${y}年${m}月${d}日まで`, left, urgent: days <= 7 };
+  }
   if (kind === "today") return { text: "今日かぎり", left: "今日まで", urgent: true };
   if (kind === "month") {
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -3088,7 +3166,8 @@ function OrderStatusCard({ order, ready, onCancel, onDismiss, justOrdered, okMsg
   const items = [
     ...(o.items || []).map((it, i) => ({ k: "i" + i, icon: it.emoji, name: `${it.name} × ${it.qty}`, right: `¥${(it.price * it.qty).toLocaleString()}`, cls: "" })),
     ...(o.benefitItems || []).map((it, i) => ({ k: "b" + i, icon: it.emoji, name: it.name, right: "🎁 無料", cls: "nz-free" })),
-    ...(o.birthdayItems || []).map((it, i) => ({ k: "d" + i, icon: it.emoji, name: it.name, right: "🎂 無料", cls: "nz-free" })),
+    ...(o.birthdayItems || []).map((it, i) => ({ k: "d" + i, icon: it.emoji, name: it.name,
+        right: ((SPECIAL_BY_ID(o.specialGiftId) || {}).icon || "🎂") + " 無料", cls: "nz-free" })),
   ];
   const step = ready ? 3 : 2;
   return (
@@ -3297,7 +3376,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   });
   const [benefitItems, setBenefitItems] = useState([]); // 無料特典アイテム
   const [benefitUsed,  setBenefitUsed]  = useState(false); // この注文で特典使用
-  const [bdayMode,     setBdayMode]     = useState(false); // 🎂 誕生日の一杯を選んでいる
+  // どの無料券で一杯えらんでいるか。"" ＝ 選んでいない／"bday" ＝ 誕生月の一杯／
+  // それ以外は特別チケットの id（"win_2026" など）
+  const [bdayMode,     setBdayMode]     = useState("");
   const [bdayDrink,    setBdayDrink]    = useState(null);
   const [bdayTopping,  setBdayTopping]  = useState(null);
   const [busy,         setBusy]         = useState(false);
@@ -3324,7 +3405,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const [showRanks, setShowRanks] = useState(false);
   const [showPlay,  setShowPlay]  = useState(false);   // バッジ棚・ランキング（ふだん閉じる）
 
-  const reset = () => { setTab("home"); setSheet(false); setReady(null); setViewMenu(false); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); setBdayMode(false); setBdayDrink(null); setBdayTopping(null); };
+  const reset = () => { setTab("home"); setSheet(false); setReady(null); setViewMenu(false); setCart([]); setOrdered(false); setBenefitItems([]); setBenefitUsed(false); setBdayMode(""); setBdayDrink(null); setBdayTopping(null); };
   // 画面を離れる／別の人に切り替わるとき、遊びの記録の同期を止める（残りは送ってから）
   useEffect(() => () => playDetach(), []);
   useEffect(() => { if (!found) playDetach(); }, [found && found.id]);
@@ -3596,7 +3677,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       usedBenefit: benefitUsed,
       usedToppingCount: benefitItems.length,
       // 🎂 誕生日の一杯（＋トッピング1つ）。¥0。サーバーでも「誕生月・今年未使用」を確認する
-      isBirthdayGift: !!bdayDrink,
+      isBirthdayGift: !!bdayDrink && bdayMode === "bday",
+      // 🎁 特別チケット（お誕生日 特別／優勝）。¥0。サーバーでも「対象者・残り枚数・期限」を確認する
+      specialGiftId: (!!bdayDrink && bdayMode && bdayMode !== "bday") ? bdayMode : null,
       birthdayItems: bdayDrink ? [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])] : [],
       // 特典チケットから引いたトッピング数（取り消しで戻すため）。今月ぶんを先に使う
       ticketToppingUse: (benefitUsed && (isToppingRank || ticketToppingsHere > 0))
@@ -3613,9 +3696,16 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
 
     // 書き込みの土台は同期済みの最新を使う（開きっぱなしの画面の古い残高で上書きしないため）
     let updated = { ...(customers.find(c=>c.id===found.id) || found) };
-    if (bdayDrink) {
+    if (bdayDrink && bdayMode === "bday") {
       updated = { ...updated, birthdayUsedYear: String(new Date().getFullYear()) };
       if (!benefitUsed) { saveC(customers.map(c=>c.id===found.id ? updated : c)); setFound(updated); }
+    }
+    // 🎁 特別チケットを1枚使った。数を増やすのはサーバー（placeMyOrder）の仕事なので、
+    //    ここでは画面の見え方だけ先に合わせておく（次の取り直しでサーバーの値に揃う）。
+    if (bdayDrink && order.specialGiftId) {
+      const id = order.specialGiftId;
+      updated = { ...updated, specialUsed: { ...(updated.specialUsed || {}), [id]: specialUsedN(updated, id) + 1 } };
+      setFound(updated);
     }
     if (benefitUsed) {
       if (isToppingRank || ticketToppingsHere > 0) {
@@ -3643,7 +3733,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     const todayKey = new Date().toLocaleDateString("ja-JP");
     const firstToday = !mine.some(o => String(o.createdAt || "").indexOf(todayKey + " ") === 0);
     setOkExtra(nth % 10 === 0 ? `☕ これで${nth}杯目のご注文！` : firstToday ? "今日の一杯目！" : "");
-    setCart([]); setBenefitItems([]); setBenefitUsed(false); setBdayMode(false); setBdayDrink(null); setBdayTopping(null); setOrdered(true);
+    setCart([]); setBenefitItems([]); setBenefitUsed(false); setBdayMode(""); setBdayDrink(null); setBdayTopping(null); setOrdered(true);
     // 対応している端末（主にAndroid）では、注文完了を指先にも「トン・トン」と伝える
     try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
   };
@@ -3655,6 +3745,12 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       // 誕生日の一杯を取り消したら、券はまた使える
       updated = { ...updated, birthdayUsedYear: null };
       if (!myPendingOrder.usedBenefit) { saveC(customers.map(c=>c.id===found.id ? updated : c)); setFound(updated); }
+    }
+    if (myPendingOrder.specialGiftId) {
+      // 🎁 特別チケットも1枚戻る（実際に戻すのはサーバーの cancelMyOrder）
+      const id = myPendingOrder.specialGiftId;
+      updated = { ...updated, specialUsed: { ...(updated.specialUsed || {}), [id]: Math.max(0, specialUsedN(updated, id) - 1) } };
+      setFound(updated);
     }
     if (myPendingOrder.usedBenefit) {
       const fromTickets = (myPendingOrder.ticketToppingUse || []).reduce((s,u)=>s+(Number(u.n)||0), 0);
@@ -3706,6 +3802,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const ticketChips = found ? [
     ...(keiroTarget(found) && keiroIsDay() && !keiroUsed(found) ? [{ k:"keiro", cls:"nz-tk-keiro", icon:"🎁", t:"敬老の日", s:"特別な一杯を無料で", exp:"今日かぎり", urgent:true }] : []),
     ...(isBirthdayTicketActive(found) ? [{ k:"bday", cls:"nz-tk-bday", icon:"🎂", t:"誕生月の一杯", s:"お好きなドリンク無料", exp:expMonth.text, urgent:expMonth.urgent }] : []),
+    // 🎁 特別チケット（お誕生日 特別／優勝）
+    ...mySpecials(found).map((sp) => { const e = expiryInfo(sp.until); return {
+      k: "sp:" + sp.id, cls: "nz-tk-sp " + (sp.cls || ""), icon: sp.icon, t: sp.title,
+      s: `あと${specialLeft(found, sp)}枚 ・ ドリンク＋トッピング無料`, exp: e.text, urgent: e.urgent }; }),
     ...(rank && rank.benefit.type !== "none" ? [{ k:"month", cls:"nz-tk-month", icon: rank.benefit.icon, t:"今月の特典",
         s: isAlways ? "毎回自動で割引" : isToppingRank ? (toppingFullyUsed ? "今月分は使い切り" : `トッピング あと${monthlyTopping}個`) : (used ? "使用済み" : rank.benefit.desc),
         exp: isAlways ? "" : expMonth.text, urgent: !isAlways && expMonth.urgent }] : []),
@@ -3715,6 +3815,15 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
 
   // チケットを押したら、そのまま注文の画面へ行き「🎁 特典」の欄を開く。
   // （いままでは押しても何も起きず、自分で注文タブへ行って「使用する」を探す必要があった）
+  // 🎁 特別チケットを使う。注文タブへ移り、メニューから1杯えらぶ画面を出す。
+  const useSpecial = (id) => {
+    const sp = SPECIAL_BY_ID(id);
+    if (!sp || !found || specialLeft(found, sp) <= 0) return;
+    if (orderingNow()) { setTab("order"); return; }   // 注文中は置き換え事故を防ぐ
+    setBdayMode(id); setBdayDrink(null); setBdayTopping(null); setTab("order");
+    setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 150);
+  };
+
   const goUseBenefit = () => {
     if (orderingNow()) { setTab("order"); return; }   // 注文中は「品を足す・変える」から
     setTab("order"); setBenefitOpen(true);
@@ -3796,7 +3905,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   <div className="nz-strip">
                     {ticketChips.map(c => (
                       <button key={c.k} type="button" className={"nz-tk " + c.cls} onClick={()=>{
-                        if (c.k==="bday") { setBdayMode(true); setTab("order"); }
+                        if (c.k==="bday") { setBdayMode("bday"); setTab("order"); }
+                        else if (c.k.indexOf("sp:")===0) { useSpecial(c.k.slice(3)); }
                         else if ((c.k==="month" || c.k==="bonus") && showBenefit) { goUseBenefit(); }
                         else setTab("tickets");
                       }}>
@@ -3824,7 +3934,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               <KeiroTicket found={found} orders={orders} onClaim={claimKeiro} onCancel={cancelKeiro}/>
               <MonthlyBenefitTicket found={found} rank={rank} onUse={showBenefit ? goUseBenefit : null}/>
               <BonusTicketWallet found={found} onUse={showBenefit ? goUseBenefit : null}/>
-              <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth} onUse={()=>{ setBdayMode(true); setTab("order"); }}/>
+              <BirthdayTicket found={found} onSetMonth={saveMyBirthMonth} onUse={()=>{ setBdayMode("bday"); setTab("order"); }}/>
+              {mySpecials(found).map((sp) => (
+                <SpecialTicket key={sp.id} found={found} sp={sp} disabled={orderingNow()} onUse={()=>useSpecial(sp.id)}/>
+              ))}
               {gotBadges >= 100 && <FreeDrinkTicket found={found}/>}
               {found.isVIP && (
                 <div className="nz-card" style={{marginTop:12}}>
@@ -3881,9 +3994,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   <h2 className="nz-h">☕ 注文する</h2>
                   {isSpecial && <div className="nz-note nz-note-purple">💜 スペシャル会員 — 全品無料です</div>}
                   {isStaffAccount && <div className="nz-note nz-note-green">🟢 スタッフ割引 {discountRate}%OFF が自動で入ります</div>}
-                  {bdayMode && isBirthdayTicketActive(found) && (
+                  {bdayMode === "bday" && isBirthdayTicketActive(found) && (
                     <BirthdayPicker menu={menu.filter(m=>!isSoldOut(m))} drink={bdayDrink} topping={bdayTopping} setDrink={setBdayDrink} setTopping={setBdayTopping}
-                      onQuit={()=>{ setBdayMode(false); setBdayDrink(null); setBdayTopping(null); }}/>
+                      onQuit={()=>{ setBdayMode(""); setBdayDrink(null); setBdayTopping(null); }}/>
+                  )}
+                  {bdayMode && bdayMode !== "bday" && SPECIAL_BY_ID(bdayMode) && specialLeft(found, SPECIAL_BY_ID(bdayMode)) > 0 && (
+                    <BirthdayPicker menu={menu.filter(m=>!isSoldOut(m))} drink={bdayDrink} topping={bdayTopping} setDrink={setBdayDrink} setTopping={setBdayTopping}
+                      title={`${SPECIAL_BY_ID(bdayMode).icon} ${SPECIAL_BY_ID(bdayMode).title}で一杯えらぶ`}
+                      onQuit={()=>{ setBdayMode(""); setBdayDrink(null); setBdayTopping(null); }}/>
                   )}
                   {usual && cart.length===0 && (
                     <button type="button" className="usual-btn nz-usual" onClick={useUsual}>
@@ -3995,7 +4113,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     <div key={"b"+i} className="nz-row nz-free"><span>🎁 {item.emoji} {item.name}</span><span>無料</span></div>
                   ))}
                   {bdayDrink && [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])].map((item,i)=>(
-                    <div key={"bd"+i} className="nz-row nz-free"><span>🎂 {item.emoji} {item.name}</span><span>無料</span></div>
+                    <div key={"bd"+i} className="nz-row nz-free"><span>{(SPECIAL_BY_ID(bdayMode) || {}).icon || "🎂"} {item.emoji} {item.name}</span><span>無料</span></div>
                   ))}
                 </div>
                 <div className="nz-sheet-sum">
@@ -4809,6 +4927,10 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
             : <span className="pt-used">特典なし</span>}
           {unusedTickets(liveCustomer).length > 0 && <span className="pt-gold">🎟 持ち越し券 {unusedTickets(liveCustomer).length}枚</span>}
           {isBirthdayTicketActive(customer) && <span className="pt-pink">🎂 誕生月の1杯 未使用</span>}
+          {allSpecialsOf(liveCustomer).map(sp => { const left = specialLeft(liveCustomer, sp); return (
+            <span key={sp.id} className={left > 0 ? "pt-gold" : "pt-used"}>
+              {sp.icon} {sp.title} {left > 0 ? `あと${left}枚` : "使い切り"}
+            </span>); })}
           {pendingOfCustomer.length > 0 && <span className="pt-warn">⚠ アプリ注文 未処理 {pendingOfCustomer.length}件</span>}
         </div>
         {pendingOfCustomer.length > 0 && (
@@ -4872,6 +4994,17 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
               alert("使用済みにしました。1杯ぶんは会計から外してください。");
             }}>🎂 誕生月券を使う</button>
           )}
+          {allSpecialsOf(liveCustomer).filter(sp => specialLeft(liveCustomer, sp) > 0).map(sp => (
+            <button key={sp.id} className="pos-ghost" style={{borderColor:"#d9a441",color:"#8a6a1a"}} onClick={()=>{
+              const left = specialLeft(liveCustomer, sp);
+              if (!window.confirm(`${customer.name} さんの「${sp.icon} ${sp.title}」を1枚つかいます。\n（いま あと${left}枚 ／ ${sp.until} まで）\nドリンク1杯とトッピング1つは会計から外してください。よろしいですか？`)) return;
+              const used = specialUsedN(liveCustomer, sp.id) + 1;
+              const patch = { specialUsed: { ...(liveCustomer.specialUsed || {}), [sp.id]: used } };
+              saveC(customers.map(c=>c.id===customer.id ? {...c, ...patch} : c));
+              setCustomer({...liveCustomer, ...patch});
+              alert(`1枚つかいました。のこり ${Math.max(0, sp.n - used)}枚 です。`);
+            }}>{sp.icon} {sp.title}を使う</button>
+          ))}
         </div>
       </div>
     </>
@@ -5505,7 +5638,7 @@ function SalesHistoryPanel({ customers, orders }) {
       items: [
         ...(o.items || []).map(i=>`${i.name}×${i.qty}`),
         ...(o.benefitItems || []).map(i=>`${i.name}(特典)`),
-        ...(o.birthdayItems || []).map(i=>`${i.name}(🎂誕生日)`),
+        ...(o.birthdayItems || []).map(i=>`${i.name}(${o.specialGiftId ? ((SPECIAL_BY_ID(o.specialGiftId)||{}).title || "特別チケット") : "🎂誕生日"})`),
         ...(o.makaiItem ? [`${o.makaiItem.name}(賄い)`] : []),
       ].join(", "),
       performer: o.completedBy || "スタッフ",
@@ -5752,7 +5885,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     const itemText = [
       ...(order.items||[]).map(i=>`${i.name}×${i.qty}`),
       ...(order.benefitItems||[]).map(i=>`${i.name}(特典)`),
-      ...(order.birthdayItems||[]).map(i=>`${i.name}(🎂誕生日)`),
+      ...(order.birthdayItems||[]).map(i=>`${i.name}(${order.specialGiftId ? ((SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット") : "🎂誕生日"})`),
       ...(order.makaiItem ? [`${order.makaiItem.name}(賄い)`] : []),
     ].join(", ");
     const updatedCustomer = {
@@ -5813,12 +5946,19 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
       if ((order.ticketToppingUse || []).length > 0) { updated = restoreTicketUse(updated, order.ticketToppingUse); changed = true; }
       // 🎂 誕生日の一杯を含む注文を消したら、券はまた使える
       if (order.isBirthdayGift) { updated.birthdayUsedYear = null; changed = true; }
+      // 🎁 特別チケットで出した注文を消したら、1枚戻る
+      if (order.specialGiftId) {
+        const id = order.specialGiftId;
+        updated.specialUsed = { ...(updated.specialUsed || {}), [id]: Math.max(0, specialUsedN(updated, id) - 1) };
+        changed = true;
+      }
       if (changed) saveC(customers.map(x=>x.id===c.id ? updated : x));
     }
     saveOrders(orders.filter(o=>o.orderId!==order.orderId));
   };
 
-  const orderTag = (order) => order.isKeiroGift ? ["🎁 敬老の日", "pt-pink"] : order.isBirthdayGift ? ["🎂 誕生日", "pt-pink"] : order.isVipGift ? ["⭐ VIPギフト", "pt-gold"]
+  const orderTag = (order) => order.specialGiftId ? [`${(SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎁"} ${(SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット"}`, "pt-gold"]
+    : order.isKeiroGift ? ["🎁 敬老の日", "pt-pink"] : order.isBirthdayGift ? ["🎂 誕生日", "pt-pink"] : order.isVipGift ? ["⭐ VIPギフト", "pt-gold"]
     : order.isCash ? ["💵 現金", "pt-ok"] : order.isSpecial ? ["💜 スペシャル", "pt-used"] : [order.rankName, "pt-used"];
   return (
     <>
@@ -5840,7 +5980,7 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
             <div className="pos-oi">
               {(order.items||[]).map((it,i)=>(<div key={i}>{it.emoji} {it.name} × {it.qty}<span className="amt">¥{(it.price*it.qty).toLocaleString()}</span></div>))}
               {(order.benefitItems||[]).map((it,i)=>(<div key={"b"+i}>🎁 {it.emoji} {it.name}{it.qty>1?` × ${it.qty}`:""}<span className="free">特典・無料</span></div>))}
-              {(order.birthdayItems||[]).map((it,i)=>(<div key={"d"+i}>🎂 {it.emoji} {it.name}<span className="free">誕生日・無料</span></div>))}
+              {(order.birthdayItems||[]).map((it,i)=>(<div key={"d"+i}>{(SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎂"} {it.emoji} {it.name}<span className="free">{order.specialGiftId ? ((SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット") : "誕生日"}・無料</span></div>))}
               {order.makaiItem && <div>🍚 {order.makaiItem.name}<span className="free">賄い</span></div>}
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:"0.78rem",color:"#7a6f8c",marginBottom:8}}>
@@ -7347,6 +7487,38 @@ body:not(.night) .keiro-in { background:linear-gradient(160deg,#241c5a,#1a1244);
 body:not(.night) .bday-in { color:#f5efff; }
 @media (prefers-reduced-motion: reduce) { .bday, .bday-in::after, .bday-title, .bday-grad, .flame, .bday-spark { animation:none !important; } }
 
+/* 🎁 特別チケット（お誕生日 特別／優勝）：光る半券 */
+.nz-sp { margin-top:12px; border-radius:20px; padding:3px; position:relative; }
+.nz-sp.bday { background:linear-gradient(120deg,#ff9ac6,#ffd166,#ff9ac6,#b28dff); background-size:300% 300%; animation:rainbowShift 5s ease infinite;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.4), 0 10px 40px rgba(255,154,198,0.45); }
+.nz-sp.win { background:linear-gradient(120deg,#d9a441,#fff3c4,#ffd15c,#d9a441); background-size:300% 300%; animation:rainbowShift 5s ease infinite;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.5), 0 10px 40px rgba(217,164,65,0.45); }
+.nz-sp-in { border-radius:17px; padding:16px 16px 14px; position:relative; overflow:hidden; color:#f5efff;
+  background:radial-gradient(ellipse at 50% 0%,#4a3a2a,transparent 60%),linear-gradient(160deg,#2b2340,#181430); }
+.nz-sp.bday .nz-sp-in { background:radial-gradient(ellipse at 50% 0%,#4a2a5c,transparent 60%),linear-gradient(160deg,#2b1a44,#1a1240); }
+.nz-sp-in::after { content:""; position:absolute; top:-50%; left:-70%; width:40%; height:200%; transform:rotate(18deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.32),transparent); animation:mtixSheen 4.5s ease-in-out infinite; pointer-events:none; }
+.nz-sp-spark { position:absolute; color:#ffd166; font-size:0.9rem; opacity:0; animation:mtixSpark 1.8s ease-in-out infinite; text-shadow:0 0 8px #ffd166; pointer-events:none; }
+.nz-sp-top { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; position:relative; }
+.nz-sp-eyebrow { font-size:0.82rem; letter-spacing:0.08em; font-weight:900; position:relative;
+  background:linear-gradient(90deg,#ffd166,#ff9ac6,#ffd166); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:rainbowShift 3s linear infinite; }
+.nz-sp.win .nz-sp-eyebrow { background:linear-gradient(90deg,#ffe9a8,#fff8d6,#ffd15c); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; }
+.nz-sp-body { margin:12px 0 0; background:#fffdf5; color:#5a3a12; border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px; position:relative; box-shadow:0 4px 14px rgba(0,0,0,0.25); }
+.nz-sp-body::before, .nz-sp-body::after { content:""; position:absolute; top:50%; width:16px; height:16px; border-radius:50%; background:#181430; transform:translateY(-50%); }
+.nz-sp.bday .nz-sp-body::before, .nz-sp.bday .nz-sp-body::after { background:#1a1240; }
+.nz-sp-body::before { left:-8px } .nz-sp-body::after { right:-8px }
+.nz-sp-amt { font-weight:900; color:#c2185b; border-right:2px dashed #f0c9d8; padding-right:12px; white-space:nowrap; line-height:1.05; text-align:center; }
+.nz-sp.win .nz-sp-amt { color:#a9761a; border-right-color:#efdca6; }
+.nz-sp-amt b { display:block; font-size:1.9rem; } .nz-sp-amt span { font-size:0.72rem; }
+.nz-sp-txt { flex:1; text-align:left; font-size:0.76rem; line-height:1.5; }
+.nz-sp-txt b { display:block; font-size:0.95rem; color:#3d2a12; }
+.nz-sp-note { position:relative; margin-top:10px; font-size:0.8rem; font-weight:700; color:#ffe9a8; text-align:center; line-height:1.5; }
+.nz-sp-btn { margin-top:12px; width:100%; font-size:1rem; position:relative; }
+.nz-sp-wait { position:relative; margin-top:12px; text-align:center; font-size:0.78rem; color:#c9bfe6;
+  border:1.5px dashed rgba(255,255,255,0.3); border-radius:12px; padding:8px; }
+.nz-sp-foot { font-size:0.7rem; color:#c9bfe6; margin-top:10px; position:relative; text-align:center; }
+@media (prefers-reduced-motion: reduce) { .nz-sp, .nz-sp-in::after, .nz-sp-eyebrow, .nz-sp-spark { animation:none !important; } }
+
 /* 🎟 特典チケット：金色の半券 */
 .tix-wallet { margin-bottom:12px; padding:14px; border-radius:16px;
   background:linear-gradient(135deg,#fff3c4,#ffe08a 55%,#ffd15c); border:2px dashed #d9a441;
@@ -7633,6 +7805,8 @@ html.bigtext2, body.bigtext2 { font-size:132%; }
 .nz-tk .d { position:absolute; right:10px; top:10px; font-size:1.3rem; }
 .nz-tk-month { background:var(--mint,#d6f5e3); } .nz-tk-bonus { background:var(--peach,#ffe3c9); } .nz-tk-bday { background:var(--blush,#ffd6e0); }
 .nz-tk-free { background:var(--lav,#e6dbff); }
+.nz-tk-sp.bday { background:linear-gradient(135deg,#ffd6e0,#ffe9c9); }
+.nz-tk-sp.win  { background:linear-gradient(120deg,#ffe08a,#fff3c4 45%,#ffd15c); }
 .nz-tk-keiro { background:linear-gradient(120deg,#ff6ec7,#ffd166,#4deeea,#b28dff); background-size:300% 300%; animation:rainbowShift 4s ease infinite; color:#2b2140; }
 body.night .nz-tk { color:#f2edff; }
 .nz-banner { display:flex; align-items:center; gap:10px; width:100%; border:none; border-radius:18px; padding:12px 14px; font-family:inherit; cursor:pointer; text-align:left;
