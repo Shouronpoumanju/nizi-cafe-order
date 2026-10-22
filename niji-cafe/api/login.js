@@ -5,7 +5,7 @@
 //  これにより、全会員の暗証番号やスタッフのパスワードを
 //  ブラウザに配る必要がなくなります。
 // ══════════════════════════════════════════
-import { envReady, fbGet, fbPut, issueToken, sameSecret, hashSecret, looksHashed, send, readBody,
+import { envReady, fbGet, fbPut, fbTxn, issueToken, sameSecret, hashSecret, looksHashed, send, readBody,
          pinVer, clientIp, guardBlocked, guardFail, asList } from "./_lib.js";
 
 // 「この端末で記憶する」の有効期間。週に1回来られる方が毎回打ち直さなくて済むよう、90日にしてある。
@@ -19,6 +19,29 @@ export default async function handler(req, res) {
   // パスワードは絶対に返さない。名前と役割だけ。
   // これがないとスタッフがログイン画面でアカウントを選べないため、
   // ログイン前でも取得できるようにしてある。
+  // ── 健康診断（GET /api/login?health=1） ───────────────────────
+  // 「取り合いに強い書き込み」（ETag → _lib.js の fbTxn）が本物の Firebase で動くかを確かめる。
+  // 2つ同時に書いて、両方とも数に入れば合格。個人情報には一切触れない（cafe_v4_selftest だけ）。
+  // 何度も呼ばれても書き込みが増えないよう、1分に1回まで。
+  if (req.method === "GET" && /[?&]health=1/.test(String(req.url || ""))) {
+    try {
+      const last = await fbGet("cafe_v4_selftest");
+      if (last && Date.now() - (last.t || 0) < 60 * 1000) return send(res, 200, { ok: !!last.ok, cached: true, n: last.n, at: last.at });
+      const before = (last && last.n) || 0;
+      const bump = () => fbTxn("cafe_v4_selftest", (cur) => {
+        const n = ((cur && cur.n) || 0) + 1;
+        return { value: { ...(cur || {}), n, t: Date.now() }, result: n };
+      });
+      await Promise.all([bump(), bump()]);
+      const after = await fbGet("cafe_v4_selftest");
+      const ok = after && after.n === before + 2;
+      await fbPut("cafe_v4_selftest", { ...after, ok, at: new Date().toISOString() });
+      return send(res, 200, { ok, before, after: after && after.n });
+    } catch (e) {
+      return send(res, 500, { ok: false, error: String(e && e.message || e) });
+    }
+  }
+
   if (req.method === "GET") {
     try {
       const [staff, mgrs] = await Promise.all([
