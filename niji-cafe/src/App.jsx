@@ -19,53 +19,25 @@
 //     アーカイブがまだ無くても動く。移行中に同じ注文が両方にあっても重複表示しない。
 import { useState, useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
+// ランク・特典・チケット・行事・日付の決まりは、サーバーと同じ1つのファイルから読む（api/_rules.js）
+import {
+  CHARGE_AMOUNT, RANKS, getRank, getEffectiveRank, nextRank, currentMonth, jstMonthNum, jstYear,
+  getToppingMax, getToppingAvailable, isBenefitUsed, isToppingFullyUsed, calcDiscount,
+  TICKET_RANKS, makeTicket, unusedTickets, ticketToppingsOf, ticketRemainText,
+  isBirthdayTicketActive, KEIRO, keiroIsDay, keiroTarget, keiroUsed,
+  SPECIAL_BY_ID, specialLeft, mySpecials, allSpecialsOf,
+  checkYearRollover, shortVer,
+} from "../api/_rules.js";
 
 // ══════════════════════════════════════════
 //  🔥 Firebase 設定（REST API + 匿名認証トークン）
 // ══════════════════════════════════════════
-const FIREBASE_API_KEY = "AIzaSyC58_CHa0RS0PtjnrotgrTt8Jc67tlDpWM";
+// ※ データベースは「サーバーからしか読めない」設定。画面は必ず /api を通す。
+//   （以前ここにあった「匿名ログインして直接読む」仕組みは、開くたびに匿名の利用者が
+//     増えるだけで使われていなかったので、2026-10 に外した）
+const getAuthToken = async () => null;
 const DB_BASE = "https://nizicafe-card-default-rtdb.asia-southeast1.firebasedatabase.app";
 
-// 匿名ログインの「会員証（IDトークン）」を取得・保持する。
-// Firebase の認証 REST API を直接呼ぶので、SDK のビルド差異に左右されず確実に動く。
-let _authToken = null;       // 現在のトークン
-let _authTokenExp = 0;       // 有効期限（ミリ秒）
-let _authPromise = null;     // 取得中の重複呼び出しを防ぐ
-
-async function fetchNewToken() {
-  // 匿名サインアップでトークンを新規取得
-  const res = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ returnSecureToken: true }),
-    }
-  );
-  if (!res.ok) throw new Error("auth failed");
-  const data = await res.json();
-  _authToken = data.idToken;
-  // expiresIn は秒。安全のため少し早め（60秒手前）に期限切れ扱いにする
-  const ttl = (parseInt(data.expiresIn, 10) || 3600) * 1000;
-  _authTokenExp = Date.now() + ttl - 60000;
-  return _authToken;
-}
-
-async function getAuthToken() {
-  try {
-    // まだ有効なトークンがあれば使い回す
-    if (_authToken && Date.now() < _authTokenExp) return _authToken;
-    // 取得中なら、その結果を待つ（同時に何度も取りに行かない）
-    if (_authPromise) return await _authPromise;
-    _authPromise = fetchNewToken().finally(() => { _authPromise = null; });
-    return await _authPromise;
-  } catch {
-    return null;
-  }
-}
-
-// アプリ起動時に先にトークンを取りに行っておく（書き込み時に待たないように）
-getAuthToken();
 
 // ══════════════════════════════════════════
 //  サーバー（/api）経由のログイン
@@ -79,15 +51,13 @@ let _apiToken = null;
 const setApiToken = (t) => { _apiToken = t; };
 
 // ── お客様の「この端末で記憶する」 ─────────────────────
-// 次回から暗証番号を打たずに開けるように、ログイン証を端末に控える（7日で切れる）。
+// 次回から暗証番号を打たずに開けるように、ログイン証を端末に控える（90日で切れる。暗証番号を変えると無効）。
 // キーに niji_ を付けない（niji_* は遊びの記録としてサーバーに同期されるため）。
 const SESS_KEY = "nz_cust_session";
 const sessLoad = () => { try { const v = JSON.parse(localStorage.getItem(SESS_KEY) || "null"); return v && v.token && v.exp > Date.now() ? v : null; } catch { return null; } };
-const sessSave = (token, name) => { try { localStorage.setItem(SESS_KEY, JSON.stringify({ token, name, exp: Date.now() + 7 * 24 * 3600 * 1000 })); } catch {} };
+const sessSave = (token, name) => { try { localStorage.setItem(SESS_KEY, JSON.stringify({ token, name, exp: Date.now() + 90 * 24 * 3600 * 1000 })); } catch {} };
 const sessClear = () => { try { localStorage.removeItem(SESS_KEY); } catch {} };
 // 文字の大きさ（年配の方向け）
-const bigTextLoad = () => { try { return localStorage.getItem("nz_bigtext") === "1"; } catch { return false; } };
-const applyBigText = (on) => { try { document.body.classList.toggle("bigtext", !!on); localStorage.setItem("nz_bigtext", on ? "1" : "0"); } catch {} };
 
 const apiLogin = async (role, body) => {
   const res = await fetch("/api/login", {
@@ -100,7 +70,8 @@ const apiLogin = async (role, body) => {
   if (!res.ok) {
     // 401（パスワード違い）は「そのまま伝える」。それ以外はサーバー側の不調とみなす。
     const err = new Error(json.error || "ログインに失敗しました");
-    err.rejected = res.status === 401 || res.status === 400;
+    err.rejected = res.status === 401 || res.status === 400 || res.status === 429;
+    err.status = res.status;
     throw err;
   }
   return json;   // ログイン証をどこに保持するかは、呼び出し側が決める
@@ -115,15 +86,43 @@ const apiData = async (op, payload, token) => {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token || _apiToken}` },
     body: JSON.stringify({ op, ...payload }),
   });
+  checkAppVersion(res);
   let json = {};
   try { json = await res.json(); } catch {}
   if (!res.ok) {
     const err = new Error(json.error || "通信に失敗しました");
     err.status = res.status;
+    err.body = json;
+    if (res.status === 410) announceUpdate();
     throw err;
   }
   return json;
 };
+
+// ── 新しい版が出たことを知らせる ──────────────────────
+// 開きっぱなしの画面は古いまま動き続ける。サーバーが返す版（X-App-Version）と
+// この画面の版（公開のときに埋め込まれる __APP_VER__）が違えば、上に「更新」の帯を出す。
+const MY_VER = shortVer(typeof __APP_VER__ !== "undefined" ? __APP_VER__ : "");
+let _updateListeners = new Set();
+let _updateShown = false;
+const announceUpdate = () => { if (_updateShown) return; _updateShown = true; _updateListeners.forEach((f) => { try { f(); } catch {} }); };
+const checkAppVersion = (res) => {
+  try {
+    const sv = shortVer(res.headers.get("X-App-Version"));
+    if (sv && MY_VER && sv !== MY_VER) announceUpdate();
+  } catch {}
+};
+function UpdateBanner() {
+  const [show, setShow] = useState(_updateShown);
+  useEffect(() => { const f = () => setShow(true); _updateListeners.add(f); return () => { _updateListeners.delete(f); }; }, []);
+  if (!show) return null;
+  return (
+    <div className="nz-update" role="status">
+      <span>✨ アプリが新しくなりました</span>
+      <button type="button" onClick={() => { try { location.reload(); } catch {} }}>更新する</button>
+    </div>
+  );
+}
 
 // ログイン証は12時間で切れる。切れたまま操作を続けると、
 // 「保存に失敗しました」とだけ出て理由が分からないので、はっきり伝えて入り直してもらう。
@@ -136,93 +135,25 @@ const notifyExpired = () => {
   setTimeout(() => { _expiredNotified = false; }, 10000);
 };
 
+
+// まるごと保存（メニュー・指定ドリンク・スタッフ一覧など、お金に関係しないものだけ）。
+// 会員名簿と注文は、取り合いで記録が消えないよう専用の窓口（posOp）で1件ずつ変える。
 const dbSet = async (key, val) => {
-  // スタッフがログイン済みならサーバー経由で保存する。
-  if (_apiToken) {
-    try { await apiData("set", { key, value: val }); return true; }
-    catch (e) {
-      if (e.status === 401) { notifyExpired(); return false; }
-      console.warn("サーバー経由の保存に失敗したため、直接保存に切り替えます", key, e);
-    }
-  }
-  // 保存は最大3回まで自動リトライ。最後まで失敗したら画面に通知する。
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const token = await getAuthToken();
-      const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
-      const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return true;
-    } catch (e) {
-      if (attempt < 2) { await new Promise(r => setTimeout(r, 600)); continue; }
-      console.error("保存に失敗しました", key, e);
-      try { alert("保存に失敗しました。通信状況を確認して、もう一度お試しください。"); } catch {}
-      return false;
-    }
+  if (!_apiToken) { alert("ログインし直してください"); return false; }
+  try { await apiData("set", { key, value: val }); return true; }
+  catch (e) {
+    if (e.status === 401) { notifyExpired(); return false; }
+    if (e.status !== 410) alert(e.message || "保存に失敗しました。もう一度お試しください。");
+    return false;
   }
 };
 
-// お金の出入りを、消えない別の場所に記録しておくための書き込み。
-// 会員データの history は60件で古いものが切り捨てられるため、
-// チャージ・チャージ取消・残高の手修正だけは、こちらにも1件ずつ積んでおく。
-// POST を使うと Firebase が勝手にキーを振ってくれるので、
-// 既存の全件を読み書きする必要がなく、通信量もほとんど増えない。
-const dbPush = async (key, val) => {
-  // 入出金の台帳への追記も、ログイン済みならサーバー経由（誰が記録したかも残る）
-  if (_apiToken) {
-    try { await apiData("push", { key, value: val }); return; }
-    catch (e) { console.warn("サーバー経由の追記に失敗したため、直接追記に切り替えます", key, e); }
-  }
-  try {
-    const token = await getAuthToken();
-    const url = `${DB_BASE}/${key}.json${token ? `?auth=${token}` : ""}`;
-    await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(val) });
-  } catch (e) {
-    // ここが失敗しても、本来の残高の記録（history）は別途保存されるので、画面は止めない
-    console.error("入出金ログの記録に失敗しました", e);
-  }
-};
-
-// チャージ・取消・残高手修正を、消えない台帳に残す
-const logMoney = (entry) => dbPush("cafe_v4_money_log", {
-  ...entry,
-  at: new Date().toLocaleString("ja-JP"),
-  atISO: new Date().toISOString(),
-});
-
-// ══════════════════════════════════════════
-//  売上を「消えない台帳」に1件ずつ残す
-// ══════════════════════════════════════════
-// これまで売上の記録は、会員データの中の history にしか残っていなかった。
-// history は1人あたり60件までで、古いものから捨てられる。
-// つまり、よく来てくださるお客様ほど、過去の会計記録が先に消えていた。
-// （会計履歴タブも日次レポートも、その history を見ていた）
-//
-// ここでは会計のたびに、独立した台帳へ1件ずつ積んでいく。
-// 追記なので他の記録を巻き込まず、通信量もほとんど増えない。
-// date は会員データの history と同じ書き方にしてある（同じ会計を二重に数えないため）。
-const logSale = (entry) => dbPush("cafe_v4_sales_log", {
-  ...entry,
-  day: new Date().toLocaleDateString("ja-JP"),
-  atISO: new Date().toISOString(),
-});
+// お金が動いたときの「消えない台帳」（sales_log / money_log）は、
+// 2026-10 からサーバーが自分で書く（画面からは書かない。書き忘れ・書き損じが起きないように）。
 
 // 台帳から新しい方だけを取り出す（全部読むと通信量が増えていくため）
 const SALES_LOG_QUERY = `orderBy=%22%24key%22&limitToLast=500`;
 
-// 会員1人ぶんだけをサーバーに保存する。
-// 成功したら true、できなかったら false（呼び出し側が従来の方法に切り替える）。
-const saveOneCustomer = async (c) => {
-  if (!_apiToken || !c || !c.id) return false;
-  try {
-    await apiData("patchCustomer", { value: { id: c.id, fields: c } });
-    return true;
-  } catch (e) {
-    if (e.status === 401) { notifyExpired(); return false; }
-    console.warn("1人ぶんの保存に失敗したため、一覧まるごとの保存に切り替えます", e);
-    return false;
-  }
-};
 
 const dbGet = async (key, query) => {
   // スタッフがログイン済みならサーバー経由で取得する（不調なら直接取得に切り替える）
@@ -309,31 +240,9 @@ function mergeOrderWindow(prevFull, win) {
   }
 }
 // ══════════════════════════════════════════
-// 売上集計（その日の合計を加算。日付が変わったらリセット）
-const recordSale = async (amount, isCash) => {
-  try {
-    const today = new Date().toLocaleDateString("sv-SE");
-    const cur = await dbGet("cafe_v4_payment_today");
-    const base = (cur && cur.date === today) ? cur : { date: today, totalSales: 0, cashSales: 0 };
-    await dbSet("cafe_v4_payment_today", {
-      date: today,
-      totalSales: (base.totalSales || 0) + (amount || 0),
-      cashSales: (base.cashSales || 0) + (isCash ? (amount || 0) : 0),
-      at: new Date().toLocaleString("ja-JP"),
-    });
-  } catch {}
-};
 
 //  設定
 // ══════════════════════════════════════════
-const DEFAULT_MANAGER_ACCOUNTS = [
-  { id:"mg1", name:"マネージャー", password:"5678", linkedCustomerId:null },
-]; // マネージャーアカウント初期値
-
-const DEFAULT_STAFF_ACCOUNTS = [
-  { id:"st1", name:"山田 花子", password:"1234" },
-  { id:"st2", name:"田中 一郎", password:"2345" },
-];
 
 // 暗証番号の重複チェック（自分自身は除く）
 // 同じ暗証番号の会員が2人いると、お客様画面で別人のチケットが開いてしまうため必ず弾く
@@ -370,37 +279,6 @@ function PinChangeModal({ customer, customers, onSave, onClose }) {
   );
 }
 
-// benefit.type:
-//   "monthly"   → 毎月1回リセット、スタッフが「使用」ボタンで消費
-//   "always_discount" → 毎回自動割引（amount: 固定額 or "half"）
-const RANKS = [
-  { name:"ブロンズ",    min:2,  color:"#a2622a", gem:"🟫", bg:"linear-gradient(135deg,#f6e6d8,#eed3bb)", glow:"#cd7f32",
-    benefit:{ type:"monthly",          desc:"トッピング1回無料",       icon:"🧁" } },
-  // ※ シルバー・プラチナ・チタンの3つは、以前ほぼ同じ薄い灰色だった。
-  //    バッジもバーも背景に溶けて読めなかったので、それぞれ濃さと色味を分けてある。
-  { name:"シルバー",    min:5,  color:"#6c727e", gem:"⬜", bg:"linear-gradient(135deg,#dfe3ea,#c9cfda)", glow:"#a8b0bd",
-    benefit:{ type:"monthly",          desc:"トッピング2回無料",       icon:"🧁🧁" } },
-  { name:"ゴールド",    min:7,  color:"#a9791a", gem:"🟨", bg:"linear-gradient(135deg,#fbf0d6,#f5e2b0)", glow:"#ffd700",
-    benefit:{ type:"monthly",          desc:"トッピング3回無料",       icon:"🧁🧁🧁" } },
-  { name:"プラチナ",    min:10, color:"#8a6f52", gem:"🔘", bg:"linear-gradient(135deg,#f0e8dc,#e2d6c4)", glow:"#cbb89f",
-    benefit:{ type:"monthly",          desc:"コーヒー1杯無料",         icon:"☕" } },
-  { name:"チタン",      min:13, color:"#4f6b7a", gem:"🩶", bg:"linear-gradient(135deg,#dce7ee,#c2d3de)", glow:"#8ba4b3",
-    benefit:{ type:"monthly",          desc:"指定ドリンク1杯無料",     icon:"🥤" } },
-  { name:"サファイア",  min:16, color:"#3b7fb8", gem:"🔷", bg:"linear-gradient(135deg,#e4eefb,#cddff5)", glow:"#4fa3e8",
-    benefit:{ type:"monthly",          desc:"好きなドリンク1杯無料",   icon:"🍹" } },
-  { name:"ルビー",      min:20, color:"#c21354", gem:"🟥", bg:"linear-gradient(135deg,#fbecf2,#f7dbe6)", glow:"#e0115f",
-    benefit:{ type:"always_discount",  desc:"毎回50円引き",            icon:"💸", amount:50 } },
-  { name:"エメラルド",  min:35, color:"#3e9a5c", gem:"🟩", bg:"linear-gradient(135deg,#e3f3e8,#c9e7d3)", glow:"#50c878",
-    benefit:{ type:"always_discount",  desc:"毎回100円引き",           icon:"💸", amount:100 } },
-  { name:"ダイヤモンド",min:50, color:"#3b8fa8", gem:"💎", bg:"linear-gradient(135deg,#e6f3f7,#cfe8f0)", glow:"#b9f2ff",
-    benefit:{ type:"always_discount",  desc:"毎回半額",                icon:"⭐", amount:"half" } },
-];
-
-const NO_RANK = {
-  name:"ランクなし", min:0, color:"var(--ink3,#9a8f85)", gem:"−",
-  bg:"linear-gradient(135deg,#f4f1ec,#e8e2da)", glow:"#444",
-  benefit:{ type:"none", desc:"ランクなし", icon:"−" },
-};
 
 // ══════════════════════════════════════════
 //  メニューの絵文字：同じカテゴリでも品ごとに違う絵にする（のあさんの指示・2026-09-16）
@@ -663,124 +541,12 @@ function DrinkIcon({ item, size = 40 }) {
 }
 
 
-function getRank(p) {
-  if (p < 2) return NO_RANK;
-  let r = RANKS[0];
-  for (const x of RANKS) if (p >= x.min) r = x;
-  return r;
-}
-// 昨年・今年の高い方のランクを返す
-function getEffectiveRank(customer) {
-  const r1 = getRank(customer.rankBasis ?? 0);
-  const r2 = getRank(customer.currentYearPurchases ?? 0);
-  const i1 = RANKS.findIndex(r => r.name === r1.name);
-  const i2 = RANKS.findIndex(r => r.name === r2.name);
-  return i2 > i1 ? r2 : r1;
-}
-function nextRank(p)   { for(const x of RANKS) if(p<x.min) return x; return null; }
-function currentMonth(){ return new Date().toISOString().slice(0,7); } // "2026-05"
-
-// トッピング最大選択数（ランク別）
-function getToppingMax(rank) {
-  if (!rank) return 0;
-  return rank.name==="ブロンズ"?1 : rank.name==="シルバー"?2 : rank.name==="ゴールド"?3 : 0;
-}
-// 今月の残りトッピング使用可能数
-function getToppingAvailable(customer, rank) {
-  const max = getToppingMax(rank);
-  if (!max) return 0;
-  if (customer.toppingRemainingMonth !== currentMonth()) return max;
-  return customer.toppingRemaining ?? max;
-}
-// 非トッピング特典が使用済みか
-function isBenefitUsed(customer) {
-  return customer.benefitUsedMonth === currentMonth();
-}
-// トッピング特典が完全使用済みか（0回になった）
-function isToppingFullyUsed(customer, rank) {
-  const max = getToppingMax(rank);
-  if (!max) return false;
-  if (customer.toppingRemainingMonth !== currentMonth()) return false;
-  return (customer.toppingRemaining ?? max) === 0;
-}
-
-// always_discount の割引額を計算
-function calcDiscount(rank, total) {
-  if (rank.benefit.type !== "always_discount") return 0;
-  if (rank.benefit.amount === "half") return Math.floor(total / 2);
-  return Math.min(rank.benefit.amount, total);
-}
 
 // currentYearPurchases: 今年の購入回数（1/1にリセット）
 // rankBasis: ランク判定に使う値（前年の購入回数、1/1に更新）
 // dataYear: currentYearPurchasesが属する年
-const THIS_YEAR = new Date().getFullYear();
-const SAMPLE = [
-  { id:"1001", name:"田中 美咲", pin:"1234", balance:4000, currentYearPurchases:10, rankBasis:10, dataYear:THIS_YEAR, joined:"2024-11-01", history:[], benefitUsedMonth:null,
-    yearlyStats:[
-      { year:THIS_YEAR-2, purchases:6,  rankName:"ゴールド",    rankGem:"🟨", rankColor:"#ffd700" },
-      { year:THIS_YEAR-1, purchases:10, rankName:"プラチナ",    rankGem:"🔘", rankColor:"#e0dcd8" },
-    ]},
-  { id:"1002", name:"佐藤 健太", pin:"5678", balance:2000, currentYearPurchases:5,  rankBasis:5,  dataYear:THIS_YEAR, joined:"2025-02-14", history:[], benefitUsedMonth:null,
-    yearlyStats:[
-      { year:THIS_YEAR-1, purchases:3, rankName:"ブロンズ", rankGem:"🟫", rankColor:"#cd7f32" },
-    ]},
-  { id:"1003", name:"鈴木 花子", pin:"9999", balance:0, currentYearPurchases:52, rankBasis:52, dataYear:THIS_YEAR, joined:"2024-05-20", history:[], benefitUsedMonth:null,
-    yearlyStats:[
-      { year:THIS_YEAR-3, purchases:20, rankName:"ルビー",       rankGem:"🟥", rankColor:"#e0115f" },
-      { year:THIS_YEAR-2, purchases:38, rankName:"エメラルド",   rankGem:"🟩", rankColor:"#50c878" },
-      { year:THIS_YEAR-1, purchases:52, rankName:"ダイヤモンド", rankGem:"💎", rankColor:"#b9f2ff" },
-    ]},
-];
 
-function checkYearRollover(c) {
-  const year = new Date().getFullYear();
-  if (c.currentYearPurchases === undefined) {
-    // 旧データ移行
-    return { ...c, pin: c.pin||c.phone||"0000", currentYearPurchases: c.purchases||0, rankBasis: c.purchases||0, dataYear: year, yearlyStats: c.yearlyStats||[] };
-  }
-  if ((c.dataYear || year) < year) {
-    const prevYear      = c.dataYear || year - 1;
-    const prevPurchases = c.currentYearPurchases;
-    const prevRank      = getRank(prevPurchases);
-    const newStat       = { year: prevYear, purchases: prevPurchases, rankName: prevRank.name, rankGem: prevRank.gem, rankColor: prevRank.color };
-    const existingStats = (c.yearlyStats || []).filter(s => s.year !== prevYear);
-    return {
-      ...c,
-      rankBasis:            prevPurchases,
-      currentYearPurchases: 0,
-      dataYear:             year,
-      benefitUsedMonth:     null,
-      toppingRemaining:     null,
-      toppingRemainingMonth: null,
-      yearlyStats:          [newStat, ...existingStats].sort((a,b)=>b.year-a.year).slice(0,10),
-      history: [{
-        type:"year_reset", prevPurchases,
-        newRank: getRank(prevPurchases).name,
-        performer:"システム", date: new Date().toLocaleString("ja-JP"),
-      }, ...(c.history||[])].slice(0, 60),
-    };
-  }
-  return { ...c, yearlyStats: c.yearlyStats||[] };
-}
 
-const DEFAULT_MENU = [
-  { id:"m1",  category:"コーヒー",   name:"エスプレッソ",     price:400, emoji:"☕" },
-  { id:"m2",  category:"コーヒー",   name:"カフェラテ",       price:550, emoji:"🥛" },
-  { id:"m3",  category:"コーヒー",   name:"カプチーノ",       price:550, emoji:"☁️" },
-  { id:"m4",  category:"コーヒー",   name:"アメリカーノ",     price:480, emoji:"🫖" },
-  { id:"m14", category:"コーヒー",   name:"アイスコーヒー",   price:480, emoji:"🧊" },
-  { id:"m15", category:"コーヒー",   name:"ホットコーヒー",   price:450, emoji:"☕" },
-  { id:"m5",  category:"ドリンク",   name:"紅茶",             price:450, emoji:"🍵" },
-  { id:"m6",  category:"ドリンク",   name:"オレンジジュース", price:500, emoji:"🍊" },
-  { id:"m16", category:"ドリンク",   name:"ソーダ",           price:430, emoji:"🫧" },
-  { id:"m17", category:"トッピング", name:"チョコソース",     price:100, emoji:"🍫" },
-  { id:"m18", category:"トッピング", name:"キャラメルソース", price:100, emoji:"🍯" },
-  { id:"m7",  category:"フード",     name:"クロワッサン",     price:380, emoji:"🥐" },
-  { id:"m8",  category:"フード",     name:"チーズケーキ",     price:650, emoji:"🍰" },
-  { id:"m9",  category:"フード",     name:"サンドイッチ",     price:750, emoji:"🥪" },
-  { id:"m10", category:"フード",     name:"スコーン",         price:420, emoji:"🫓" },
-];
 
 // ══════════════════════════════════════════
 //  ROOT
@@ -805,6 +571,7 @@ export default function App() {
 
   // 直近に保存した時刻を覚えておく（この直後の同期で上書きを防ぐ）
   const lastSaveAt = useRef(0);
+  const syncRef = useRef(null);
   // 今どの画面にいるかを同期処理から参照するための控え（通信量を抑えるために使う）
   const screenRef = useRef(screen);
   screenRef.current = screen;
@@ -837,13 +604,12 @@ export default function App() {
         if (!mounted) return;
         // 取得できなかったときに見本データを表示しない。
         // （データベースを直接読めない設定にしたあとも、見本の会員が出てこないようにするため）
-        const raw = Array.isArray(cust) ? cust : [];
-        const migrated = raw.map(checkYearRollover);
+        const raw = Array.isArray(cust) ? cust.filter(Boolean) : [];
+        const migrated = raw.map((c) => checkYearRollover(c));
         setCustomers(migrated);
-        // 読み込み失敗時（cust が無い）は DB に一切書き込まない（見本データでの上書き事故を防止）
-        if (Array.isArray(cust)) {
-          const changed = migrated.some((c,i)=>raw[i]&&c.dataYear!==raw[i].dataYear);
-          if (changed) dbSet("cafe_v4_customers", migrated);
+        // 年が変わっていたら、切り替えはサーバーに頼む（画面から名簿をまるごと書かない）
+        if (_apiToken && raw.some((c,i)=>migrated[i].dataYear!==c.dataYear)) {
+          apiData("rollover", { value: {} }).catch(() => {});
         }
         // 配列で来たときだけ差し替える。おかしな値が入ると画面が壊れるため。
         if (Array.isArray(menu_) && menu_.length) { setMenu(menu_); gotFromServer.current.menu = true; }
@@ -876,10 +642,12 @@ export default function App() {
         if (!mounted) return;
         // 取得中に保存が走っていたら、その結果は古い可能性があるので捨てる
         if (Date.now() - lastSaveAt.current < 5000) return;
-        if (cust) setCustomers(cust.map(checkYearRollover));
+        if (Array.isArray(cust)) setCustomers(cust.filter(Boolean).map((c) => checkYearRollover(c)));
         if (ordWin) setOrders(prev => mergeOrderWindow(prev, ordWin));
       } catch {}
     };
+
+    syncRef.current = syncNow;
 
     // この定期同期が要るのは POS 画面だけ。
     // お客様のチケット画面は自分専用の窓口で別に取り直しているので、ここでは何もしない。
@@ -900,121 +668,46 @@ export default function App() {
     };
   }, [staffRole]);
 
-  const saveC = async (list) => {
-    lastSaveAt.current = Date.now();
-    setCustomers(list); // 画面はすぐ更新（従来どおり）
-
-    // ── 変わったのが1人だけなら、その1人ぶんだけを送る ──────────
-    // 会計・チャージはどれも「1人の残高と履歴を変える」だけの操作。
-    // それなのに今までは、会員21人ぶんの一覧をまるごと送り直していた。
-    // 一覧を読んでから書き戻すまでの数秒のあいだに別の端末が会計をすると、
-    // その会計が消えてしまう（実際に過去、記録が失われている）。
-    //
-    // 1人ぶんだけを送れば、読み込みから書き戻しまでをサーバーの中で
-    // 一続きに行えるので、すれ違いが起きる余地がほぼ無くなる。
-    // 通信量も21分の1になる。
-    // うまくいかなかったときは、今までのやり方に自動で切り替える。
-    const prevList = customers;
-    const prevById = new Map(prevList.map(c => c && [c.id, c]).filter(Boolean));
-    const sameMembers =
-      prevList.length === list.length && list.every(c => c && prevById.has(c.id));
-    const changed = sameMembers ? list.filter(c => prevById.get(c.id) !== c) : [];
-    if (changed.length === 1 && await saveOneCustomer(changed[0])) return;
-
+  // ── POS の書き込みは、すべてサーバーの窓口（posOp）を通す ──────────────
+  // 以前は会員名簿・注文の一覧を画面で書き換えて、まるごとサーバーに送っていた。
+  // 2台の端末が同時に操作すると片方の変更が消える（チャージが消える・二重に引かれる）ので、
+  // 2026-10 から「何をしたいか」だけをサーバーに伝え、計算と保存はサーバーが行う形にした。
+  // 返ってきた最新の会員・注文で画面を更新し、すぐに取り直す。
+  const upsertCustomer = (c) => setCustomers(prev => {
+    const i = prev.findIndex(x => x && String(x.id) === String(c.id));
+    if (i < 0) return [...prev, c];
+    const n = prev.slice(); n[i] = c; return n;
+  });
+  const upsertOrder = (o) => setOrders(prev => {
+    const i = prev.findIndex(x => x && x.orderId === o.orderId);
+    if (i < 0) return [o, ...prev];
+    const n = prev.slice(); n[i] = o; return n;
+  });
+  const posOp = async (op, value, opts = {}) => {
     try {
-      const prev = customers;
-      const latest = await dbGet("cafe_v4_customers");
-      if (!Array.isArray(latest)) { dbSet("cafe_v4_customers", list); return; }
-      const byId = {}; list.forEach(c => { if (c && c.id) byId[c.id] = c; });
-      const prevById = {}; prev.forEach(c => { if (c && c.id) prevById[c.id] = c; });
-      const listIds = new Set(list.map(c => c && c.id));
-      const removed = new Set(prev.filter(c => c && c.id && !listIds.has(c.id)).map(c => c.id));
-      const result = []; const used = new Set();
-      latest.forEach(c => {
-        const id = c.id;
-        if (removed.has(id)) return; // 自分が消した会員は除外
-        if (byId[id]) {
-          const callerV = byId[id], prevV = prevById[id];
-          const changed = !prevV || JSON.stringify(callerV) !== JSON.stringify(prevV);
-          result.push(changed ? callerV : c); // 自分が変えた分だけ反映、未変更は最新を維持
-          used.add(id);
-        } else {
-          result.push(c); // 他端末の会員は消さずに残す
-        }
-      });
-      list.forEach(c => { if (c && c.id && !used.has(c.id)) { result.push(c); used.add(c.id); } });
-      setCustomers(result);
-      dbSet("cafe_v4_customers", result);
+      const r = await apiData(op, { value });
+      if (r && r.customer) upsertCustomer(r.customer);
+      if (r && r.order) upsertOrder(r.order);
+      if (opts.removeOrderId) setOrders(prev => prev.filter(o => o && o.orderId !== opts.removeOrderId));
+      if (op === "deleteCustomer" && value && value.customerId) setCustomers(prev => prev.filter(c => c && String(c.id) !== String(value.customerId)));
+      if (op === "setSoldOut" && r && Array.isArray(r.value)) setMenu(r.value);
+      lastSaveAt.current = 0;
+      setTimeout(() => { if (syncRef.current) syncRef.current(); }, 350);
+      return r || {};
     } catch (e) {
-      dbSet("cafe_v4_customers", list); // 失敗時は従来動作にフォールバック
+      if (e.status === 401) { notifyExpired(); return null; }
+      setTimeout(() => { if (syncRef.current) syncRef.current(); }, 200);
+      if (opts.returnError) return { error: e };
+      if (e.status !== 410) alert(e.message || "うまくいきませんでした。もう一度お試しください");
+      return null;
     }
   };
+  // 古い作りの名残。画面の中だけ更新する（サーバーには送らない。次の取り直しで正しい値に戻る）。
+  const saveC = async (list) => { setCustomers(list); };
+  const saveOrders = async (list) => { setOrders(list); };
   const saveMenu        = (list) => {
     if (!gotFromServer.current.menu) return notLoadedYet("メニュー");
     lastSaveAt.current = Date.now(); setMenu(list);             dbSet("cafe_v4_menu",             list);
-  };
-  const saveOrders = async (list) => {
-    lastSaveAt.current = Date.now();
-    setOrders(list); // 画面はすぐ更新（従来どおり）
-
-    // ── まずサーバー側での合流を試す ─────────────────
-    // 下にある「読んで・混ぜて・書く」をブラウザでやると、
-    // 読みと書きのあいだに別の端末の変更が入ったとき、それを消してしまう。
-    // サーバーの中で同じことを一続きにやれば、その隙間がほぼ無くなる。
-    // 失敗したときは、今までのやり方（下の処理）に自動で切り替える。
-    if (_apiToken) {
-      try {
-        const prevIds = (orders || []).map(o => o && o.orderId).filter(Boolean);
-        const r = await apiData("setOrdersMerged", { value: { list, prevIds } });
-        if (r && Array.isArray(r.value)) setOrders(r.value);
-        return;
-      } catch (e) {
-        if (e.status === 401) { notifyExpired(); return; }
-        console.warn("サーバーでの合流保存に失敗したため、従来の方法で保存します", e);
-      }
-    }
-
-    try {
-      const prev = orders;
-      const latest = await dbGet("cafe_v4_orders");
-      if (!Array.isArray(latest)) { dbSet("cafe_v4_orders", list); return; }
-      const byId = {}; list.forEach(o => { if (o && o.orderId) byId[o.orderId] = o; });
-      const prevById = {}; prev.forEach(o => { if (o && o.orderId) prevById[o.orderId] = o; });
-      const listIds = new Set(list.map(o => o && o.orderId));
-      const removed = new Set(prev.filter(o => o && o.orderId && !listIds.has(o.orderId)).map(o => o.orderId));
-      const result = []; const used = new Set();
-      latest.forEach(o => {
-        if (!o || !o.orderId) return;
-        const id = o.orderId;
-        if (removed.has(id)) return; // 自分が消した注文は除外
-        if (byId[id]) {
-          const callerV = byId[id], prevV = prevById[id];
-          const changed = !prevV || JSON.stringify(callerV) !== JSON.stringify(prevV);
-          result.push(changed ? callerV : o); // 自分が変えた分だけ反映、未変更は最新を維持
-          used.add(id);
-        } else {
-          result.push(o); // 他端末の注文は消さずに残す
-        }
-      });
-      // DBに無い注文を足し戻すのは「この端末で今つくった注文」だけにする。
-      // ずっと手元にあった完了済みの注文がDBに無い場合は、アーカイブに移されたか
-      // 他の端末で消されたということなので、足し戻してはいけない。
-      // （足し戻すと、アーカイブした過去の注文が全部書き戻されてしまい、
-      //   さらに配列の先頭が古い注文になって、定期同期が新しい注文を見つけられなくなる）
-      // 未処理の注文はアーカイブされないので、取りこぼし防止のため足し戻す。
-      const prevOrderIds = new Set(prev.map(o => o && o.orderId));
-      list.forEach(o => {
-        if (!o || !o.orderId || used.has(o.orderId)) return;
-        if (!prevOrderIds.has(o.orderId) || o.status === "pending") {
-          result.unshift(o);
-          used.add(o.orderId);
-        }
-      });
-      setOrders(result);
-      dbSet("cafe_v4_orders", result);
-    } catch (e) {
-      dbSet("cafe_v4_orders", list); // 失敗時は従来動作にフォールバック
-    }
   };
   // 読み込めていないものは保存させない。
   // （空っぽの状態で保存すると、DB にある本物のメニューやスタッフが消えてしまう）
@@ -1074,7 +767,8 @@ export default function App() {
       {screen==="home"     && <Home setScreen={changeScreen} setStaffRole={setStaffRole}/>}
       {screen==="customer" && <CustomerView customers={customers} menu={menu} orders={orders} saveOrders={saveOrders} saveC={saveC} designatedDrink={designatedDrink} staffAccounts={staffAccounts} managerAccounts={managerAccounts} vipGiftDrink={vipGiftDrink} setScreen={changeScreen}/>}
       {screen==="login"    && <StaffLogin setScreen={changeScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} setStaffIsChief={setStaffIsChief} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
-      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffIsChief={staffIsChief} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={changeScreen}/>}
+      {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffIsChief={staffIsChief} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={changeScreen} posOp={posOp}/>}
+      <UpdateBanner/>
     </div>
   );
 }
@@ -1584,7 +1278,7 @@ function WelcomeSweep({ found }) {
     if (!found || found.id === lastId.current) return;
     lastId.current = found.id;
     setShow(Date.now());
-    const t = setTimeout(() => setShow(0), 2000);
+    const t = setTimeout(() => setShow(0), 1200);
     return () => clearTimeout(t);
   }, [found && found.id]);
   if (!show) return null;
@@ -2100,47 +1794,6 @@ function FreeDrinkTicket({ found }) {
 //     お客様がアプリの注文で今月の特典と同じ操作で使える（今月ぶんを先に使い、足りない分を券から引く）。
 //   ・ドリンク系（プラチナ以上）… remaining は「あと何杯」。レジでスタッフが「使う」を押して渡す。
 // 使い切ると usedAt が入る。注文の取り消しで戻る。
-const TICKET_RANKS = ["ブロンズ", "シルバー", "ゴールド", "プラチナ", "チタン", "サファイア"];
-function makeTicket(rankName, uses) {
-  const r = RANKS.find((x) => x.name === rankName);
-  if (!r || !(uses > 0)) return null;
-  const perUse = getToppingMax(r);
-  const kind = perUse > 0 ? "topping" : "drink";
-  const total = kind === "topping" ? perUse * uses : uses;
-  return { id: "tk_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-           rankName, uses, kind, perUse: kind === "topping" ? perUse : 1, remaining: total,
-           label: `${rankName}特典 ${uses}回分`, desc: r.benefit.desc, icon: r.benefit.icon, gem: r.gem, color: r.color,
-           issuedAt: new Date().toLocaleString("ja-JP"), usedAt: null, log: [] };
-}
-const unusedTickets = (c) => (Array.isArray(c && c.bonusTickets) ? c.bonusTickets : []).filter((t) => t && t.id && !t.usedAt && (Number(t.remaining) || 0) > 0);
-const ticketToppingsOf = (c) => unusedTickets(c).filter((t) => t.kind === "topping").reduce((s, t) => s + (Number(t.remaining) || 0), 0);
-// n個ぶんのトッピングを、古い券から順に引き当てる → [{id, n}]
-function allocTicketToppings(c, n) {
-  const use = [];
-  for (const t of unusedTickets(c).filter((t) => t.kind === "topping")) {
-    if (n <= 0) break;
-    const k = Math.min(n, Number(t.remaining) || 0);
-    if (k > 0) { use.push({ id: t.id, n: k }); n -= k; }
-  }
-  return use;
-}
-function applyTicketUse(c, use, orderId) {
-  const now = new Date().toLocaleString("ja-JP");
-  const map = new Map((use || []).map((u) => [String(u.id), Number(u.n) || 0]));
-  return { ...c, bonusTickets: (c.bonusTickets || []).map((t) => {
-    if (!t || !map.has(String(t.id))) return t;
-    const rem = Math.max(0, (Number(t.remaining) || 0) - map.get(String(t.id)));
-    return { ...t, remaining: rem, usedAt: rem === 0 ? now : null, log: [...(t.log || []), { orderId: orderId || null, n: map.get(String(t.id)), at: now }] };
-  }) };
-}
-function restoreTicketUse(c, use) {
-  const map = new Map((use || []).map((u) => [String(u.id), Number(u.n) || 0]));
-  return { ...c, bonusTickets: (c.bonusTickets || []).map((t) => {
-    if (!t || !map.has(String(t.id))) return t;
-    return { ...t, remaining: (Number(t.remaining) || 0) + map.get(String(t.id)), usedAt: null };
-  }) };
-}
-const ticketRemainText = (t) => t.kind === "topping" ? `🧁 トッピング無料 あと${t.remaining}個` : `${t.icon || "🍹"} ${t.desc || "1杯無料"} あと${t.remaining}杯`;
 
 // お客様のチケット画面に出る「特典チケット入れ」。ランク色の半券として並ぶ。
 // 新しい券が届いたときは、一度だけ全画面でお知らせする。
@@ -2261,14 +1914,6 @@ function MonthlyBenefitTicket({ found, rank, onUse }) {
 //  🎁 敬老の日 特別プレゼント（2026-09-20・対象の方だけ・お一人1回）
 // ══════════════════════════════════════════
 // 対象者は名前で指定（のあさんの指示）。日付は日本時間で判定。使うと会員データに keiroGiftUsed="2026" が入る。
-const KEIRO = {
-  year: "2026", date: "2026/9/20", names: ["えつこ", "ちえこ", "ゆうこ", "まきやま", "よこやま"],
-  drink: "敬老の日 スペシャルドリンク",
-};
-const jstToday = () => { const d = new Date(Date.now() + 9 * 3600 * 1000); return `${d.getUTCFullYear()}/${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
-const keiroIsDay = () => jstToday() === KEIRO.date;
-const keiroTarget = (c) => !!c && KEIRO.names.includes(String(c.name || "").trim());
-const keiroUsed = (c) => String((c && c.keiroGiftUsed) || "") === KEIRO.year;
 
 // ══════════════════════════════════════════
 //  🎁 特別チケット（のあさんが贈る、期限つきの無料券）
@@ -2278,31 +1923,6 @@ const keiroUsed = (c) => String((c && c.keiroGiftUsed) || "") === KEIRO.year;
 // 使った枚数だけ会員データの specialUsed に記録する（例 { win_2026: 2 }）。
 //   ・増やせるのはサーバー（placeMyOrder）だけ。お客様の画面からは書き換えられない。
 //   ・注文を取り消す／スタッフが注文を消すと、1枚ぶん戻る。
-const SPECIALS = [
-  { id: "sp_bday_2026", icon: "🎂", cls: "bday", title: "お誕生日 特別チケット",
-    n: 1, until: "2027/9/30", names: ["まり", "えがわ", "まつおたかし", "よこやま"],
-    note: "お誕生日おめでとうございます。いつもありがとうございます！",
-    foot: "※ いつもの誕生月の一杯とは別のプレゼントです" },
-  { id: "win_2026", icon: "🏆", cls: "win", title: "優勝チケット",
-    n: 5, until: "2027/9/30", names: ["よこやま"],
-    note: "教会のレクリエーション 優勝おめでとうございます！",
-    foot: "※ 1枚につきドリンク1杯。5枚あるので5杯ぶんです" },
-];
-const SPECIAL_BY_ID = (id) => SPECIALS.find((s) => s.id === String(id)) || null;
-const specialUsedN = (c, id) => Number(((c && c.specialUsed) || {})[String(id)]) || 0;
-const specialLeft  = (c, sp) => Math.max(0, (Number(sp.n) || 0) - specialUsedN(c, sp.id));
-const specialIsTarget = (c, sp) => !!c && sp.names.includes(String(c.name || "").trim());
-// 有効期限は「その日の終わりまで」。日本時間で見る。
-const specialExpired = (sp) => {
-  const [y, m, d] = String(sp.until).split("/").map(Number);
-  const now = new Date(Date.now() + 9 * 3600 * 1000);
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return today > Date.UTC(y, m - 1, d);
-};
-// その人がいま使える特別チケット
-const mySpecials = (c) => SPECIALS.filter((sp) => specialIsTarget(c, sp) && !specialExpired(sp) && specialLeft(c, sp) > 0);
-// スタッフ用：対象者なら（使い切っていても）券の状況を出す
-const allSpecialsOf = (c) => SPECIALS.filter((sp) => specialIsTarget(c, sp) && !specialExpired(sp));
 
 // 🎉 クラッカーの演出（Canvas）。左右の角から紙吹雪とリボンが勢いよく飛び出し、
 // ひらひら舞い落ちる。途中で真ん中からもう一発。約7秒で自然に止まる。
@@ -2469,12 +2089,7 @@ function KeiroTicket({ found, orders, onClaim, onCancel }) {
 
 // 🎂 誕生月の1杯券。誕生月の間だけチケット画面に出て、年に1回使える。
 // 誕生月は本人が一度だけ登録できる（変更はマネージャーのみ）。
-const THIS_MONTH = () => new Date().getMonth() + 1;
-function isBirthdayTicketActive(c) {
-  if (!c || !c.birthMonth) return false;
-  if (Number(c.birthMonth) !== THIS_MONTH()) return false;
-  return String(c.birthdayUsedYear || "") !== String(new Date().getFullYear());
-}
+const THIS_MONTH = () => jstMonthNum();
 function BirthdayTicket({ found, onSetMonth, onUse }) {
   const [pick, setPick] = useState(null);
   if (!found.birthMonth) {
@@ -2692,83 +2307,6 @@ function BadgeShelf100({ found, orders, defaultOpen = false }) {
   );
 }
 
-// （旧・33個版。100個版に置き換えたため未使用）
-function BadgeShelf({ found, orders }) {
-  const ls = (k) => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
-  const mine = (orders || []).filter((o) => o && String(o.customerId) === String(found.id));
-  const cups = Math.max(mine.length, (found.history || []).filter((h) => h && h.type === "use").length);
-  const hourOf = (s) => parseInt(String(s || "").split(" ")[1]) || 12;
-  const dayOf = (s) => {
-    const m = String(s || "").match(/(\d+)\/(\d+)\/(\d+)/);
-    return m ? new Date(+m[1], +m[2] - 1, +m[3]).getDay() : 3;
-  };
-  // 33個。ok=解放条件、h=ロック中に押すと出るヒント
-  const defs = [
-    { e:"☕", n:"はじめての一杯", ok: cups >= 1,  h:"一杯注文してみよう" },
-    { e:"🔟", n:"10杯クラブ",     ok: cups >= 10, h:"注文を重ねていくと…" },
-    { e:"🏆", n:"30杯マスター",   ok: cups >= 30, h:"通いつめた人だけの称号" },
-    { e:"👑", n:"50杯レジェンド", ok: cups >= 50, h:"伝説はここから" },
-    { e:"🌟", n:"常連さん",       ok: (found.currentYearPurchases || 0) >= 5,  h:"今年5回チャージすると…" },
-    { e:"📅", n:"今年10回",       ok: (found.currentYearPurchases || 0) >= 10, h:"今年10回チャージすると…" },
-    { e:"💎", n:"ランク持ち",     ok: (found.rankBasis || 0) >= 2,  h:"ランクが付くと…" },
-    { e:"💛", n:"ゴールド以上",   ok: (found.rankBasis || 0) >= 7,  h:"ゴールドに届くと…" },
-    { e:"🔥", n:"ルビー以上",     ok: (found.rankBasis || 0) >= 20, h:"上位ランクの証" },
-    { e:"⭐", n:"VIP",            ok: !!found.isVIP, h:"VIPの人だけ" },
-    { e:"🪙", n:"まんたん",       ok: (found.balance || 0) >= 10000, h:"残高が1万円をこえると…" },
-    { e:"🎁", n:"特典をつかった", ok: !!found.benefitUsedMonth, h:"今月の特典を使ってみよう" },
-    { e:"🌙", n:"夜カフェ勢",     ok: mine.some((o) => hourOf(o.createdAt) >= 21), h:"夜21時以降に注文すると…" },
-    { e:"🌅", n:"朝活マスター",   ok: mine.some((o) => hourOf(o.createdAt) <= 10), h:"朝10時までに注文すると…" },
-    { e:"🛋", n:"週末のひと",     ok: mine.some((o) => { const d = dayOf(o.createdAt); return d === 0 || d === 6; }), h:"土日に注文すると…" },
-    { e:"🎆", n:"花火師",         ok: ls("niji_ach_fw"),    h:"ホームの🌈を連打してみて" },
-    { e:"🪩", n:"ディスコ王",     ok: ls("niji_ach_disco"), h:"ホームのあいさつ文を連打してみて" },
-    { e:"🌈", n:"虹の点コンプ",   ok: ls("niji_ach_dots"),  h:"ホームの6色の点を左から順に…" },
-    { e:"🎮", n:"謎のコマンド",   ok: ls("niji_ach_konami"),h:"昔のゲームの隠しコマンド（パソコンで）" },
-    { e:"🐈‍⬛", n:"猫の友だち",     ok: ls("niji_ach_neko"),  h:"カードの隅の住人を5回なでると…" },
-    { e:"🎨", n:"きせかえ名人",   ok: ls("niji_ach_theme"), h:"夜空の色を全種類ためすと…" },
-    { e:"🎡", n:"おまかせの人",   ok: ls("niji_ach_shuffle"), h:"迷ったらシャッフルに決めてもらおう" },
-    { e:"🍋", n:"気分の探検家",   ok: ls("niji_ach_mood"),  h:"4つの気分をぜんぶ試すと…" },
-    { e:"📖", n:"一節を開いた",   ok: ls("niji_ach_verse"), h:"今日の一節を読んでみよう" },
-    { e:"🕊", n:"みことばの習慣", ok: ls("niji_ach_verse7"),h:"7日ちがう日に一節を開くと…" },
-    { e:"✨", n:"カードをなでた", ok: ls("niji_ach_holo"),  h:"会員カードを指でなでてみて" },
-    { e:"🔄", n:"くるりん",       ok: ls("niji_ach_flip"),  h:"カードをすばやく2回タップ" },
-    { e:"🌠", n:"流れ星を見た",   ok: ls("niji_ach_star"),  h:"ホームで空を眺めていると…" },
-    { e:"🌕", n:"満月の夜",       ok: ls("niji_ach_moon"),  h:"本物の満月の夜に開くと…" },
-    { e:"⚡", n:"雷の夜",         ok: ls("niji_ach_bolt"),  h:"ごくまれに空が光る夜がある" },
-    { e:"🤫", n:"隠しメッセージ", ok: ls("niji_ach_secret"),h:"🌈をずーっと押しつづけると…" },
-    { e:"🔔", n:"効果音デビュー", ok: ls("niji_ach_snd"),   h:"注文画面の🔕を押してみて" },
-    { e:"🫧", n:"波紋あそび",     ok: ls("niji_ach_ripple"),h:"ホームの何もない所を10回さわると…" },
-  ];
-  const got = defs.filter((d) => d.ok).length;
-  const [hint, setHint] = useState(null);
-  return (
-    <div className="toy-panel">
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-        <span style={{fontWeight:700}}>🏆 実績バッジ</span>
-        <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.8rem"}}>{got} / {defs.length}</span>
-      </div>
-      {got === defs.length && (
-        <div className="pop" style={{textAlign:"center",color:"#ffd166",fontWeight:800,marginBottom:8,
-          textShadow:"0 0 12px rgba(255,209,102,0.5)"}}>🎉 全実績コンプリート！すごい！</div>
-      )}
-      <div className="badge-grid">
-        {defs.map((d, i) => (
-          <div key={i} className={"badge" + (d.ok ? " badge-on" : "")}
-            onClick={() => setHint({ i, t: d.ok ? `「${d.n}」解放済み！` : `ヒント：${d.h}` })}>
-            <span style={{fontSize:"1.3rem"}}>{d.ok ? d.e : "❔"}</span>
-            <span className="badge-name">{d.ok ? d.n : "？？？"}</span>
-          </div>
-        ))}
-      </div>
-      {hint && (
-        <div key={hint.i + hint.t} className="badge-hint pop">{hint.t}</div>
-      )}
-      {got < defs.length &&
-        <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.72rem",marginTop:8}}>
-          ❔を押すとヒントが出ます。アプリのあちこちに遊びが隠れています
-        </div>}
-    </div>
-  );
-}
 
 // 🐈 看板猫。カードの隅に住んでいて、なでると返事をする
 function NekoMascot() {
@@ -2945,8 +2483,7 @@ function ThemeMode() {
     applySavedTheme();
     return () => document.body.classList.remove("pastel");
   }, [night]);
-  // 画面が入れ替わって .approot が作り直されても、選んだ色を当て直す
-  useEffect(() => { const t = setInterval(applySavedTheme, 1500); return () => clearInterval(t); }, []);
+  // 色は body の印（nzth1〜3）だけで決まるので、画面が入れ替わっても当て直す必要はない
   return night ? <NightMode/> : null;
 }
 
@@ -3402,6 +2939,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // サーバーが不調なときは null のままになり、今までどおりの動作に戻る。
   const [boot, setBoot] = useState(null);
   const custToken = useRef(null);   // お客様のログイン証
+  const idxRef = useRef(-1);        // 名簿の何番目か（サーバーが教えてくれる。取り直しを軽くするため）
+  const rankAt = useRef(0);         // みんなのランキングを最後に取った時刻
+  const fastRef = useRef(false);    // 注文中は早めに取り直す
+  const needFull = useRef(false);   // 次の取り直しは全部（自分の注文が60件の外に出たとき）
   const [showRanks, setShowRanks] = useState(false);
   const [showPlay,  setShowPlay]  = useState(false);   // バッジ棚・ランキング（ふだん閉じる）
 
@@ -3414,6 +2955,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const openWithToken = async (token) => {
     const b = (await apiData("bootstrap", { value: { full: true } }, token)).value;
     custToken.current = token;
+    if (Number.isInteger(b.idx)) idxRef.current = b.idx;
+    rankAt.current = Date.now();
     setBoot(b); setFound(b.customer); reset();
     playAttach(token, b.play);
   };
@@ -3441,7 +2984,10 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       setBusy(false);
       return;
     } catch (e) {
-      if (e.rejected) { setErr("暗証番号が一致しませんでした。もう一回！"); setErrN(n=>n+1); setBusy(false); return; }
+      if (e.rejected) {
+        setErr(e.status === 429 ? e.message : "暗証番号がちがうようです。もう一度入れてください");
+        setErrN(n=>n+1); setBusy(false); return;
+      }
       // サーバーに繋がらないときは、お店が止まらないよう今までの方法で探す
       console.warn("サーバーに繋がらないため、従来の方法で確認します", e);
     }
@@ -3452,45 +2998,50 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   };
 
   // ── サーバー経由の書き込み（自分の分だけ） ────────────────────
-  const refresh = async () => {
+  // ── 最新の状態を取り直す ───────────────────────────
+  // ふだんは「軽い取り直し」：自分の会員データと、新しい方60件の注文の中の自分の分だけ。
+  // みんなのランキングは1分に1回だけ一緒にもらう（名簿全体を読むので重い）。
+  const refresh = async (opts = {}) => {
     if (!custToken.current) return;
     try {
-      const b = (await apiData("bootstrap", {}, custToken.current)).value;
-      // 定期の取り直しではアーカイブは受け取らないので、ログイン時の分を引き継ぐ
-      setBoot(prev => ({ ...b, myArchive: b.myArchive || (prev && prev.myArchive) || [] }));
+      const wantRanking = !!opts.ranking || Date.now() - rankAt.current > 60000;
+      const full = needFull.current; needFull.current = false;
+      const b = (await apiData("bootstrap", { value: full ? { full: true } : { idx: idxRef.current, ranking: wantRanking } }, custToken.current)).value;
+      if (Number.isInteger(b.idx)) idxRef.current = b.idx;
+      if (b.ranking) rankAt.current = Date.now();
+      setBoot(prev => {
+        const p = prev || {};
+        let myOrders = b.myOrders || [];
+        if (b.light && Array.isArray(p.myOrders)) {
+          // 新しい60件の外にある古い注文は、手元の控えを残す。
+          // 手元で「未処理」だった注文が60件の中から消えていたら、取り消されたか、
+          // 60件の外に押し出された（混雑時）かのどちらか → 全部を取り直して確かめる。
+          const win = new Set(myOrders.map(o => o && o.orderId));
+          if (p.myOrders.some(o => o && o.status === "pending" && !win.has(o.orderId))) needFull.current = true;
+          const kept = p.myOrders.filter(o => o && !win.has(o.orderId) && o.status !== "pending");
+          myOrders = [...myOrders, ...kept];
+        }
+        return { ...p, ...b, myOrders, ranking: b.ranking || p.ranking, play: b.play || p.play, myArchive: b.myArchive || p.myArchive || [] };
+      });
       setFound(b.customer);
-      playMerge(b.play);   // 別の端末で増えた記録があれば取り込む
+      if (b.play) playMerge(b.play);   // 別の端末で増えた記録があれば取り込む
+      if (needFull.current) setTimeout(() => refresh(), 300);
     } catch (e) {
-      // ログイン証が切れたら、暗証番号の入力からやり直してもらう
+      // ログイン証が切れたら（または暗証番号が変わったら）、暗証番号の入力からやり直してもらう
       if (e.status === 401) {
         playDetach(); sessClear();
         custToken.current = null; setBoot(null); setFound(null);
-        setErr("時間が経ったため、もう一度暗証番号を入力してください");
+        setErr(e.message && /暗証番号が変わりました/.test(e.message) ? e.message : "時間が経ったため、もう一度暗証番号を入力してください");
         return;
       }
       console.warn("最新の取得に失敗しました", e);
     }
   };
 
-  // 特典の使用状況だけを更新する（残高や暗証番号はサーバー側で弾かれる）
-  const saveMyBenefit = async (list, ticketUse) => {
-    const me = (list || []).find(c => c && boot && c.id === boot.customer.id);
-    if (!me) return;
-    const value = {};
-    ["benefitUsedMonth","toppingRemaining","toppingRemainingMonth","vipGiftUsedMonth","keiroGiftUsed","birthdayUsedYear"]
-      .forEach(f => { if (f in me) value[f] = me[f] ?? null; });
-    // 特典チケットから引いた分（サーバー側で「本人の券・残数の範囲内」を確認して減らす）
-    if (Array.isArray(ticketUse) && ticketUse.length) value.ticketUse = ticketUse;
-    try {
-      const r = await apiData("setMyBenefit", { value }, custToken.current);
-      setBoot(b => b ? { ...b, customer: r.value } : b);
-      setFound(r.value);
-    } catch (e) {
-      console.error("特典の更新に失敗しました", e);
-      alert("更新に失敗しました。もう一度お試しください。");
-      refresh();
-    }
-  };
+  // 特典（トッピング・今月の1杯・チケット・誕生日・VIP・敬老の日）を使う／戻すのは、
+  // 注文を出す・取り消すときにサーバーが自分で行う（画面から「残りは何個」と送らない）。
+  // 画面の中の古い作りが呼んでも害が無いよう、ここでは最新を取り直すだけにしてある。
+  const saveMyBenefit = async () => { setTimeout(() => refresh(), 500); };
 
   // 誕生月の登録（本人が一度だけ。サーバー側で「未登録のときだけ」を確認する）
   const saveMyBirthMonth = async (month) => {
@@ -3538,32 +3089,44 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     const added   = (list || []).filter(o => o && o.orderId && !prevIds.has(o.orderId));
     const removed = prev.filter(o => o && o.orderId && !listIds.has(o.orderId));
     try {
+      // 送るのは「どの品を何個」「どの特典を使いたいか」。金額・割引・使う特典の数はサーバーが決め直す。
       if (added.length > 0) {
-        // 新しい注文を出す。同じ種類の未処理注文はサーバー側で置き換わる。
-        for (const o of added) await apiData("placeMyOrder", { value: o }, custToken.current);
+        // 新しい注文を出す。同じ種類の未処理注文はサーバー側で置き換わる（その特典も戻る）。
+        for (const o of added) {
+          const r = await apiData("placeMyOrder", { value: o }, custToken.current);
+          if (r && r.customer) setFound(r.customer);
+        }
       } else {
         for (const o of removed) await apiData("cancelMyOrder", { value: { orderId: o.orderId } }, custToken.current);
       }
       await refresh();
     } catch (e) {
       console.error("注文の保存に失敗しました", e);
-      alert((e && e.message && /売り切れ|誕生|プレゼント|チケット/.test(e.message)) ? e.message : "注文の保存に失敗しました。通信状況を確認して、もう一度お試しください。");
+      if (e && e.status === 401) { refresh(); return; }
+      alert(e && e.status && e.message ? e.message : "注文を送れませんでした。通信状況を確認して、もう一度お試しください。");
       setOrdered(false);
       refresh();
     }
   };
 
   // 画面を開いている間は定期的に最新の状態を取り直す（注文の完了や残高の変化を反映）
+  // 注文してできあがりを待っている間は8秒ごと、それ以外は30秒ごと（通信量を抑えるため）。
+  // 画面に戻ってきた瞬間には必ず取り直す。
   useEffect(() => {
     if (!boot) return;
-    let alive = true;
-    const tick = () => { if (!document.hidden && alive) refresh(); };
-    const timer = setInterval(tick, 8000);
-    const onVisible = () => tick();
+    let alive = true, last = Date.now(), t = null;
+    const loop = () => {
+      if (!alive) return;
+      const gap = fastRef.current ? 8000 : 30000;
+      if (!document.hidden && Date.now() - last >= gap - 100) { last = Date.now(); refresh(); }
+      t = setTimeout(loop, 2000);
+    };
+    t = setTimeout(loop, 2000);
+    const onVisible = () => { if (!document.hidden && alive && Date.now() - last > 1500) { last = Date.now(); refresh(); } };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     return () => {
-      alive = false; clearInterval(timer);
+      alive = false; clearTimeout(t);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
@@ -3622,6 +3185,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   // 通常の注文の未処理判定からは外す。混ぜると、通常注文をしたときに
   // プレゼントの注文が巻き添えで消え、しかも受け取り済みの表示だけが残ってしまう。
   const myPendingOrder = found ? orders.find(o=>o.customerId===found.id && o.status==="pending" && !o.isVipGift && !o.isKeiroGift) : null;
+  fastRef.current = !!(myPendingOrder || ready);
   // 見守っていた未処理注文が「完了」に変わったら、できあがりのお知らせを出す（番号や待ち時間は出さない）
   useEffect(() => {
     if (!found) { pendRef.current = new Set(); return; }
@@ -3681,9 +3245,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       // 🎁 特別チケット（お誕生日 特別／優勝）。¥0。サーバーでも「対象者・残り枚数・期限」を確認する
       specialGiftId: (!!bdayDrink && bdayMode && bdayMode !== "bday") ? bdayMode : null,
       birthdayItems: bdayDrink ? [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])] : [],
-      // 特典チケットから引いたトッピング数（取り消しで戻すため）。今月ぶんを先に使う
-      ticketToppingUse: (benefitUsed && (isToppingRank || ticketToppingsHere > 0))
-        ? allocTicketToppings(found, Math.max(0, benefitItems.length - monthlyTopping)) : [],
+      // 特典チケットから何個引くかは、サーバーが決める（今月ぶんを先に使う）
       isSpecial: isSpecial || false,
       staffLinked: linkedStaff ? linkedStaff.name : null,
       status: "pending",
@@ -3694,33 +3256,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     // VIPプレゼントの注文は消さない。
     saveOrders([order, ...orders.filter(o=>!(o.customerId===found.id && o.status==="pending" && !o.isVipGift && !o.isKeiroGift))]);
 
-    // 書き込みの土台は同期済みの最新を使う（開きっぱなしの画面の古い残高で上書きしないため）
-    let updated = { ...(customers.find(c=>c.id===found.id) || found) };
-    if (bdayDrink && bdayMode === "bday") {
-      updated = { ...updated, birthdayUsedYear: String(new Date().getFullYear()) };
-      if (!benefitUsed) { saveC(customers.map(c=>c.id===found.id ? updated : c)); setFound(updated); }
-    }
-    // 🎁 特別チケットを1枚使った。数を増やすのはサーバー（placeMyOrder）の仕事なので、
-    //    ここでは画面の見え方だけ先に合わせておく（次の取り直しでサーバーの値に揃う）。
-    if (bdayDrink && order.specialGiftId) {
-      const id = order.specialGiftId;
-      updated = { ...updated, specialUsed: { ...(updated.specialUsed || {}), [id]: specialUsedN(updated, id) + 1 } };
-      setFound(updated);
-    }
-    if (benefitUsed) {
-      if (isToppingRank || ticketToppingsHere > 0) {
-        // 今月ぶんを先に使い、足りない分を特典チケットから引く
-        const fromMonthly = Math.min(benefitItems.length, monthlyTopping);
-        const use = order.ticketToppingUse || [];
-        if (isToppingRank) updated = { ...updated, toppingRemaining: monthlyTopping - fromMonthly, toppingRemainingMonth: currentMonth() };
-        if (use.length) updated = applyTicketUse(updated, use, order.orderId);
-        saveC(customers.map(c=>c.id===found.id ? updated : c), use);
-      } else {
-        updated = { ...updated, benefitUsedMonth: currentMonth() };
-        saveC(customers.map(c=>c.id===found.id ? updated : c));
-      }
-      setFound(updated);
-    }
+    // 特典（トッピング・今月の1杯・チケット・誕生日・特別チケット）を使うのはサーバー。
+    // 注文が通ると、使ったあとの会員データが返ってきて画面に反映される。
     const OK = ["注文を受け付けました！","うけたまわりました〜！","ありがとうございます♪","ただいまお作りします！","ナイスチョイス！✨"];
     setOkMsg(OK[Math.floor(Math.random() * OK.length)]);
     // ✅は20回に1回だけ🎉か⭐になる（当たり）
@@ -3738,36 +3275,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
   };
 
+  // 注文の取り消し。使った特典はサーバーが元に戻す（取り直しで画面に反映される）。
   const cancelOrder = () => {
     if (!myPendingOrder) return;
-    let updated = { ...(customers.find(c=>c.id===found.id) || found) };
-    if (myPendingOrder.isBirthdayGift) {
-      // 誕生日の一杯を取り消したら、券はまた使える
-      updated = { ...updated, birthdayUsedYear: null };
-      if (!myPendingOrder.usedBenefit) { saveC(customers.map(c=>c.id===found.id ? updated : c)); setFound(updated); }
-    }
-    if (myPendingOrder.specialGiftId) {
-      // 🎁 特別チケットも1枚戻る（実際に戻すのはサーバーの cancelMyOrder）
-      const id = myPendingOrder.specialGiftId;
-      updated = { ...updated, specialUsed: { ...(updated.specialUsed || {}), [id]: Math.max(0, specialUsedN(updated, id) - 1) } };
-      setFound(updated);
-    }
-    if (myPendingOrder.usedBenefit) {
-      const fromTickets = (myPendingOrder.ticketToppingUse || []).reduce((s,u)=>s+(Number(u.n)||0), 0);
-      if (isToppingRank) {
-        // 月が変わっていたら満数に戻っている扱い（先月の残りを土台にしない）
-        // 特典チケットから引いた分は、サーバー（cancelMyOrder）が券に戻すので、ここでは今月ぶんだけ戻す
-        const base = (found.toppingRemainingMonth === currentMonth()) ? (found.toppingRemaining ?? toppingMax) : toppingMax;
-        const restored = base + Math.max(0, (myPendingOrder.usedToppingCount || 0) - fromTickets);
-        updated = { ...updated, toppingRemaining: Math.min(restored, toppingMax), toppingRemainingMonth: currentMonth() };
-      } else if (fromTickets > 0 && !isMonthly) {
-        // ランク特典が無い人がチケットだけで使った場合：戻すのはサーバーに任せる
-      } else {
-        updated = { ...updated, benefitUsedMonth: null };
-      }
-      saveC(customers.map(c=>c.id===found.id ? updated : c));
-      setFound(updated);
-    }
     saveOrders(orders.filter(o=>o.orderId!==myPendingOrder.orderId));
     setOrdered(false);
   };
@@ -3845,13 +3355,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           <button type="button" className="back-btn" onClick={()=>{setScreen("home");setInput("");}}>← 戻る</button>
           <div className="nz-login-logo" aria-hidden="true">🌈</div>
           <h2 className="nz-login-title">虹カフェ 会員ページ</h2>
-          <p className="nz-login-hint">暗証番号を入力してください</p>
+          <p className="nz-login-hint">暗証番号（数字）を入れて「開く」を押してください</p>
           <input style={S.input} className={"nz-input " + (errN ? `wobble-${errN % 2}` : "")} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="off" placeholder="暗証番号" value={input}
             onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()}/>
           {err && <p style={S.err}>{err}</p>}
+          {errN >= 3 && <p className="nz-login-help">🙋 わからないときは、遠慮なくスタッフにお声かけください。暗証番号をお調べします。</p>}
           <label className="nz-check">
             <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/>
-            <span>この端末で記憶する<small>次回から暗証番号なしで開けます（7日間）</small></span>
+            <span>この端末で記憶する<small>次回から暗証番号なしで開けます（90日間）</small></span>
           </label>
           <button type="button" className="nz-primary" disabled={busy} onClick={search}>{busy ? "確認中…" : "開く"}</button>
         </div>
@@ -3871,10 +3382,12 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               <div className="nz-top-t">{greet}</div>
               <div className="nz-top-n">{found.name} さん</div>
             </div>
-            <button type="button" className="nz-bell" aria-label="注文のようす" onClick={()=>setTab("order")}>
-              {ready ? "🎉" : myPendingOrder ? "☕" : "🔔"}
-              {(myPendingOrder || ready) && <i aria-hidden="true"/>}
-            </button>
+            {(myPendingOrder || ready) && (
+              <button type="button" className="nz-bell" aria-label="注文のようす" onClick={()=>setTab("order")}>
+                {ready ? "🎉" : "☕"}
+                <i aria-hidden="true"/>
+              </button>
+            )}
           </div>
 
           {/* ══ ホーム ══ */}
@@ -3889,13 +3402,23 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   <span>→</span>
                 </button>
               )}
-              <div className="nz-quick">
-                <button type="button" className="nz-q" onClick={()=>setTab("order")}><span className="ic" style={{background:"var(--peach,#ffe3c9)"}}>☕</span>注文する</button>
-                <button type="button" className={"nz-q" + (usual ? "" : " dim")} onClick={useUsual} disabled={!usual}>
-                  <span className="ic" style={{background:"var(--sky,#cde9ff)"}}>🔁</span>いつもの
-                  {usual && <small className="nz-q-sub">{usual.label}</small>}
+              {/* いちばん大きく：いつもの（前回と同じもの）。無ければ「注文する」 */}
+              {!(myPendingOrder || ready) && (usual ? (
+                <button type="button" className="nz-hero" onClick={useUsual}>
+                  <span className="ic" aria-hidden="true">🔁</span>
+                  <span className="tx"><b>いつものを頼む</b><small>{usual.label}</small></span>
+                  <span className="ar" aria-hidden="true">→</span>
                 </button>
-                <button type="button" className="nz-q" onClick={()=>setTab("tickets")}><span className="ic" style={{background:"var(--mint,#d6f5e3)"}}>🎫</span>チケット</button>
+              ) : (
+                <button type="button" className="nz-hero" onClick={()=>setTab("order")}>
+                  <span className="ic" aria-hidden="true">☕</span>
+                  <span className="tx"><b>注文する</b><small>メニューから選べます</small></span>
+                  <span className="ar" aria-hidden="true">→</span>
+                </button>
+              ))}
+              <div className="nz-quick2">
+                <button type="button" onClick={()=>setTab("order")}>☕ メニューを見る</button>
+                <button type="button" onClick={()=>setTab("tickets")}>🎫 チケット</button>
               </div>
               {/* 🎁 敬老の日（9/20・対象の方だけ）はホームの一番目立つ所に */}
               <KeiroTicket found={found} orders={orders} onClaim={claimKeiro} onCancel={cancelKeiro}/>
@@ -4424,132 +3947,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
   );
 }
 
-// ── ORDER MENU TABS ───────────────────────
-function OrderMenuTabs({ menu, cart, addToCart, removeOne }) {
-  const categories = [...new Set(menu.map(m=>m.category))];
-  const [activeTab, setActiveTab] = useState(categories[0] || "");
-  // 直前に追加した商品（「+1」の飛び出しを出す場所）
-  const [lastAdd, setLastAdd] = useState(null);
-  // 効果音のオン・オフ（初期はオフ。設定は端末に記憶される）
-  const [sndOn, setSndOn] = useState(() => { try { return localStorage.getItem("niji_snd") === "on"; } catch { return false; } });
-  const toggleSnd = () => {
-    const next = !sndOn;
-    setSndOn(next);
-    try { lsSet("niji_snd", next ? "on" : "off"); } catch {}
-    if (next) { popSound(); unlockAch("niji_ach_snd", "効果音デビュー"); }   // オンにした瞬間に一度鳴らして、音量を確かめられるように
-  };
 
-  return (
-    <div>
-      {/* カテゴリタブ。スクロールしても上に貼り付いたままにして、
-          下の方の商品を見ている途中でもカテゴリを切り替えられるようにする。 */}
-      <div style={{display:"flex",gap:0,overflowX:"auto",background:"var(--card,#ffffff)",borderRadius:"10px 10px 0 0",marginBottom:0,
-        position:"sticky",top:0,zIndex:15,borderBottom:"1px solid #f0eae2"}}>
-        {categories.map(cat=>(
-          <button key={cat}
-            style={{flexShrink:0,background:"transparent",border:"none",
-              borderBottom:`2px solid ${activeTab===cat?"#d3a94f":"transparent"}`,
-              color:activeTab===cat?"#b07c1e":"#9a8f85",padding:"9px 14px",fontSize:"0.85rem",
-              fontWeight:activeTab===cat?700:400,cursor:"pointer",fontFamily:"inherit",
-              transition:"all 0.15s",whiteSpace:"nowrap"}}
-            onClick={()=>setActiveTab(cat)}>
-            {cat}
-          </button>
-        ))}
-        {/* 効果音の切り替え（押すと「ぽっ」と鳴る。初期はオフ） */}
-        <button onClick={toggleSnd} title="効果音"
-          style={{marginLeft:"auto",flexShrink:0,background:"transparent",border:"none",
-            padding:"9px 12px",cursor:"pointer",fontSize:"0.95rem",opacity:sndOn?1:0.45}}>
-          {sndOn ? "🔔" : "🔕"}
-        </button>
-      </div>
-      {/* 選択カテゴリのメニュー */}
-      <div style={{background:"var(--card,#ffffff)",borderRadius:"0 0 10px 10px",padding:"10px 8px",marginBottom:8}}>
-        <div style={S.menuGrid}>
-          {menu.filter(m=>m.category===activeTab).map(item=>{
-            const inCart=cart.find(c=>c.id===item.id);
-            return (
-              <button key={item.id} className={`menu-item ${inCart?"menu-item-active":""}`}
-                onClick={()=>{ addToCart(item); setLastAdd({id:item.id, n:Date.now()}); popSound(); }}>
-                {/* 押した瞬間、絵文字がぷるんと弾んで「+1」が飛び出す */}
-                <span className="m-emoji"><DrinkIcon item={item} size={44}/></span>
-                <span style={{fontSize:"0.85rem",fontWeight:600,color:"var(--ink,#3d3630)",lineHeight:1.25,marginTop:3,textAlign:"center"}}>{item.name}</span>
-                <span style={{color:"var(--gold,#b07c1e)",fontWeight:700,fontSize:"0.85rem"}}>¥{item.price}</span>
-                {inCart&&<div key={inCart.qty} className="pop" style={S.cartBadge}>{inCart.qty}</div>}
-                {inCart&&inCart.qty>=5&&<span className="hot-tag">大人気！</span>}
-                {lastAdd && lastAdd.id===item.id && <span key={lastAdd.n} className="plus-one">+1</span>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── RANKING BOARD ────────────────────────
-function RankingBoard({ customers, myId }) {
-  // ランク順（rankBasis降順）→ 今年の購入回数降順 でソートしてTOP5
-  const sorted = [...customers].sort((a, b) => {
-    const ra = getEffectiveRank(a);
-    const rb = getEffectiveRank(b);
-    const ri = RANKS.findIndex(r=>r.name===ra.name);
-    const rj = RANKS.findIndex(r=>r.name===rb.name);
-    if (rj !== ri) return rj - ri;
-    return (b.currentYearPurchases??0) - (a.currentYearPurchases??0);
-  });
-
-  const medals = ["🥇","🥈","🥉"];
-
-  return (
-    <div style={{marginTop:20,marginBottom:8}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-        <div style={{flex:1,height:1,background:"linear-gradient(90deg,transparent,#f6f1ea)"}}/>
-        <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.75rem",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>🏆 メンバーズランキング</span>
-        <div style={{flex:1,height:1,background:"linear-gradient(90deg,#f6f1ea,transparent)"}}/>
-      </div>
-
-      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {sorted.map((c, i) => {
-          const r    = getEffectiveRank(c);
-          const isMe = c.id === myId;
-          return (
-            <div key={c.id} style={{
-              display:"flex", alignItems:"center", gap:10,
-              background: isMe ? r.color+"18" : "#ffffff",
-              border: `1px solid ${isMe ? r.color+"55" : "#e7ded3"}`,
-              borderRadius:12, padding:"9px 12px",
-              boxShadow: isMe ? `0 0 12px ${r.color}22` : "none",
-            }}>
-              <span style={{fontSize:"1.15rem",flexShrink:0,minWidth:24,textAlign:"center"}}>
-                {i < 3 ? medals[i] : <span style={{color:"var(--ink4,#a79b90)",fontSize:"0.85rem",fontWeight:700}}>{i+1}</span>}
-              </span>
-              <span style={{fontSize:"0.95rem",flexShrink:0}}>{r.gem}</span>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{
-                    color: isMe ? r.color : "#3d3630",
-                    fontWeight: isMe ? 800 : 600,
-                    fontSize:"0.95rem",
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                  }}>
-                    {c.name}
-                  </span>
-                  {isMe && <span style={{color:r.color,fontSize:"0.75rem",fontWeight:700,background:r.color+"22",border:`1px solid ${r.color}44`,borderRadius:999,padding:"1px 6px",flexShrink:0}}>あなた</span>}
-                </div>
-                <span style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem"}}>{r.name}</span>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <div style={{color: isMe ? r.color : "#8a7f76",fontWeight:700,fontSize:"0.85rem"}}>{c.currentYearPurchases??0}回</div>
-                <div style={{color:"var(--ink4,#a79b90)",fontSize:"0.75rem"}}>今年</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 // ══════════════════════════════════════════
 //  STAFF LOGIN
@@ -4656,7 +4054,7 @@ function StaffLogin({ setScreen, setStaffRole, setStaffName, setStaffIsChief, st
 // ══════════════════════════════════════════
 //  POS
 // ══════════════════════════════════════════
-function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsChief, staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen }) {
+function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsChief, staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, saveC, saveMenu, saveOrders, designatedDrink, saveDesignatedDrink, vipGiftDrink, saveVipGiftDrink, setScreen, posOp }) {
   // 表示用に品ごとの絵文字を当てる。メニュー管理には元のまま（menuRaw）を渡し、保存データは変えない
   const menu = decorateMenu(menuRaw);
   const [customer,  setCustomer]  = useState(null);
@@ -4709,9 +4107,29 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   const isSpecialCustomer = !!customer?.isSpecial;
   const total     = isSpecialCustomer ? 0 : Math.max(0, subtotal - discount - posStaffDiscount);
 
-  const update = (updated) => {
-    saveC(customers.map(c=>c.id===updated.id?updated:c));
-    setCustomer(updated);
+  // 🏆 実績100個の無料券：選んだ人が本当に100個に届いているときだけボタンを出す
+  const [freeOk, setFreeOk] = useState(false);
+  useEffect(() => {
+    setFreeOk(false);
+    if (!customer || customer.freeDrinkUsedAt) return;
+    let alive = true;
+    dbGet("cafe_v4_play/" + customer.id).then((play) => {
+      if (!alive) return;
+      try { setFreeOk(badgeCount({ found: customer, orders: orders || [], play: play || {} }).got >= 100); } catch { setFreeOk(false); }
+    });
+    return () => { alive = false; };
+  }, [customer && customer.id]);
+
+  // サーバーの窓口を呼び、返ってきた最新の会員データを画面に反映する
+  const [busy, setBusy] = useState(false);
+  const run = async (op, value, opts) => {
+    if (busy) return null;
+    setBusy(true);
+    try {
+      const r = await posOp(op, value, opts);
+      if (r && r.customer && customer && String(r.customer.id) === String(customer.id)) setCustomer(r.customer);
+      return r;
+    } finally { setBusy(false); }
   };
 
   const addToCart = (item) => {
@@ -4733,100 +4151,61 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
     setTimeout(()=>setFlash(null), 1000);
   };
 
-  const doPayment = () => {
-    // スペシャル会員は total が 0 になるので、0円でも会計できるようにする
-    // （以前は total===0 で何も起きず、決済ボタンが無反応だった）
+  // レジで会計（残高払い）。値段・割引・引く金額はサーバーが計算する（画面の計算は目安）。
+  const doPayment = async () => {
     if (!customer || cart.length===0) return;
-    // 書き込みの土台は、選んだ瞬間の控えではなく同期済みの最新を使う。
-    // そうしないと、選んでいる間に他の端末で入ったチャージや決済を消してしまう。
     const base = customers.find(c=>c.id===customer.id) || customer;
     if (total>base.balance) { alert("残高が不足しています"); return; }
     // 二重決済の防止：この会員にアプリからの未処理注文が残っていないか確認する
     const pendingOfCustomer = (orders||[]).filter(o=>o.customerId===customer.id && o.status==="pending");
     if (pendingOfCustomer.length > 0 &&
-        !window.confirm(`${customer.name} さんには、アプリからの未処理の注文が${pendingOfCustomer.length}件あります。\n「📋 注文」タブで完了すると、そこでも残高が引かれます。\n\nこのままPOSで決済すると二重に引かれる可能性があります。続けますか？`)) return;
-    const now = new Date().toLocaleString("ja-JP");
-    const itemText = cart.map(c=>`${c.name}×${c.qty}`).join(", ");
-    const updated = {
-      ...base,
-      balance: isSpecialCustomer ? base.balance : Math.max(0, base.balance - total),
-      history: [{
-        type:"use", amount:total, subtotal, discount: subtotal - total,
-        items: itemText,
-        performer: staffName,
-        date: now
-      }, ...(base.history||[])].slice(0,60),
-    };
-    update(updated);
-    trigFlash("sub", total);
-    recordSale(total, false);
-    // 会員データの履歴とは別に、消えない台帳にも残す
-    logSale({ date: now, customerId: base.id, customerName: base.name,
-              amount: total, subtotal, discount: subtotal - total,
-              items: itemText, performer: staffName, isCash: false, source: "pos" });
-    setCart([]);
+        !window.confirm(`${customer.name} さんには、アプリからの未処理の注文が${pendingOfCustomer.length}件あります。\n「🔔 届いた注文」で「できました」を押すと、そこでも残高が引かれます。\n\nこのままレジで会計すると二重に引かれる可能性があります。続けますか？`)) return;
+    const r = await run("posPay", { customerId: customer.id, items: cart.map(c=>({ id: c.id, qty: c.qty })), reqId: newReqId() });
+    if (r) { trigFlash("sub", r.total); setCart([]); }
   };
 
-  const doCharge = () => requireManager(()=>{
-    // 入金も、選んだ瞬間の控えではなく同期済みの最新を土台にする
-    const base = customers.find(c=>c.id===customer.id) || customer;
-    const updated = {
-      ...base,
-      balance:              base.balance + 2200,
-      currentYearPurchases: (base.currentYearPurchases ?? 0) + 1,
-      history:   [{type:"charge",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(base.history||[])].slice(0,60),
-    };
-    update(updated);
-    logMoney({ type:"charge", customerId:base.id, customerName:base.name, amount:2200,
-               balanceBefore:base.balance, balanceAfter:updated.balance, performer:staffName });
-    trigFlash("add", 2200);
+  // 🎫 チャージ（マネージャーの確認つき。足すのはサーバー）
+  const doCharge = () => requireManager(async (mgrPw)=>{
+    const r = await run("charge", { customerId: customer.id, mgrPw, reqId: newReqId() });
+    if (r) trigFlash("add", CHARGE_AMOUNT);
   });
-
-  const undoCharge = () => requireManager(()=>{
-    // 入金の取り消しも、同期済みの最新を土台にする
-    const base = customers.find(c=>c.id===customer.id) || customer;
-    const newBalance = Math.max(0, base.balance - 2200);
-    const newPurchases = Math.max(0, (base.currentYearPurchases ?? 0) - 1);
-    const updated = {
-      ...base,
-      balance:              newBalance,
-      currentYearPurchases: newPurchases,
-      history:   [{type:"charge_undo",amount:2200,performer:staffName,date:new Date().toLocaleString("ja-JP")}, ...(base.history||[])].slice(0,60),
-    };
-    update(updated);
-    logMoney({ type:"charge_undo", customerId:base.id, customerName:base.name, amount:-2200,
-               balanceBefore:base.balance, balanceAfter:newBalance, performer:staffName });
-    trigFlash("sub", 2200);
+  // ↩️ チャージ取消（取り消していないチャージがあるときだけ、サーバーが受け付ける）
+  const undoCharge = () => requireManager(async (mgrPw)=>{
+    const r = await run("undoCharge", { customerId: customer.id, mgrPw, reqId: newReqId() });
+    if (r) trigFlash("sub", CHARGE_AMOUNT);
   });
+  // 取り消せるチャージがあるか（ボタンを出すかどうか）
+  const openCharges = (c) => {
+    const h = (c && c.history) || [];
+    return h.filter(x=>x && x.type==="charge").length - h.filter(x=>x && x.type==="charge_undo").length;
+  };
+  // レジで特典・チケットを使う（どれも履歴に「誰が」が残る）
+  const useTicket = async (kind, ticketId, msg) => {
+    const r = await run("useTicket", { customerId: customer.id, kind, ticketId });
+    if (r && msg) alert(msg + (r.desc ? `\n（${r.desc}）` : ""));
+    return r;
+  };
 
   const useBenefit = () => {
     if (!customer || isAlways || used) return;
-    const updated = {
-      ...customer,
-      benefitUsedMonth: currentMonth(),
-      history: [{
-        type:"benefit", desc:rank.benefit.desc,
-        performer: staffName,
-        date:new Date().toLocaleString("ja-JP")
-      }, ...(customer.history||[])].slice(0,60),
-    };
-    update(updated);
+    if (!window.confirm(`${customer.name} さんの今月の特典「${rank.benefit.desc}」を使います（お店で渡す）。よろしいですか？`)) return;
+    useTicket("monthly");
   };
 
   // トッピング特典（ブロンズ〜ゴールド）を、レジで1個ぶん使う（お店で渡す）
   const useOneTopping = () => {
     if (!customer) return;
     const base = customers.find(c=>c.id===customer.id) || customer;
-    const r = getEffectiveRank(base);
-    const avail = getToppingAvailable(base, r);
+    const avail = getToppingAvailable(base, getEffectiveRank(base));
     if (avail <= 0) return;
     if (!window.confirm(`${base.name} さんの今月のトッピング特典を1個ぶん使います（残り ${avail} → ${avail-1}）。よろしいですか？`)) return;
-    update({ ...base, toppingRemaining: avail - 1, toppingRemainingMonth: currentMonth(),
-      history: [{ type:"benefit", desc:`🧁 トッピング無料 1個ぶん（レジ）`, performer: staffName, date: new Date().toLocaleString("ja-JP") }, ...(base.history||[])].slice(0,60) });
+    useTicket("topping");
   };
 
+  // マネージャーの確認が要る操作。マネージャー本人ならそのまま、スタッフならパスワードを聞く。
+  // 入れたパスワードは操作と一緒にサーバーへ送り、サーバーでも確かめる（画面の確認だけに頼らない）。
   const requireManager = (fn) => {
-    if (isManager) { fn(); return; }
+    if (isManager) { fn(undefined); return; }
     setPwTarget(()=>fn); setPwPrompt("auth"); setPwInput(""); setPwErr("");
   };
   // マネージャーのパスワード確認。
@@ -4837,12 +4216,10 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
     setPwBusy(true); setPwErr("");
     try {
       const r = await apiData("verifyManagerPw", { value: { password: pwInput } });
-      if (r.ok) { setPwPrompt(null); pwTarget && pwTarget(); }
+      if (r.ok) { setPwPrompt(null); pwTarget && pwTarget(pwInput); }
       else setPwErr("マネージャーパスワードが違います");
     } catch (e) {
-      // サーバーに繋がらないときだけ、お店が止まらないよう手元のデータで確認する
-      if ((managerAccounts||[]).some(a=>a.password===pwInput)) { setPwPrompt(null); pwTarget&&pwTarget(); }
-      else setPwErr("確認できませんでした。通信状況を確認してください");
+      setPwErr(e.message || "確認できませんでした。通信状況を確認してください");
     }
     setPwBusy(false);
   };
@@ -4856,7 +4233,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   const toggleSoldOut = (id) => {
     const item = menuRaw.find(m=>m.id===id);
     if (!item) return;
-    saveMenu(menuRaw.map(m=>m.id===id ? { ...m, soldOut: !m.soldOut } : m));
+    posOp("setSoldOut", { id, soldOut: !item.soldOut });
   };
   const soldOutCount = menuRaw.filter(m=>m.soldOut).length;
 
@@ -4937,7 +4314,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
           <div className="pos-warn">この方はアプリから注文中です。左の「届いた注文」で「できました」を押すと、そこで残高が引かれます。レジで重ねて決済しないでください。</div>
         )}
         <div className="pos-mact" style={{marginTop:10}}>
-          {isManager && <button className="pos-charge" onClick={doCharge}>🎫 チャージ +¥2,200</button>}
+          {isManager && <button className="pos-charge" disabled={busy} onClick={doCharge}>🎫 チャージ +¥{CHARGE_AMOUNT.toLocaleString()}</button>}
           {rank.benefit.type==="monthly" && getToppingMax(rank)===0 && !used && <button className="pos-ghost" style={{borderColor:rank.color,color:rank.color}} onClick={useBenefit}>✓ 特典を使う（お店で渡す）</button>}
           {getToppingMax(rank)>0 && getToppingAvailable(liveCustomer, rank)>0 && <button className="pos-ghost" style={{borderColor:rank.color,color:rank.color}} onClick={useOneTopping}>🧁 トッピング1個ぶん使う</button>}
         </div>
@@ -4947,7 +4324,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
           {isManager && <button className="pos-ghost" onClick={()=>setShowCode(true)}>🔑 暗証</button>}
           {isManager && <button className="pos-ghost" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
           {!isManager && staffIsChief && <button className="pos-ghost" onClick={()=>setPinEdit(true)}>🔑 暗証番号を変更</button>}
-          {isManager && <button className="pos-ghost danger" onClick={()=>{ if(window.confirm("直前のチャージ1回分を取り消します。\n残高 -¥2,200・購入回数 -1 でよろしいですか？")) undoCharge(); }}>↩️ チャージ取消</button>}
+          {isManager && openCharges(liveCustomer) > 0 && <button className="pos-ghost danger" disabled={busy} onClick={()=>{ if(window.confirm(`${customer.name} さんのチャージを1回分取り消します。\n残高 -¥${CHARGE_AMOUNT.toLocaleString()}・購入回数 -1 でよろしいですか？`)) undoCharge(); }}>↩️ チャージ取消</button>}
         </div>
         {/* 🎟 特典チケット（持ち越し）。ドリンク券はここでしか減らせない */}
         {unusedTickets(liveCustomer).length > 0 && (
@@ -4957,21 +4334,18 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
               <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:"0.8rem",padding:"3px 0"}}>
                 <span style={{fontWeight:700,color:t.color||"#b07c1e"}}>{t.gem} {t.label}</span>
                 <span style={{flex:1,color:"#7a6f8c"}}>{ticketRemainText(t)}</span>
-                <button className="pos-ghost" onClick={()=>{
+                <button className="pos-ghost" disabled={busy} onClick={()=>{
                   const per = t.kind === "topping" ? Math.min(t.perUse || 1, t.remaining) : 1;
                   const what = t.kind === "topping" ? `トッピング${per}個ぶん` : "1杯ぶん";
                   if (!window.confirm(`${customer.name} さんの「${t.label}」を ${what} 使います（お店で渡す）。よろしいですか？`)) return;
-                  const base = liveCustomer;
-                  const upd = applyTicketUse(base, [{ id: t.id, n: per }], `pos_${Date.now()}`);
-                  upd.history = [{ type:"benefit", desc:`🎟 ${t.label}（${what}）`, performer: staffName, date: new Date().toLocaleString("ja-JP") }, ...(base.history||[])].slice(0,60);
-                  update(upd);
+                  useTicket("bonus", t.id);
                 }}>使う</button>
               </div>
             ))}
           </div>
         )}
         <div className="pos-mact" style={{marginTop:8}}>
-          {!customer.freeDrinkUsedAt && (
+          {!customer.freeDrinkUsedAt && freeOk && (
             <button className="pos-ghost" onClick={async ()=>{
               let note = "";
               try {
@@ -4979,30 +4353,21 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
                 const { got } = badgeCount({ found: customer, orders: orders || [], play: play || {} });
                 note = `\n（サーバーの記録では実績 ${got} 個${got < 100 ? "。100個に届いていないので、お客様の画面をよく確認してください" : ""}）`;
               } catch {}
-              if (!window.confirm(`${customer.name} さんの「🏆 1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？${note}`)) return;
-              const now = new Date().toLocaleString("ja-JP");
-              saveC(customers.map(c=>c.id===customer.id ? {...c, freeDrinkUsedAt: now} : c));
-              setCustomer({...liveCustomer, freeDrinkUsedAt: now});
-              alert("使用済みにしました。1杯ぶんは会計から外してください。");
-            }}>🏆 無料券を使う</button>
+              if (!window.confirm(`${customer.name} さんの「🏆 実績100個の1杯無料券」を使用済みにします。\nお客様の画面に券が出ていることを確認しましたか？${note}`)) return;
+              useTicket("freeDrink", null, "使用済みにしました。1杯ぶんは会計から外してください。");
+            }}>🏆 実績100個の無料券を使う</button>
           )}
           {isBirthdayTicketActive(customer) && (
             <button className="pos-ghost" style={{borderColor:"#ff9fbf",color:"#b0284f"}} onClick={()=>{
-              if (!window.confirm(`${customer.name} さんの「🎂 誕生月の1杯無料券」を使用済みにします。\n（${customer.birthMonth}月生まれ・${new Date().getFullYear()}年分）よろしいですか？`)) return;
-              saveC(customers.map(c=>c.id===customer.id ? {...c, birthdayUsedYear: String(new Date().getFullYear())} : c));
-              setCustomer({...liveCustomer, birthdayUsedYear: String(new Date().getFullYear())});
-              alert("使用済みにしました。1杯ぶんは会計から外してください。");
+              if (!window.confirm(`${customer.name} さんの「🎂 誕生月の1杯無料券」を使用済みにします。\n（${customer.birthMonth}月生まれ・${jstYear()}年分）よろしいですか？`)) return;
+              useTicket("birthday", null, "使用済みにしました。1杯ぶんは会計から外してください。");
             }}>🎂 誕生月券を使う</button>
           )}
           {allSpecialsOf(liveCustomer).filter(sp => specialLeft(liveCustomer, sp) > 0).map(sp => (
             <button key={sp.id} className="pos-ghost" style={{borderColor:"#d9a441",color:"#8a6a1a"}} onClick={()=>{
               const left = specialLeft(liveCustomer, sp);
               if (!window.confirm(`${customer.name} さんの「${sp.icon} ${sp.title}」を1枚つかいます。\n（いま あと${left}枚 ／ ${sp.until} まで）\nドリンク1杯とトッピング1つは会計から外してください。よろしいですか？`)) return;
-              const used = specialUsedN(liveCustomer, sp.id) + 1;
-              const patch = { specialUsed: { ...(liveCustomer.specialUsed || {}), [sp.id]: used } };
-              saveC(customers.map(c=>c.id===customer.id ? {...c, ...patch} : c));
-              setCustomer({...liveCustomer, ...patch});
-              alert(`1枚つかいました。のこり ${Math.max(0, sp.n - used)}枚 です。`);
+              useTicket("special", sp.id, "1枚つかいました。ドリンク1杯とトッピング1つは会計から外してください。");
             }}>{sp.icon} {sp.title}を使う</button>
           ))}
         </div>
@@ -5126,7 +4491,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
           </div>
           <div className="pos3">
             <div className={"col" + (posSub==="orders" ? " show" : "")}>
-              <OrdersPanel orders={orders} customers={customers} saveOrders={saveOrders} saveC={saveC} staffName={staffName}/>
+              <OrdersPanel orders={orders} customers={customers} posOp={posOp} staffName={staffName}/>
             </div>
             <div className={"col" + (posSub==="reg" ? " show" : "")}>{customer ? customerPane : searchPane}</div>
             <div className={"col" + (posSub==="reg" ? " show" : "")}>{customer ? registerPane : soldOutPane}</div>
@@ -5137,7 +4502,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
         <MenuManager menu={menuRaw} saveMenu={saveMenu} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink}/>
       )}
       {posTab==="cash" && (
-        <CashOrderPanel menu={menu} staffName={staffName} orders={orders} saveOrders={saveOrders}/>
+        <CashOrderPanel menu={menu} staffName={staffName} posOp={posOp}/>
       )}
       {posTab==="staffmgmt" && isManager && (
         <StaffMgmtPanel staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} customers={customers} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} menu={menu}/>
@@ -5156,20 +4521,24 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
           pwInput={pwInput} setPwInput={setPwInput} err={pwErr}/>
       )}
       {pwPrompt==="editCustomer" && isManager && customer && (
-        <EditCustomerModal customer={customer} customers={customers}
-          onSave={updated=>{update(updated);setPwPrompt(null);}}
-          onDelete={()=>{if(window.confirm(`${customer.name} を削除しますか？`)){saveC(customers.filter(c=>c.id!==customer.id));setCustomer(null);setPwPrompt(null);}}}
+        <EditCustomerModal customer={liveCustomer} customers={customers}
+          onSave={async (payload)=>{ const r = await run("editCustomer", { customerId: customer.id, ...payload }); if (r) setPwPrompt(null); }}
+          onDelete={async ()=>{
+            if (!window.confirm(`${customer.name} さんを会員名簿から削除しますか？\n（残高 ¥${(liveCustomer.balance||0).toLocaleString()} も消えます。控えは残ります）`)) return;
+            const r = await run("deleteCustomer", { customerId: customer.id });
+            if (r) { setCustomer(null); setPwPrompt(null); }
+          }}
           onClose={()=>setPwPrompt(null)}/>
       )}
       {pinEdit && canEditPin && customer && (
         <PinChangeModal customer={customer} customers={customers}
-          onSave={newPin=>{ update({...customer, pin:newPin}); setPinEdit(false); }}
+          onSave={async newPin=>{ const r = await run("editCustomer", { customerId: customer.id, set: { pin: newPin }, expect: { pin: liveCustomer.pin } }); if (r) setPinEdit(false); }}
           onClose={()=>setPinEdit(false)}/>
       )}
       {pwPrompt==="addCustomer" && (
         <AddCustomerModal
           customers={customers}
-          onSave={c=>{saveC([...customers,c]);setPwPrompt(null);}}
+          onSave={async c=>{ const r = await run("addCustomer", { customer: { name: c.name, pin: c.pin, balance: c.balance } }); if (r) { setPwPrompt(null); setCustomer(r.customer); } }}
           onClose={()=>setPwPrompt(null)}
           nextId={String(customers.length ? Math.max(...customers.map(c=>parseInt(c.id)||0))+1 : 1001)}/>
       )}
@@ -5248,10 +4617,10 @@ function BackupPanel({ customers }) {
       if (!data.customers || !Array.isArray(data.customers)) {
         setRestoreMsg("❌ 形式が正しくありません"); return;
       }
-      if (!window.confirm(`${data.customers.length}件の会員データを復元しますか？\n現在のデータは上書きされます。`)) return;
-      dbSet("cafe_v4_customers", data.customers);
-        Promise.resolve().then(()=>setRestoreMsg(`✅ ${data.customers.length}件を復元しました。ページを再読み込みしてください。`))
-        .catch(()=>setRestoreMsg("❌ 復元に失敗しました"));
+      if (!window.confirm(`${data.customers.length}件の会員データを復元しますか？\n現在のデータは上書きされます（今のデータは、念のため別の場所に控えを残します）。`)) return;
+      apiData("restoreCustomers", { value: { customers: data.customers } })
+        .then(()=>setRestoreMsg(`✅ ${data.customers.length}件を復元しました。ページを再読み込みしてください。`))
+        .catch((e)=>setRestoreMsg("❌ 復元に失敗しました：" + (e.message || "")));
     } catch { setRestoreMsg("❌ JSON の解析に失敗しました"); }
   };
 
@@ -5556,6 +4925,70 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
   );
 }
 
+// ── 📒 その日の締め ─────────────────────────────
+// サーバーが「消えない台帳」から、その日のお金の動きをまとめて返す。
+// 会計係が、レジの現金と照らし合わせるための数字。
+function DayClosePanel() {
+  const today = () => { const d = new Date(Date.now() + 9 * 3600 * 1000); return d.toISOString().slice(0, 10); };
+  const [day, setDay] = useState(today);
+  const [rep, setRep] = useState(null);
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const load = async (d) => {
+    setLoading(true); setErr("");
+    try { const r = await apiData("dayReport", { value: { day: d } }); setRep(r.value); }
+    catch (e) { setErr(e.message || "読み込めませんでした"); setRep(null); }
+    setLoading(false);
+  };
+  useEffect(() => { load(day); }, [day]);
+  const shift = (n) => { const t = new Date(day + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); setDay(t.toISOString().slice(0, 10)); };
+  const yen = (n) => "¥" + Number(n || 0).toLocaleString();
+  const [y, m, d] = day.split("-").map(Number);
+  const wd = "日月火水木金土"[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const Row = ({ label, value, sub, strong }) => (
+    <div className="nz-close-row" style={strong ? { fontWeight: 900, fontSize: "1.05rem" } : null}>
+      <span>{label}{sub && <small>{sub}</small>}</span><b>{value}</b>
+    </div>
+  );
+  return (
+    <div className="nz-close">
+      <div className="nz-close-h">
+        <span>📒 その日の締め</span>
+        <span className="nz-close-nav">
+          <button type="button" onClick={() => shift(-1)}>◀</button>
+          <b>{m}月{d}日（{wd}）</b>
+          <button type="button" onClick={() => shift(1)} disabled={day >= today()}>▶</button>
+        </span>
+      </div>
+      {loading && !rep && <div className="nz-close-note">読み込んでいます…</div>}
+      {err && <div className="nz-close-note" style={{ color: "#c94a45" }}>{err}</div>}
+      {rep && (
+        <>
+          <Row label="🎫 チャージ" sub={rep.charges.count ? `${rep.charges.count}回` : ""} value={"+" + yen(rep.charges.amount)}/>
+          {rep.charges.undoCount > 0 && <Row label="↩️ チャージ取消" sub={`${rep.charges.undoCount}回`} value={"−" + yen(rep.charges.undoAmount)}/>}
+          {rep.newMembers.count > 0 && <Row label="🌱 入会（初回）" sub={`${rep.newMembers.count}人`} value={"+" + yen(rep.newMembers.amount)}/>}
+          <Row label="💵 現金注文" sub={rep.cashSales.count ? `${rep.cashSales.count}件` : ""} value={yen(rep.cashSales.amount)}/>
+          <Row label="💳 残高払い（売上）" sub={rep.memberSales.count ? `${rep.memberSales.count}件` : ""} value={yen(rep.memberSales.amount)}/>
+          {rep.edits.count > 0 && <Row label="✏️ 残高の手修正" sub={`${rep.edits.count}回`} value={(rep.edits.amount >= 0 ? "+" : "−") + yen(Math.abs(rep.edits.amount))}/>}
+          {rep.removed.count > 0 && <Row label="🗑 会員の削除（残っていた残高）" sub={`${rep.removed.count}人`} value={"−" + yen(Math.abs(rep.removed.amount))}/>}
+          <div className="nz-close-sep"/>
+          <Row label="🏦 いまの預かり金（全員の残高の合計）" value={yen(rep.deposits)} strong/>
+          {rep.items.length > 0 && (
+            <div className="nz-close-items">
+              <div>よく出た品</div>
+              {rep.items.map(([n, c]) => <span key={n}>{n} <b>{c}</b></span>)}
+            </div>
+          )}
+          <div className="nz-close-note">
+            レジの現金は「チャージで受け取ったお金」＋「現金注文」です。チャージ1回あたりの受け取り額で計算して、照らし合わせてください。
+            {rep.entries.sales + rep.entries.money === 0 && " この日はお金の動きがありません。"}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SalesHistoryPanel({ customers, orders }) {
   // 会計履歴の画面を開いたときだけ、アーカイブ済みの過去注文を読み込む。
   // 普段の同期では読みに行かないので、通信量は増えない。
@@ -5697,6 +5130,7 @@ function SalesHistoryPanel({ customers, orders }) {
 
   return (
     <div className="pos-page" style={{paddingTop:14, paddingBottom:40}}>
+      <DayClosePanel/>
       <h2 style={{...S.title, margin:"0 0 14px"}}>会計履歴</h2>
 
       {days.length === 0 ? (
@@ -5800,6 +5234,14 @@ function SalesHistoryPanel({ customers, orders }) {
 
 // ── ORDERS PANEL ─────────────────────────
 // 「2026/9/20 14:03:22」の形の時刻から、いま何分たったかを数える（読めなければ0）
+// お金の操作ごとの番号（サーバーが同じ番号の操作を二度しないために使う）
+const newReqId = () => "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+// "2026/10/23 9:05:03" → ミリ秒（並べ替え用）
+function stampMs(s) {
+  const m = String(s || "").match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+)(?::(\d+))?/);
+  if (!m) return 0;
+  return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)).getTime();
+}
 function ageMinutes(createdAt) {
   const m = String(createdAt || "").match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+)(?::(\d+))?/);
   if (!m) return 0;
@@ -5828,9 +5270,11 @@ function PosSoundButton() {
   return <button className="pos-snd" style={on ? {} : {background:"#fff",borderColor:"#eee3ea",color:"#a9a0b8"}} onClick={toggle} title="新しい注文が届いたときの音">{on ? "🔔 通知音 ON" : "🔕 通知音 OFF"}</button>;
 }
 
-function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
-  const pending   = orders.filter(o=>o.status==="pending").sort((a,b)=>a.createdAt>b.createdAt?1:-1);
-  const completed = orders.filter(o=>o.status==="completed").sort((a,b)=>a.completedAt<b.completedAt?1:-1).slice(0,10);
+function OrdersPanel({ orders, customers, posOp, staffName }) {
+  // 並べ順は時刻の数字で比べる（文字のまま比べると「9:05」が「10:01」より後になってしまう）
+  const pending   = orders.filter(o=>o.status==="pending").sort((a,b)=>stampMs(a.createdAt)-stampMs(b.createdAt));
+  const completed = orders.filter(o=>o.status==="completed").sort((a,b)=>stampMs(b.completedAt)-stampMs(a.completedAt)).slice(0,10);
+  const [busyId, setBusyId] = useState(null);
   // 新しく届いた注文は25秒だけ点滅し、通知音が鳴る。経過時間の色分けは30秒ごとに計算し直す
   const seenRef = useRef(null);
   const [fresh, setFresh] = useState({});
@@ -5857,104 +5301,35 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
     seenRef.current = new Set(ids);
   }, [pendKey]);
 
-  const completeOrder = (order) => {
-    const now = new Date().toLocaleString("ja-JP");
-    if (order.isCash) {
-      saveOrders(orders.map(o=>o.orderId===order.orderId
-        ? {...o, status:"completed", completedAt:now, completedBy: staffName || "スタッフ"}
-        : o
-      ));
-      recordSale(order.total, true);
-      logSale({ date: now, customerId: null,
-                customerName: order.customerName || "現金のお客様",
-                amount: order.total, subtotal: order.subtotal, discount: 0,
-                items: (order.items||[]).map(i=>`${i.name}×${i.qty}`).join(", "),
-                performer: staffName || "スタッフ", isCash: true,
-                orderId: order.orderId, source: "order" });
-      return;
-    }
-    const customer = customers.find(c=>c.id===order.customerId);
-    if (!customer) { alert("会員が見つかりません"); return; }
-    // 残高が足りないまま完了すると、残高は0円になるのに売上には満額が記録されてしまい、
-    // 帳簿と実際が合わなくなる（レジの会計は前から「残高不足」で止めている）。
-    // ここも同じ扱いにして、先にチャージしてもらう。
-    if (order.total > customer.balance) {
-      alert(`残高が足りません。\n\n${customer.name} さん\n　のこり ¥${customer.balance.toLocaleString()}\n　ご注文 ¥${order.total.toLocaleString()}\n　不足 ¥${(order.total - customer.balance).toLocaleString()}\n\n「👥 お客さま」からチャージしてから、もう一度「できました」を押してください。`);
-      return;
-    }
-    const itemText = [
-      ...(order.items||[]).map(i=>`${i.name}×${i.qty}`),
-      ...(order.benefitItems||[]).map(i=>`${i.name}(特典)`),
-      ...(order.birthdayItems||[]).map(i=>`${i.name}(${order.specialGiftId ? ((SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット") : "🎂誕生日"})`),
-      ...(order.makaiItem ? [`${order.makaiItem.name}(賄い)`] : []),
-    ].join(", ");
-    const updatedCustomer = {
-      ...customer,
-      balance: (order.isSpecial || order.isVipGift || order.isKeiroGift) ? customer.balance : Math.max(0, customer.balance - order.total),
-      history: [{
-        type:"use", amount:order.total, subtotal:order.subtotal, discount:order.discount,
-        items: itemText,
-        performer: staffName || "スタッフ（注文完了）", date:now,
-      }, ...(customer.history||[])].slice(0,60),
-    };
-    saveC(customers.map(c=>c.id===customer.id ? updatedCustomer : c));
-    saveOrders(orders.map(o=>o.orderId===order.orderId
-      ? {...o, status:"completed", completedAt:now, completedBy: staffName || "スタッフ"}
-      : o
-    ));
-    recordSale(order.total, false);
-    // 会員データの履歴とは別に、消えない台帳にも残す
-    logSale({ date: now, customerId: customer.id, customerName: customer.name,
-              amount: order.total, subtotal: order.subtotal, discount: order.discount,
-              items: itemText, performer: staffName || "スタッフ（注文完了）",
-              isCash: false, orderId: order.orderId, source: "order" });
+  // 🔔 できました：サーバーが「まだ済んでいないか」を確かめてから、今の残高から引く。
+  // 2台で同時に押しても二重には引かれず、直前に入ったチャージも消えない。
+  const completeOrder = async (order) => {
+    if (busyId) return;
+    setBusyId(order.orderId);
+    try {
+      const r = await posOp("completeOrder", { orderId: order.orderId }, { quiet: true, returnError: true });
+      if (r && r.error) {
+        const sh = r.error.body && r.error.body.shortage;
+        if (sh) alert(`残高が足りません。\n\n${sh.name} さん\n　のこり ¥${sh.balance.toLocaleString()}\n　ご注文 ¥${sh.total.toLocaleString()}\n　不足 ¥${(sh.total - sh.balance).toLocaleString()}\n\n「👥 お客さま」からチャージしてから、もう一度「できました」を押してください。`);
+        else alert(r.error.message || "うまくいきませんでした。もう一度お試しください");
+      }
+    } finally { setBusyId(null); }
   };
 
-  // 注文をキャンセルするとき、その注文で使った特典（トッピング残数・月次特典・VIPプレゼント）を元に戻す。
-  // お客様側のキャンセルと同じ扱いにして、特典が使い損になるのを防ぐ。
-  const deleteOrder = (order) => {
-    if (!window.confirm("この注文を削除しますか？\n使用した特典は元に戻します。")) return;
-    const c = customers.find(x=>x.id===order.customerId);
-    if (c) {
-      let updated = { ...c };
-      let changed = false;
-      if (order.isVipGift) {
-        updated.vipGiftUsedMonth = null;
-        changed = true;
-      } else if (order.isKeiroGift) {
-        updated.keiroGiftUsed = null;   // 敬老の日プレゼントは、削除したらもう一度受け取れるように戻す
-        changed = true;
-      } else if (order.usedBenefit) {
-        const r   = getEffectiveRank(c);
-        const max = getToppingMax(r);
-        if (max > 0) {
-          // 月が変わっていたらトッピング残数は満数に戻っている扱いなので、
-          // 先月の残り（例:0回）を土台にしないよう気をつける。
-          const fromTickets = (order.ticketToppingUse || []).reduce((s,u)=>s+(Number(u.n)||0), 0);
-          const base = (c.toppingRemainingMonth === currentMonth()) ? (c.toppingRemaining ?? max) : max;
-          const restored = base + Math.max(0, (order.usedToppingCount || 0) - fromTickets);
-          updated.toppingRemaining      = Math.min(restored, max);
-          updated.toppingRemainingMonth = currentMonth();
-        } else if ((order.ticketToppingUse || []).length > 0) {
-          // ランク特典が無い人がチケットだけで使った注文
-        } else {
-          updated.benefitUsedMonth = null;
-        }
-        changed = true;
-      }
-      // 特典チケットから引いたトッピングも券に戻す
-      if ((order.ticketToppingUse || []).length > 0) { updated = restoreTicketUse(updated, order.ticketToppingUse); changed = true; }
-      // 🎂 誕生日の一杯を含む注文を消したら、券はまた使える
-      if (order.isBirthdayGift) { updated.birthdayUsedYear = null; changed = true; }
-      // 🎁 特別チケットで出した注文を消したら、1枚戻る
-      if (order.specialGiftId) {
-        const id = order.specialGiftId;
-        updated.specialUsed = { ...(updated.specialUsed || {}), [id]: Math.max(0, specialUsedN(updated, id) - 1) };
-        changed = true;
-      }
-      if (changed) saveC(customers.map(x=>x.id===c.id ? updated : x));
-    }
-    saveOrders(orders.filter(o=>o.orderId!==order.orderId));
+  // ↩ 戻す：「できました」の押し間違い。注文を未処理に戻し、引いた金額を残高に返す。
+  const revertOrder = async (order) => {
+    if (busyId) return;
+    if (!window.confirm(`「${order.customerName}」さんの注文（¥${Number(order.paid ?? order.total ?? 0).toLocaleString()}）を、\n「できました」を押す前に戻します。\n引いた金額は残高に返ります。よろしいですか？`)) return;
+    setBusyId(order.orderId);
+    try { await posOp("revertOrder", { orderId: order.orderId }); } finally { setBusyId(null); }
+  };
+
+  // 未処理の注文を消す（作らない）。使った特典はサーバーが元に戻す。
+  const deleteOrder = async (order) => {
+    if (busyId) return;
+    if (!window.confirm("この注文を取り消しますか？\n使った特典は元に戻ります。")) return;
+    setBusyId(order.orderId);
+    try { await posOp("deleteOrder", { orderId: order.orderId }, { removeOrderId: order.orderId }); } finally { setBusyId(null); }
   };
 
   const orderTag = (order) => order.specialGiftId ? [`${(SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎁"} ${(SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット"}`, "pt-gold"]
@@ -5988,11 +5363,13 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
               <span>お支払い <b style={{fontSize:"1.05rem",color:"#3a2e4f"}}>¥{Number(order.total||0).toLocaleString()}</b>{order.discount>0 && <span style={{marginLeft:6}}>（割引 -¥{order.discount.toLocaleString()}）</span>}</span>
             </div>
             <div className="pos-obtns">
-              <button className="pos-sm danger" onClick={()=>deleteOrder(order)}>取り消す</button>
+              <button className="pos-sm danger" disabled={!!busyId} onClick={()=>deleteOrder(order)}>取り消す</button>
               {mine ? (
                 <div style={{flex:1,textAlign:"center",fontSize:"0.8rem",color:"#a9a0b8",padding:10}}>🔒 自分の注文は完了できません</div>
               ) : (
-                <button className="pos-done" onClick={()=>completeOrder(order)}>🔔 できました（お渡し・決済）</button>
+                <button className="pos-done" disabled={!!busyId} onClick={()=>completeOrder(order)}>
+                  {busyId === order.orderId ? "処理中…" : "🔔 できました（お渡し・決済）"}
+                </button>
               )}
             </div>
           </div>
@@ -6004,7 +5381,9 @@ function OrdersPanel({ orders, customers, saveOrders, saveC, staffName }) {
           {completed.map(order=>(
             <div key={order.orderId} className="pos-doneRow">
               <span><b style={{color:"#3a2e4f"}}>{order.customerName}</b> <span style={{marginLeft:6}}>{String(order.completedAt||"").split(" ")[1] || ""}</span></span>
-              <span>¥{Number(order.total||0).toLocaleString()} <span style={{marginLeft:6,fontSize:"0.72rem"}}>{order.completedBy || "スタッフ"}</span></span>
+              <span>¥{Number(order.paid ?? order.total ?? 0).toLocaleString()} <span style={{marginLeft:6,fontSize:"0.72rem"}}>{order.completedBy || "スタッフ"}</span>
+                <button type="button" className="pos-undo" disabled={!!busyId} onClick={()=>revertOrder(order)} title="押し間違いを戻す">↩ 戻す</button>
+              </span>
             </div>
           ))}
         </div>
@@ -6312,6 +5691,9 @@ const HIST_CONFIG = {
   edit_purchases: { icon:"✏️", label:"購入回数変更",   color:"#3b7fb8" },
   benefit_reset:  { icon:"🔄", label:"特典リセット",   color:"var(--ink2,#8a7f76)" },
   year_reset:     { icon:"🎉", label:"年次リセット",   color:"#7a6fd4" },
+  refund:         { icon:"↩️", label:"決済の取消",     color:"#3e9a5c" },
+  new_member:     { icon:"🌱", label:"入会",           color:"#3e9a5c" },
+  edit_pin:       { icon:"🔑", label:"暗証番号の変更", color:"#3b7fb8" },
 };
 
 function HistoryModal({ customer, rank, onClose }) {
@@ -6331,8 +5713,12 @@ function HistoryModal({ customer, rank, onClose }) {
       if (h.items) parts.push(`| ${h.items}`);
       return parts.join(" ");
     }
-    if (h.type === "charge")         return `+¥2,200 · 購入回数+1`;
-    if (h.type === "charge_undo")    return `-¥2,200 · 購入回数-1（取消）`;
+    const by = h.approvedBy && h.approvedBy !== h.performer ? `（承認: ${h.approvedBy}）` : "";
+    if (h.type === "charge")         return `+¥${(h.amount||2200).toLocaleString()} · 購入回数+1${by}`;
+    if (h.type === "charge_undo")    return `-¥${(h.amount||2200).toLocaleString()} · 購入回数-1（取消）${by}`;
+    if (h.type === "refund")         return `+¥${(h.amount||0).toLocaleString()} 返金（「できました」の押し間違いを戻した）${h.items ? " | " + h.items : ""}`;
+    if (h.type === "new_member")     return `入会・初回 ¥${(h.amount||0).toLocaleString()}${by}`;
+    if (h.type === "edit_pin")       return "暗証番号を変更";
     if (h.type === "benefit")        return h.desc || "特典使用";
     if (h.type === "edit_balance")   return `¥${h.before?.toLocaleString()} → ¥${h.after?.toLocaleString()}`;
     if (h.type === "edit_purchases") return `${h.label ? h.label+": " : ""}${h.before}回 → ${h.after}回`;
@@ -6452,7 +5838,10 @@ function ManagerPwModal({ onConfirm, onClose, pwInput, setPwInput, err }) {
 }
 
 // ── EDIT CUSTOMER ────────────────────────
-function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
+function EditCustomerModal({ customer: liveCustomerProp, customers, onSave, onDelete, onClose }) {
+  // 開いた瞬間の値を控えておく。8秒ごとの同期で最新に入れ替わっても、比べる基準は動かさない
+  // （基準が動くと、開いている間に引かれた残高を「古い値に戻す」変更として送ってしまう）。
+  const customer = useRef(liveCustomerProp).current;
   const [bal,  setBal]  = useState(String(customer.balance));
   const [pin,  setPin]  = useState(customer.pin || "");
   const [cyp,  setCyp]  = useState(String(customer.currentYearPurchases ?? customer.purchases ?? 0));
@@ -6471,39 +5860,26 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
   const rankPreview = getRank(parseInt(rb)||0);
 
   const pinOwner = findPinOwner(pin, customers, customer.id);
+  // 変えた項目だけをサーバーに送る。「開いたときの値」も一緒に送り、
+  // そのあいだに別の端末で変わっていたらサーバーが止める（上書き事故を防ぐ）。
   const save = () => {
     if (pinOwner) { alert(`この暗証番号は「${pinOwner.name}」さんが使用中です。別の番号にしてください`); return; }
-    const newBal = Math.max(0, parseInt(bal)||0);
-    const newCyp = Math.max(0, parseInt(cyp)||0);
-    const newRb  = Math.max(0, parseInt(rb)||0);
-    const logs = [];
-    if (newBal !== customer.balance) {
-      logs.push({ type:"edit_balance", before:customer.balance, after:newBal, performer:"マネージャー", date:new Date().toLocaleString("ja-JP") });
-      // 残高の手修正も、消えない台帳に残す
-      logMoney({ type:"edit_balance", customerId:customer.id, customerName:customer.name,
-                 amount:newBal-customer.balance, balanceBefore:customer.balance, balanceAfter:newBal,
-                 performer:"マネージャー" });
-    }
-    if (newCyp !== (customer.currentYearPurchases ?? 0))
-      logs.push({ type:"edit_purchases", label:"今年の購入回数", before:customer.currentYearPurchases??0, after:newCyp, performer:"マネージャー", date:new Date().toLocaleString("ja-JP") });
-    if (newRb !== (customer.rankBasis ?? 0))
-      logs.push({ type:"edit_purchases", label:"ランク基準値", before:customer.rankBasis??0, after:newRb, performer:"マネージャー", date:new Date().toLocaleString("ja-JP") });
-    if (resetBenefit && isBenefitUsed(customer))
-      logs.push({ type:"benefit_reset", performer:"マネージャー", date:new Date().toLocaleString("ja-JP") });
-    onSave({
-      ...customer,
-      balance:              newBal,
-      pin:                  pin.trim() || customer.pin,
-      currentYearPurchases: newCyp,
-      rankBasis:            newRb,
-      isVIP,
-      isSpecial,
-      birthMonth:           birthMonth ? Number(birthMonth) : null,
-      bonusTickets:         tickets,
-      dataYear:             new Date().getFullYear(),
-      benefitUsedMonth:     resetBenefit ? null : customer.benefitUsedMonth,
-      history: [...logs, ...(customer.history||[])].slice(0,60),
-    });
+    const set = {}, expect = {};
+    const put = (k, val, cur) => {
+      if (JSON.stringify(val ?? null) !== JSON.stringify(cur ?? null)) { set[k] = val; expect[k] = customer[k] ?? null; }
+    };
+    put("balance", Math.max(0, parseInt(bal)||0), customer.balance);
+    put("pin", pin.trim() || customer.pin, customer.pin);
+    put("currentYearPurchases", Math.max(0, parseInt(cyp)||0), customer.currentYearPurchases ?? 0);
+    put("rankBasis", Math.max(0, parseInt(rb)||0), customer.rankBasis ?? 0);
+    put("isVIP", !!isVIP, !!customer.isVIP);
+    put("isSpecial", !!isSpecial, !!customer.isSpecial);
+    put("birthMonth", birthMonth ? Number(birthMonth) : null, customer.birthMonth ?? null);
+    put("bonusTickets", tickets, Array.isArray(customer.bonusTickets) ? customer.bonusTickets.filter(Boolean) : []);
+    const reset = resetBenefit && isBenefitUsed(customer);
+    if (!Object.keys(set).length && !reset) { onClose(); return; }
+    if ("balance" in set && !window.confirm(`残高を ¥${(customer.balance||0).toLocaleString()} → ¥${set.balance.toLocaleString()} に直します。\n（台帳に「手修正」として残ります）よろしいですか？`)) return;
+    onSave({ set, expect, resetBenefit: reset });
   };
 
   return (
@@ -6630,7 +6006,7 @@ function EditCustomerModal({ customer, customers, onSave, onDelete, onClose }) {
   );
 }
 // ── CASH ORDER PANEL（現金注文・代理注文） ──
-function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
+function CashOrderPanel({ menu, staffName, posOp }) {
   const [cart,      setCart]      = useState([]);
   const [custName,  setCustName]  = useState("");
   const [done,      setDone]      = useState(false);
@@ -6648,23 +6024,15 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
 
   const subtotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
 
-  const confirmCash = () => {
-    if (cart.length===0) return;
-    const order = {
-      orderId:      `ord_${Date.now()}`,
-      customerId:   `cash_${Date.now()}`,
-      customerName: custName.trim() || "現金のお客様",
-      rankName: "現金", rankColor: "#5ecf7f", rankGem: "💵",
-      items: cart, benefitItems: [],
-      subtotal, discount: 0, staffDiscount: 0, total: subtotal,
-      usedBenefit: false, usedToppingCount: 0,
-      isCash: true,
-      staffLinked: null,
-      status: "pending",
-      createdAt: new Date().toLocaleString("ja-JP"),
-    };
-    saveOrders([order, ...orders]);
-    setCart([]); setCustName(""); setDone(true);
+  const [sending, setSending] = useState(false);
+  const [paidIn, setPaidIn] = useState("");   // お預かり（お釣りの計算用・保存はしない）
+  const confirmCash = async () => {
+    if (cart.length===0 || sending) return;
+    setSending(true);
+    const r = await posOp("placeCashOrder", { name: custName.trim(), items: cart.map(c=>({ id: c.id, qty: c.qty })) });
+    setSending(false);
+    if (!r) return;
+    setCart([]); setCustName(""); setPaidIn(""); setDone(true);
     setTimeout(()=>setDone(false), 2500);
   };
 
@@ -6672,12 +6040,12 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
     <div className="pos-page" style={{paddingTop:14, paddingBottom:40}}>
       <h2 style={{...S.title,margin:"0 0 6px"}}>💵 現金注文</h2>
       <p style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",lineHeight:1.6,marginBottom:14}}>
-        会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。確定すると「📋 注文」に届き、完了すると会計履歴にも残ります。会員の残高・購入回数には影響しません。
+        会員登録のないお客様や、アプリを使えないお客様の注文を、スタッフが代わりに記録します。確定すると「🔔 届いた注文」に届き、完了すると会計履歴にも残ります。会員の残高・購入回数には影響しません。
       </p>
 
       {done && (
         <div style={{background:"#e9f5ec",border:"1px solid #c9e2ce",borderRadius:12,padding:"12px 14px",marginBottom:14,color:"#3e9a5c",fontWeight:700,fontSize:"0.95rem"}}>
-          ✅ 現金注文を「📋 注文」に送りました（担当: {staffName}）
+          ✅ 現金注文を「🔔 届いた注文」に送りました（担当: {staffName}）
         </div>
       )}
 
@@ -6724,9 +6092,22 @@ function CashOrderPanel({ menu, staffName, orders, saveOrders }) {
               <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>現金で受け取る金額</span>
               <span style={{color:"var(--ink,#3d3630)",fontWeight:800,fontSize:"1.4rem"}}>¥{subtotal.toLocaleString()}</span>
             </div>
+            {/* お釣りの計算（保存はしない） */}
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+              <span style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem"}}>お預かり</span>
+              {[subtotal, 500, 1000, 2000, 5000].filter((v,i,a)=>v>=subtotal && a.indexOf(v)===i).slice(0,4).map(v=>(
+                <button key={v} type="button" className="pos-ghost" onClick={()=>setPaidIn(String(v))}>¥{v.toLocaleString()}</button>
+              ))}
+              <input inputMode="numeric" style={{...S.input,width:110,margin:0}} placeholder="金額" value={paidIn} onChange={e=>setPaidIn(e.target.value.replace(/[^0-9]/g,""))}/>
+              {paidIn !== "" && (
+                Number(paidIn) >= subtotal
+                  ? <b style={{fontSize:"1.15rem",color:"#3e9a5c"}}>お釣り ¥{(Number(paidIn)-subtotal).toLocaleString()}</b>
+                  : <b style={{color:"#c94a45"}}>¥{(subtotal-Number(paidIn)).toLocaleString()} 足りません</b>
+              )}
+            </div>
             <div style={{display:"flex",gap:8}}>
               <button className="btn-clear" onClick={()=>{setCart([]);setCustName("");}}>クリア</button>
-              <button className="btn-pay" onClick={confirmCash}>🧾 注文に送る</button>
+              <button className="btn-pay" disabled={sending} onClick={confirmCash}>{sending ? "送っています…" : "🧾 注文に送る"}</button>
             </div>
           </div>
         </div>
@@ -7713,7 +7094,7 @@ body:not(.night) .mood-on { color:#c2447e; background:#fdeaf3; }
    昼はパステル（body.pastel）、夜は今までのネオン（body.night）。
    色は全部 CSS変数経由なので、同じ部品がどちらの配色でも動く。 */
 body.pastel {
-  --ink:#3a2e4f; --ink-strong:#2b2140; --ink2:#7a6f8c; --ink3:#a9a0b8; --ink4:#bfb7cb;
+  --ink:#3a2e4f; --ink-strong:#2b2140; --ink2:#5e5370; --ink3:#776c8a; --ink4:#968cab;
   --card:#ffffff; --panel2:#f6eff5; --line:#eee3ea; --barbg:#f0e6ea; --gold:#c98a12;
   --blush:#ffd6e0; --sky:#cde9ff; --mint:#d6f5e3; --lav:#e6dbff; --peach:#ffe3c9; --coral:#ff7a9e; --sun:#ffc94d;
   --bar:#3a2e4f;
@@ -7834,7 +7215,7 @@ body.night .nz-note-purple { background:rgba(201,138,218,0.16); } body.night .nz
 .nz-check small { display:block; font-size:0.72rem; color:var(--ink3,#9a8f85); }
 
 /* ── 共通ボタン ── */
-.nz-primary { width:100%; border:none; border-radius:16px; padding:15px; font-family:inherit; font-weight:900; font-size:1.05rem; background:var(--coral,#ff7a9e); color:#fff; cursor:pointer; box-shadow:0 10px 22px rgba(255,122,158,0.4); }
+.nz-primary { width:100%; border:none; border-radius:16px; padding:16px; font-family:inherit; font-weight:900; font-size:1.1rem; background:#d2426f; color:#fff; cursor:pointer; box-shadow:0 10px 22px rgba(255,122,158,0.4); }
 .nz-primary:disabled { opacity:0.4; box-shadow:none; cursor:default; }
 .nz-ghost { background:var(--panel2,#f6f1ea); border:1px solid var(--line,#e7ded3); color:var(--ink2,#8a7f76); border-radius:14px; padding:12px; font-family:inherit; font-size:0.9rem; font-weight:700; cursor:pointer; }
 .nz-danger { color:#c94a45 !important; }
@@ -7854,13 +7235,13 @@ body.night .nz-chip.on { background:rgba(255,110,199,0.25); color:#ffd9ec; borde
 .nz-m .pic { height:74px; border-radius:14px; display:flex; align-items:center; justify-content:center; margin-bottom:8px; position:relative; }
 .nz-m .nm { font-size:0.82rem; font-weight:800; line-height:1.25; min-height:2.5em; color:var(--ink,#3d3630); }
 .nz-m .pr { display:flex; justify-content:space-between; align-items:center; margin-top:4px; font-size:0.9rem; font-weight:900; color:var(--ink,#3d3630); }
-.nz-m .add { width:28px; height:28px; border-radius:50%; background:var(--bar,#3a2e4f); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.05rem; flex-shrink:0; }
+.nz-m .add { width:36px; height:36px; border-radius:50%; background:var(--bar,#3a2e4f); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.05rem; flex-shrink:0; }
 body.night .nz-m .add { background:rgba(255,255,255,0.18); }
 .nz-m.so { opacity:0.55; cursor:default; } .nz-m.so .pic { filter:grayscale(1); } .nz-m.so .add { background:#b9b2c4; }
 .nz-so-tag { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) rotate(-8deg); background:var(--ink,#3a2e4f); color:#fff; font-size:0.72rem; font-weight:900; border-radius:999px; padding:3px 10px; white-space:nowrap; }
 .nz-qtybox { display:inline-flex; align-items:center; gap:6px; font-weight:900; }
 .nz-qtybox b { min-width:16px; text-align:center; display:inline-block; }
-.nz-qb { width:28px; height:28px; border-radius:50%; border:1px solid var(--line,#e7ded3); background:var(--panel2,#f6f1ea); color:var(--ink,#3d3630); font-size:1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; font-family:inherit; padding:0; }
+.nz-qb { width:40px; height:40px; border-radius:50%; border:1px solid var(--line,#e7ded3); background:var(--panel2,#f6f1ea); color:var(--ink,#3d3630); font-size:1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; font-family:inherit; padding:0; }
 .nz-m .plus-one { top:8px; left:12px; }
 .nz-m .hot-tag { bottom:auto; top:8px; right:8px; }
 .nz-usual { margin-bottom:0; }
@@ -7872,7 +7253,7 @@ body.night .nz-m .add { background:rgba(255,255,255,0.18); }
 body.night .nz-cartbar { background:rgba(30,24,70,0.96); border:1px solid rgba(255,255,255,0.16); box-shadow:0 12px 34px rgba(0,0,0,0.5); }
 .nz-cartbar b { font-size:1.15rem; } .nz-cartbar small { font-size:0.72rem; opacity:0.8; margin-left:6px; }
 .nz-cartbar-n { width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,0.18); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:0.9rem; }
-.nz-cartbar .go { background:var(--coral,#ff7a9e); border-radius:999px; padding:9px 14px; font-weight:900; font-size:0.9rem; white-space:nowrap; }
+.nz-cartbar .go { background:#d2426f; border-radius:999px; padding:9px 14px; font-weight:900; font-size:0.9rem; white-space:nowrap; }
 .nz-sheet-ov { position:fixed; inset:0; background:rgba(40,30,60,0.45); z-index:60; display:flex; align-items:flex-end; justify-content:center; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
 .nz-sheet { width:100%; max-width:480px; background:var(--card,#fff); border-radius:28px 28px 0 0; padding:10px 16px calc(20px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto; box-shadow:0 -12px 40px rgba(58,46,79,0.25); animation:nzUp 0.35s cubic-bezier(0.34,1.3,0.64,1); color:var(--ink,#3d3630); }
 body.night .nz-sheet { background:#1b1640; border:1px solid rgba(255,255,255,0.14); }
@@ -7933,7 +7314,7 @@ body.night .nz-seg-b.on { background:rgba(255,255,255,0.18); color:#fff; }
   background:var(--card,#fff); border-radius:28px 28px 0 0; padding:8px 8px calc(10px + env(safe-area-inset-bottom));
   display:flex; justify-content:space-around; align-items:flex-end; box-shadow:0 -8px 24px rgba(58,46,79,0.10); border-top:1px solid var(--line,#e7ded3); }
 body.night .nz-tabbar { background:rgba(22,18,52,0.94); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,0.12); box-shadow:0 -10px 34px rgba(0,0,0,0.5); }
-.nz-tb { background:transparent; border:none; font-family:inherit; text-align:center; font-size:0.64rem; color:var(--ink3,#9a8f85); font-weight:800; cursor:pointer; padding:0; width:64px; }
+.nz-tb { background:transparent; border:none; font-family:inherit; text-align:center; font-size:0.8rem; color:var(--ink3,#9a8f85); font-weight:800; cursor:pointer; padding:0; width:64px; }
 .nz-tb .i { width:44px; height:44px; border-radius:16px; display:flex; align-items:center; justify-content:center; font-size:1.25rem; margin:0 auto 2px; position:relative; transition:background 0.18s; }
 .nz-tb .l { display:block; }
 .nz-tb.on { color:var(--ink,#3d3630); } .nz-tb.on .i { background:var(--lav,#e6dbff); }
@@ -8090,22 +7471,75 @@ body.night .nz-tk-exp { background:rgba(255,255,255,0.2); color:#ffe9a8; }
 /* ── きせかえ（背景の色）。疑似要素はクラスで指定しないと塗り直されないので、色ごとに書く ── */
 .nz-bgtint { position:fixed; inset:0; z-index:-1; pointer-events:none; background:none; }
 /* 明るい画面のきせかえ */
-body.pastel .approot.nzth1 .nz-bgtint, body.pastel .nz-bgtint.nzth1 {
+body.pastel.nzth1 .nz-bgtint {
   background:radial-gradient(900px 620px at 85% -5%, rgba(255,186,130,0.55), transparent 62%),
              radial-gradient(760px 560px at -5% 105%, rgba(255,158,186,0.45), transparent 60%); }
-body.pastel .approot.nzth2 .nz-bgtint, body.pastel .nz-bgtint.nzth2 {
+body.pastel.nzth2 .nz-bgtint {
   background:radial-gradient(900px 620px at 85% -5%, rgba(130,196,255,0.55), transparent 62%),
              radial-gradient(760px 560px at -5% 105%, rgba(150,230,220,0.45), transparent 60%); }
-body.pastel .approot.nzth3 .nz-bgtint, body.pastel .nz-bgtint.nzth3 {
+body.pastel.nzth3 .nz-bgtint {
   background:radial-gradient(900px 620px at 85% -5%, rgba(160,224,150,0.55), transparent 62%),
              radial-gradient(760px 560px at -5% 105%, rgba(226,232,140,0.45), transparent 60%); }
 /* 夜のきせかえ */
-body.night .approot.nzth1 .nz-bgtint { mix-blend-mode:screen;
+body.night.nzth1 .nz-bgtint { mix-blend-mode:screen;
   background:radial-gradient(1000px 700px at 85% -8%, rgba(255,120,90,0.45), transparent 62%); }
-body.night .approot.nzth2 .nz-bgtint { mix-blend-mode:screen;
+body.night.nzth2 .nz-bgtint { mix-blend-mode:screen;
   background:radial-gradient(1000px 700px at 85% -8%, rgba(60,170,255,0.45), transparent 62%); }
-body.night .approot.nzth3 .nz-bgtint { mix-blend-mode:screen;
+body.night.nzth3 .nz-bgtint { mix-blend-mode:screen;
   background:radial-gradient(1000px 700px at 85% -8%, rgba(90,220,140,0.45), transparent 62%); }
 /* 画面のふちにも、選んだ色をうっすら出す（変えたことが分かるように） */
 body.pastel.nzth1 { background:#fff4ec; } body.pastel.nzth2 { background:#f0f8ff; } body.pastel.nzth3 { background:#f2faf1; }
+
+/* ── 新しい版のお知らせ（画面のいちばん上） ── */
+.nz-update { position:fixed; left:50%; top:max(10px, env(safe-area-inset-top)); transform:translateX(-50%); z-index:9999;
+  display:flex; align-items:center; gap:12px; padding:10px 12px 10px 16px; border-radius:999px;
+  background:#2b2340; color:#fff; font-weight:800; font-size:0.95rem; box-shadow:0 8px 28px rgba(0,0,0,0.25); }
+.nz-update button { border:none; border-radius:999px; padding:9px 16px; font:inherit; font-weight:900; cursor:pointer;
+  background:linear-gradient(135deg,#ff9ac6,#ffd166); color:#2b2140; }
+/* ── POS：済みの注文の「↩ 戻す」 ── */
+.pos-undo { margin-left:8px; border:1px solid #d9c6e8; background:#fff; color:#7a4fa8; border-radius:999px;
+  padding:4px 10px; font:inherit; font-size:0.72rem; font-weight:800; cursor:pointer; }
+.pos-undo:disabled, .pos-done:disabled, .pos-sm:disabled, .pos-ghost:disabled, .pos-charge:disabled { opacity:0.5; cursor:default; }
+
+/* ── 📒 その日の締め ── */
+.nz-close { background:#fff; border:1px solid var(--line,#e7ded3); border-radius:16px; padding:14px 16px; margin-bottom:18px; box-shadow:0 6px 16px rgba(58,46,79,0.05); }
+.nz-close-h { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; font-weight:900; font-size:1.05rem; margin-bottom:10px; }
+.nz-close-nav { display:flex; align-items:center; gap:8px; font-size:0.95rem; }
+.nz-close-nav button { width:40px; height:40px; border-radius:12px; border:1px solid var(--line,#e7ded3); background:#faf6f0; font:inherit; cursor:pointer; }
+.nz-close-nav button:disabled { opacity:0.35; cursor:default; }
+.nz-close-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:7px 0; border-bottom:1px dashed #efe6da; font-size:0.95rem; }
+.nz-close-row small { margin-left:8px; color:#8a7f76; font-size:0.78rem; }
+.nz-close-row b { font-variant-numeric:tabular-nums; }
+.nz-close-sep { height:6px; }
+.nz-close-items { margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; font-size:0.82rem; color:#6b6058; }
+.nz-close-items > div { width:100%; font-weight:800; }
+.nz-close-items span { background:#faf6f0; border-radius:999px; padding:4px 10px; }
+.nz-close-note { margin-top:10px; font-size:0.78rem; color:#6b6058; line-height:1.6; }
+
+/* ── ホームの主役ボタン（いつもの／注文する） ── */
+.nz-hero { width:100%; display:flex; align-items:center; gap:14px; margin:14px 0 8px; padding:16px 18px; border:none; border-radius:22px;
+  background:linear-gradient(135deg,#d2426f,#e8658f); color:#fff; font-family:inherit; text-align:left; cursor:pointer;
+  box-shadow:0 12px 26px rgba(210,66,111,0.32); min-height:76px; }
+.nz-hero .ic { width:48px; height:48px; border-radius:16px; background:rgba(255,255,255,0.22); display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0; }
+.nz-hero .tx { flex:1; min-width:0; }
+.nz-hero b { display:block; font-size:1.25rem; font-weight:900; letter-spacing:0.02em; }
+.nz-hero small { display:block; font-size:0.9rem; opacity:0.95; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nz-hero .ar { font-size:1.4rem; font-weight:900; }
+body.night .nz-hero { background:linear-gradient(135deg,#ff4fb0,#9b6bff); }
+.nz-quick2 { display:flex; gap:10px; margin-bottom:14px; }
+.nz-quick2 button { flex:1; min-height:52px; border-radius:16px; border:1px solid var(--line,#e7ded3); background:var(--card,#fff);
+  font-family:inherit; font-size:1rem; font-weight:800; color:var(--ink,#3d3630); cursor:pointer; box-shadow:0 4px 12px rgba(58,46,79,0.06); }
+body.night .nz-quick2 button { background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.15); color:#f2edff; }
+/* 小さすぎた文字を底上げ（いちばん小さい字でも 0.78rem） */
+.nz-sec, .nz-link { font-size:0.9rem !important; }
+.nz-tk { font-size:0.8rem; }
+.nz-tk-exp { font-size:0.74rem !important; }
+.nz-w-sub { font-size:0.82rem; }
+
+.nz-login-help { margin-top:8px; padding:10px 12px; border-radius:12px; background:#fff4e5; color:#7a4d10; font-size:0.9rem; line-height:1.6; font-weight:700; }
+
+/* 「動きを減らす」設定の端末では、飾りの動きをすべて止める（酔いやすい方・古い端末のため） */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+}
 `;
