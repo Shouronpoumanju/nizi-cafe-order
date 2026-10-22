@@ -47,6 +47,67 @@ export async function fbPost(path, value) {
   return res.json();
 }
 
+// ── 「読んで・変えて・書く」を安全に行う（取り合いの防止） ──────────
+// 2台の端末がほぼ同時に同じ場所を書き換えると、あとから書いた方が先の変更を消してしまう。
+// Firebase の ETag（その時点の中身の印）を使い、
+//   1. 中身と印を読む
+//   2. 変える
+//   3. 「印が読んだときのままなら書く」と頼む（if-match）
+//   4. 誰かが先に書いていたら（412）、最初から読み直してやり直す
+// とすることで、取り合いが起きても片方の変更が黙って消えることがなくなる。
+//
+// mutate(今の中身) は次のどれかを返す：
+//   { value: 新しい中身, result: 呼び出し元に返したいもの } … 書く
+//   { abort: 呼び出し元に返したいもの }                      … 書かずにやめる
+export class TxnAbort extends Error {
+  constructor(status, body) { super(body && body.error || "abort"); this.status = status; this.body = body; }
+}
+export async function fbTxn(path, mutate, tries = 8) {
+  const base = `${DB_BASE}/${path}.json?auth=${encodeURIComponent(DB_SECRET)}`;
+  for (let i = 0; i < tries; i++) {
+    const r = await fetch(base, { headers: { "X-Firebase-ETag": "true" } });
+    if (!r.ok) throw new Error(`Firebase ${r.status}`);
+    const etag = r.headers.get("ETag") || r.headers.get("etag");
+    const cur = await r.json();
+    const out = await mutate(cur);
+    if (!out || "abort" in out) return out ? out.abort : undefined;
+    const body = JSON.stringify(out.value);
+    if (!etag) {
+      // 印が返ってこない（想定外）。今までどおりの書き方で書く。
+      console.warn("ETag が取得できなかったため、通常の保存をします", path);
+      await fbPut(path, out.value);
+      return out.result;
+    }
+    const w = await fetch(base, { method: "PUT", headers: { "Content-Type": "application/json", "if-match": etag }, body });
+    if (w.ok) return out.result;
+    if (w.status === 412 || w.status === 429 || w.status >= 500) {
+      // 412：誰かが先に書いた／429・5xx：Firebase が一時的に不調。少し待って最初から読み直す
+      await new Promise((ok) => setTimeout(ok, 40 + Math.random() * 120 * (i + 1)));
+      continue;
+    }
+    if (w.status === 400) {
+      // 条件付きの書き込み（if-match）そのものが受け付けられない場合だけ、通常の保存に切り替える
+      console.error("条件付きの保存が使えないため、通常の保存に切り替えます", path, w.status);
+      await fbPut(path, out.value);
+      return out.result;
+    }
+    throw new Error(`Firebase ${w.status}`);
+  }
+  throw new TxnAbort(503, { error: "混み合っています。もう一度押してください" });
+}
+
+// Firebase の「新しい方から◯件」の取得結果（{"0":…,"1":…}）を配列に直す
+export function asList(v) {
+  if (Array.isArray(v)) return v.filter(Boolean);
+  if (v && typeof v === "object") {
+    return Object.keys(v).sort((a, b) => Number(a) - Number(b)).map((k) => v[k]).filter(Boolean);
+  }
+  return [];
+}
+
+// アプリの版（Vercel が公開ごとに付ける番号の先頭7文字）。画面の版と比べて、古い画面に知らせる。
+export const APP_VERSION = String(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7);
+
 // ── ログイン証（トークン）の発行と確認 ──────────────────
 // 形式: base64url(ペイロード).base64url(署名)
 // 署名は SESSION_SECRET を使った HMAC-SHA256。
@@ -99,6 +160,40 @@ export function hashSecret(plain) {
 }
 export const looksHashed = (s) => typeof s === "string" && s.startsWith("h1$");
 
+// お客様のログイン証に入れる「暗証番号の印」。
+// 暗証番号を変えると印が変わるので、変える前に発行したログイン証は使えなくなる
+// （スマホを落とした・番号を知られた、というときに番号を変えれば締め出せる）。
+export function pinVer(c) {
+  return crypto.createHash("sha256").update(String(c && c.id) + ":" + String(c && c.pin)).digest("hex").slice(0, 12);
+}
+
+// ── 間違いが続いたときの一時停止（総当たり対策） ──────────────
+// 以前はサーバーの記憶（実行環境ごと）で数えていたため、同時にたくさん送られると効かなかった。
+// 間違えた回数をデータベースに残し、同じ回線から15分に上限（下の GUARD_LIMITS）を超えたら止める。
+// ※ 教会の Wi-Fi は皆さん同じ回線になるので、普通の打ち間違いで止まらないよう、ゆるめにしてある。
+const GUARD_WINDOW = 15 * 60 * 1000;
+// 種類ごとの上限。お客様（login_cust）はゆるめ、スタッフ（login_staff）とマネージャーのパスワード（mgrpw）は30回。
+// お客様の打ち間違いが続いても、同じ回線のスタッフのログインは止まらないよう、数え方を分けてある。
+const GUARD_LIMITS = { login_cust: 80, login_staff: 30, mgrpw: 30 };
+const limitOf = (kind) => GUARD_LIMITS[kind] || 30;
+const guardPath = (kind, ip) =>
+  `cafe_v4_guard/${kind}/` + crypto.createHash("sha256").update(String(ip || "unknown")).digest("hex").slice(0, 16);
+export const clientIp = (req) => String((req.headers["x-forwarded-for"] || "").split(",")[0] || "unknown").trim();
+export async function guardBlocked(kind, ip) {
+  try {
+    const g = await fbGet(guardPath(kind, ip));
+    return !!(g && Date.now() - (g.t || 0) < GUARD_WINDOW && (g.n || 0) >= limitOf(kind));
+  } catch { return false; }
+}
+export async function guardFail(kind, ip) {
+  try {
+    const p = guardPath(kind, ip);
+    const g = await fbGet(p);
+    const fresh = g && Date.now() - (g.t || 0) < GUARD_WINDOW;
+    await fbPut(p, { n: (fresh ? g.n || 0 : 0) + 1, t: fresh ? g.t : Date.now() });
+  } catch {}
+}
+
 // パスワード・暗証番号の比較（時間差から中身を推測されないように）
 // 保存されている方がハッシュ形式なら、入力を同じ方法で変換してから比べる。
 // まだ素の文字列で保存されている古いものとも比べられる（移行中のため）。
@@ -127,6 +222,7 @@ export function sameSecret(stored, given) {
 export function send(res, status, body) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
+  if (APP_VERSION) res.setHeader("X-App-Version", APP_VERSION);
   res.status(status).send(JSON.stringify(body));
 }
 

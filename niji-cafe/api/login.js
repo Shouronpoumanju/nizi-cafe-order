@@ -5,20 +5,12 @@
 //  これにより、全会員の暗証番号やスタッフのパスワードを
 //  ブラウザに配る必要がなくなります。
 // ══════════════════════════════════════════
-import { envReady, fbGet, fbPut, issueToken, sameSecret, hashSecret, looksHashed, send, readBody } from "./_lib.js";
+import { envReady, fbGet, fbPut, issueToken, sameSecret, hashSecret, looksHashed, send, readBody,
+         pinVer, clientIp, guardBlocked, guardFail, asList } from "./_lib.js";
 
-// 総当たりを遅くするための、ごく簡単な回数制限。
-// Serverless は実行環境が使い回されたときだけ有効なので、これは
-// 「同じ環境に連続で来る総当たりを鈍らせる」ためのもの。本命は下の待ち時間。
-const attempts = new Map();
-function tooManyTries(ip) {
-  const now = Date.now();
-  const rec = attempts.get(ip) || { n: 0, t: now };
-  if (now - rec.t > 10 * 60 * 1000) { rec.n = 0; rec.t = now; }
-  rec.n += 1;
-  attempts.set(ip, rec);
-  return rec.n > 30;
-}
+// 「この端末で記憶する」の有効期間。週に1回来られる方が毎回打ち直さなくて済むよう、90日にしてある。
+// （暗証番号を変えれば、その前のログイン証は使えなくなる → pinVer）
+const REMEMBER_HOURS = 24 * 90;
 
 export default async function handler(req, res) {
   if (!envReady()) return send(res, 503, { error: "サーバーの設定が未完了です" });
@@ -44,13 +36,18 @@ export default async function handler(req, res) {
 
   if (req.method !== "POST") return send(res, 405, { error: "POST のみ受け付けます" });
 
-  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0] || "unknown";
-  if (tooManyTries(ip)) return send(res, 429, { error: "しばらく時間をおいてからお試しください" });
+  const ip = clientIp(req);
 
   // 暗証番号の総当たりを現実的でなくするための待ち時間（0.4秒）
   await new Promise((r) => setTimeout(r, 400));
 
   const { role, pin, name, password, remember } = readBody(req);
+  // 間違いが続いた回線は15分止める（回数はデータベースに残すので、同時に送られても効く）。
+  // お客様とスタッフは別々に数える（お客様の打ち間違いで、スタッフが入れなくならないように）。
+  const gkind = role === "customer" ? "login_cust" : "login_staff";
+  if (await guardBlocked(gkind, ip)) {
+    return send(res, 429, { error: "何度もまちがえたため、15分ほど待ってからお試しください。わからないときはスタッフへお声かけください" });
+  }
 
   try {
     // ── お客様：暗証番号でログイン ──────────────────
@@ -60,16 +57,19 @@ export default async function handler(req, res) {
       if (!/^\d{1,8}$/.test(String(pin || ""))) {
         return send(res, 400, { error: "暗証番号は数字で入力してください" });
       }
-      const list = (await fbGet("cafe_v4_customers")) || [];
+      const list = asList(await fbGet("cafe_v4_customers"));
       const matches = list.filter((c) => c && sameSecret(c.pin, pin));
       // 同じ暗証番号の人が複数いる場合は、誰のものか決められないので断る
       if (matches.length !== 1) {
-        return send(res, 401, { error: "暗証番号が違います" });
+        // 同じ番号の人が2人いる（名簿の問題）ときは、打ち間違いとして数えない
+        if (matches.length === 0) await guardFail("login_cust", ip);
+        return send(res, 401, { error: matches.length > 1 ? "この暗証番号は使えません。スタッフにお声かけください" : "暗証番号が違います" });
       }
       const me = matches[0];
       return send(res, 200, {
-        // remember: 「この端末で記憶する」を選んだときは7日間有効（毎回の暗証番号入力を省くため）
-        token: issueToken({ r: "customer", id: me.id }, remember ? 24 * 7 : 12),
+        // remember: 「この端末で記憶する」を選んだときは90日間有効（毎回の暗証番号入力を省くため）
+        // pv: 暗証番号の印。番号を変えると、この証は使えなくなる
+        token: issueToken({ r: "customer", id: me.id, pv: pinVer(me) }, remember ? REMEMBER_HOURS : 12),
         customer: me,
       });
     }
@@ -77,11 +77,11 @@ export default async function handler(req, res) {
     // ── スタッフ／マネージャー：名前とパスワードでログイン ──
     if (role === "staff" || role === "manager") {
       const key = role === "staff" ? "cafe_v4_staff_accounts" : "cafe_v4_manager_accounts";
-      const list = (await fbGet(key)) || [];
+      const list = asList(await fbGet(key));
       const acc = list.find(
         (a) => a && String(a.name) === String(name) && sameSecret(a.password, password)
       );
-      if (!acc) return send(res, 401, { error: "名前かパスワードが違います" });
+      if (!acc) { await guardFail("login_staff", ip); return send(res, 401, { error: "名前かパスワードが違います" }); }
 
       // パスワードがまだ素の文字列で保存されていたら、この機会にハッシュ形式へ
       // 変換して保存し直す（ログインできた＝正しいパスワードなので、いま変換できる）。

@@ -23,13 +23,14 @@
 //  （アーカイブに余分が残っても、履歴画面は orderId で重複排除するので害はない）
 // ══════════════════════════════════════════
 import crypto from "node:crypto";
-import { envReady, fbGet, fbPut, fbPost, readToken, send, bearer } from "./_lib.js";
+import { envReady, fbGet, fbPut, fbPost, fbTxn, asList, readToken, send, bearer } from "./_lib.js";
+import { checkYearRollover, jstDayKey, jstStamp } from "./_rules.js";
 
 const KEEP = 60;        // 本体に残す件数
 const THRESHOLD = 70;   // これを超えたときだけ整理する（毎晩少しずつ動かさない）
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
-const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : asList(v));
 const ids = (list) => new Set(list.map((o) => String(o.orderId)));
 
 function sameToken(given, expected) {
@@ -61,11 +62,44 @@ export default async function handler(req, res) {
     try { await fbPost("cafe_v4_archive_log", { at: startedAt, by: who, ...entry }); } catch {}
   };
 
+  // ── 0. 年が変わっていたら、全員の「今年の回数」を切り替える（1/1 の朝3時に自動で行われる） ──
+  // 以前は POS を開いた端末が自分の時計で判断して名簿をまるごと書いていた。
+  let rolled = 0;
+  try {
+    rolled = await fbTxn("cafe_v4_customers", (cur) => {
+      const list = arr(cur);
+      if (!list.length) return { abort: 0 };
+      const next = list.map((c) => checkYearRollover(c));
+      const n = next.filter((c, i) => c.dataYear !== list[i].dataYear).length;
+      return n ? { value: next, result: n } : { abort: 0 };
+    }) || 0;
+    if (rolled) await log({ ok: true, step: "year-rollover", changed: rolled });
+  } catch (e) {
+    console.error("year rollover failed", e);
+    await log({ ok: false, step: "year-rollover", detail: String(e && e.message || e) });
+  }
+
+  // ── 0.5 毎晩の控え（会員名簿とメニュー）。データベースの中に14日分を残す ──
+  // 操作の間違いや不具合で名簿が崩れたとき、前の晩の状態に戻せるようにするため。
+  // （Mac 側の週1回のバックアップとは別の、もう一段の備え）
+  try {
+    const day = jstDayKey();
+    const [cust, menu] = await Promise.all([fbGet("cafe_v4_customers"), fbGet("cafe_v4_menu")]);
+    if (Array.isArray(cust) && cust.length) {
+      await fbPut(`cafe_v4_snapshots/${day}`, { at: jstStamp(), customers: cust, menu: menu || null });
+      const keys = Object.keys((await fbGet("cafe_v4_snapshots", "shallow=true")) || {}).sort();
+      for (const k of keys.slice(0, Math.max(0, keys.length - 14))) await fbPut(`cafe_v4_snapshots/${k}`, null);
+    }
+  } catch (e) {
+    console.error("snapshot failed", e);
+    await log({ ok: false, step: "snapshot", detail: String(e && e.message || e) });
+  }
+
   try {
     // 1. 本体を読む（先頭が新しい注文）
     const body = arr(await fbGet("cafe_v4_orders"));
     if (body.length <= THRESHOLD) {
-      return send(res, 200, { ok: true, skipped: true, reason: `本体 ${body.length} 件（${THRESHOLD} 件以下）`, body: body.length });
+      return send(res, 200, { ok: true, skipped: true, reason: `本体 ${body.length} 件（${THRESHOLD} 件以下）`, body: body.length, rolled });
     }
 
     // 2. 移す候補：先頭 KEEP 件より後ろにある、完了済みの注文だけ。未処理は絶対に残す。
@@ -97,15 +131,19 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5. 本体を縮める。書く直前にもう一度読み直し、その間に届いた注文を巻き込まない。
-    const latest = arr(await fbGet("cafe_v4_orders"));
-    const kept = latest.filter((o) => !(o && moveIds.has(String(o.orderId))));
-    if (kept.length === latest.length || kept.length < KEEP) {
+    // 5. 本体を縮める。読んでから書くまでの間に届いた注文を巻き込まないよう、ETag で守って書く。
+    let latest = [], kept = [];
+    const okWrite = await fbTxn("cafe_v4_orders", (cur) => {
+      latest = arr(cur);
+      kept = latest.filter((o) => !(o && moveIds.has(String(o.orderId)) && o.status !== "pending"));
+      if (kept.length === latest.length || kept.length < KEEP) return { abort: false };
+      return { value: kept, result: true };
+    });
+    if (!okWrite) {
       // 想定外（移す注文が本体から消えている／本体が急に減っている）。事故を疑って止める
       await log({ ok: false, step: "body-sanity", detail: `kept ${kept.length} latest ${latest.length}` });
       return send(res, 500, { error: "本体の状態が想定外のため中止しました" });
     }
-    await fbPut("cafe_v4_orders", kept);
 
     // 6. 縮めた本体を読み戻して確認
     const after = arr(await fbGet("cafe_v4_orders"));
