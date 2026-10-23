@@ -112,6 +112,43 @@ const checkAppVersion = (res) => {
     if (sv && MY_VER && sv !== MY_VER) announceUpdate();
   } catch {}
 };
+// ── 画面の中のお知らせ（トースト） ──────────────────────
+// スマホ標準の alert（白い小窓・OKボタン）は、年配の方には「何か起きた？」と不安を与える。
+// 画面の上に、やわらかいカードで数秒だけ出す。kind: "ok" | "warn" | "err"
+let _toastListeners = new Set();
+let _toastSeq = 0;
+const toast = (msg, kind = "warn", ms) => {
+  const t = { id: ++_toastSeq, msg: String(msg || ""), kind, ms: ms || (kind === "ok" ? 2800 : 5200) };
+  _toastListeners.forEach((f) => { try { f(t); } catch {} });
+};
+// 通信の失敗（Failed to fetch など英語のまま出るもの）を、分かる言葉にする
+const niceError = (e, fallback) => {
+  const m = e && e.message ? String(e.message) : "";
+  if (!e || !e.status || /fetch|network|load failed|NetworkError/i.test(m)) return "通信できませんでした。Wi-Fi や電波を確認して、もう一度お試しください";
+  return m || fallback || "うまくいきませんでした。もう一度お試しください";
+};
+function ToastHost() {
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    const f = (t) => {
+      setList((l) => [...l.filter((x) => x.msg !== t.msg), t].slice(-3));
+      setTimeout(() => setList((l) => l.filter((x) => x.id !== t.id)), t.ms);
+    };
+    _toastListeners.add(f); return () => { _toastListeners.delete(f); };
+  }, []);
+  if (!list.length) return null;
+  return (
+    <div className="nz-toasts" aria-live="polite">
+      {list.map((t) => (
+        <div key={t.id} className={"nz-toast " + t.kind} onClick={() => setList((l) => l.filter((x) => x.id !== t.id))}>
+          <span className="i" aria-hidden="true">{t.kind === "ok" ? "✅" : t.kind === "err" ? "⚠️" : "💬"}</span>
+          <span className="m">{t.msg.split("\n").map((line, i) => <span key={i}>{line}<br/></span>)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function UpdateBanner() {
   const [show, setShow] = useState(_updateShown);
   useEffect(() => { const f = () => setShow(true); _updateListeners.add(f); return () => { _updateListeners.delete(f); }; }, []);
@@ -131,7 +168,7 @@ const notifyExpired = () => {
   _apiToken = null;
   if (_expiredNotified) return;
   _expiredNotified = true;
-  try { alert("ログインの有効期限が切れました。\n「← ホームへ」から、もう一度ログインしてください。"); } catch {}
+  toast("ログインの有効期限が切れました。「← ホームへ」から、もう一度ログインしてください。", "err", 8000);
   setTimeout(() => { _expiredNotified = false; }, 10000);
 };
 
@@ -139,11 +176,11 @@ const notifyExpired = () => {
 // まるごと保存（メニュー・指定ドリンク・スタッフ一覧など、お金に関係しないものだけ）。
 // 会員名簿と注文は、取り合いで記録が消えないよう専用の窓口（posOp）で1件ずつ変える。
 const dbSet = async (key, val) => {
-  if (!_apiToken) { alert("ログインし直してください"); return false; }
+  if (!_apiToken) { toast("ログインし直してください", "err"); return false; }
   try { await apiData("set", { key, value: val }); return true; }
   catch (e) {
     if (e.status === 401) { notifyExpired(); return false; }
-    if (e.status !== 410) alert(e.message || "保存に失敗しました。もう一度お試しください。");
+    if (e.status !== 410) toast(niceError(e, "保存に失敗しました。もう一度お試しください。"), "err");
     return false;
   }
 };
@@ -698,7 +735,7 @@ export default function App() {
       if (e.status === 401) { notifyExpired(); return null; }
       setTimeout(() => { if (syncRef.current) syncRef.current(); }, 200);
       if (opts.returnError) return { error: e };
-      if (e.status !== 410) alert(e.message || "うまくいきませんでした。もう一度お試しください");
+      if (e.status !== 410) toast(niceError(e), "err");
       return null;
     }
   };
@@ -712,7 +749,7 @@ export default function App() {
   // 読み込めていないものは保存させない。
   // （空っぽの状態で保存すると、DB にある本物のメニューやスタッフが消えてしまう）
   const notLoadedYet = (what) => {
-    alert(`${what}をまだ読み込めていないため、保存できません。\n通信状況を確認して、画面を開き直してください。`);
+    toast(`${what}をまだ読み込めていないため、保存できません。通信状況を確認して、画面を開き直してください。`, "err");
     return false;
   };
 
@@ -769,6 +806,7 @@ export default function App() {
       {screen==="login"    && <StaffLogin setScreen={changeScreen} setStaffRole={setStaffRole} setStaffName={setStaffName} setStaffIsChief={setStaffIsChief} staffAccounts={staffAccounts} managerAccounts={managerAccounts}/>}
       {screen==="pos"      && <POS customers={customers} menu={menu} orders={orders} staffRole={staffRole} staffName={staffName} staffIsChief={staffIsChief} staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} saveC={saveC} saveMenu={saveMenu} saveOrders={saveOrders} designatedDrink={designatedDrink} saveDesignatedDrink={saveDesignatedDrink} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} setScreen={changeScreen} posOp={posOp}/>}
       <UpdateBanner/>
+      <ToastHost/>
     </div>
   );
 }
@@ -3045,14 +3083,14 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
 
   // 誕生月の登録（本人が一度だけ。サーバー側で「未登録のときだけ」を確認する）
   const saveMyBirthMonth = async (month) => {
-    if (!custToken.current) { alert("いまは登録できません。スタッフにお伝えください。"); return; }
+    if (!custToken.current) { toast("いまは登録できません。スタッフにお伝えください。"); return; }
     try {
       const r = await apiData("setMyBirthMonth", { value: { birthMonth: month } }, custToken.current);
       setBoot(b => b ? { ...b, customer: r.value } : b);
       setFound(r.value);
     } catch (e) {
       console.error("誕生月の登録に失敗しました", e);
-      alert(e.message || "登録に失敗しました。もう一度お試しください。");
+      toast(niceError(e, "登録に失敗しました。もう一度お試しください。"), "err");
       refresh();
     }
   };
@@ -3103,7 +3141,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     } catch (e) {
       console.error("注文の保存に失敗しました", e);
       if (e && e.status === 401) { refresh(); return; }
-      alert(e && e.status && e.message ? e.message : "注文を送れませんでした。通信状況を確認して、もう一度お試しください。");
+      toast(niceError(e, "注文を送れませんでした。もう一度お試しください。"), "err", 7000);
       setOrdered(false);
       refresh();
     }
@@ -3231,7 +3269,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
   const placeOrder = () => {
     if ((cart.length===0 && benefitItems.length===0 && !bdayDrink) || !found) return;
     // 残高が足りないときは注文を受け付けない（ボタンの見た目だけでなく処理でも止める）
-    if (total > found.balance) { alert("残高が不足しています。スタッフにチャージをお申し付けください。"); return; }
+    if (total > found.balance) { toast("残高が足りません。スタッフにチャージをお申し付けください。", "warn"); return; }
     const order = {
       orderId: `ord_${Date.now()}`,
       customerId: found.id, customerName: found.name,
@@ -3829,7 +3867,7 @@ function BenefitOrderSection({ rank, menu, benefitUsed, benefitItems, setBenefit
             onClick={clearBenefit}>取り消す</button>
         ) : (
           <button style={{background:rank.color+"22",border:`1px solid ${rank.color}`,borderRadius:999,
-            padding:"4px 12px",color:rank.color,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}
+            padding:"6px 14px",color:rank.color,fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}
             onClick={()=>setOpen(p=>!p)}>
             {open?"閉じる":"使用する →"}
           </button>
@@ -4155,7 +4193,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   const doPayment = async () => {
     if (!customer || cart.length===0) return;
     const base = customers.find(c=>c.id===customer.id) || customer;
-    if (total>base.balance) { alert("残高が不足しています"); return; }
+    if (total>base.balance) { toast("残高が足りません", "warn"); return; }
     // 二重決済の防止：この会員にアプリからの未処理注文が残っていないか確認する
     const pendingOfCustomer = (orders||[]).filter(o=>o.customerId===customer.id && o.status==="pending");
     if (pendingOfCustomer.length > 0 &&
@@ -4182,7 +4220,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   // レジで特典・チケットを使う（どれも履歴に「誰が」が残る）
   const useTicket = async (kind, ticketId, msg) => {
     const r = await run("useTicket", { customerId: customer.id, kind, ticketId });
-    if (r && msg) alert(msg + (r.desc ? `\n（${r.desc}）` : ""));
+    if (r && msg) toast(msg + (r.desc ? `\n（${r.desc}）` : ""), "ok", 4500);
     return r;
   };
 
@@ -4745,7 +4783,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
     setEditingMgr(null);
   };
   const delMgr = (id) => {
-    if (managerAccounts.length<=1) { alert("マネージャーは最低1人必要です"); return; }
+    if (managerAccounts.length<=1) { toast("マネージャーは最低1人必要です", "warn"); return; }
     if(window.confirm("削除しますか？")) saveManagerAccounts(managerAccounts.filter(a=>a.id!==id));
   };
 
@@ -5310,8 +5348,8 @@ function OrdersPanel({ orders, customers, posOp, staffName }) {
       const r = await posOp("completeOrder", { orderId: order.orderId }, { quiet: true, returnError: true });
       if (r && r.error) {
         const sh = r.error.body && r.error.body.shortage;
-        if (sh) alert(`残高が足りません。\n\n${sh.name} さん\n　のこり ¥${sh.balance.toLocaleString()}\n　ご注文 ¥${sh.total.toLocaleString()}\n　不足 ¥${(sh.total - sh.balance).toLocaleString()}\n\n「👥 お客さま」からチャージしてから、もう一度「できました」を押してください。`);
-        else alert(r.error.message || "うまくいきませんでした。もう一度お試しください");
+        if (sh) toast(`残高が足りません：${sh.name} さん\nのこり ¥${sh.balance.toLocaleString()} ／ ご注文 ¥${sh.total.toLocaleString()} ／ 不足 ¥${(sh.total - sh.balance).toLocaleString()}\n「👥 お客さま」からチャージしてから、もう一度「できました」を押してください。`, "err", 9000);
+        else toast(niceError(r.error), "err");
       }
     } finally { setBusyId(null); }
   };
@@ -5338,6 +5376,21 @@ function OrdersPanel({ orders, customers, posOp, staffName }) {
   return (
     <>
       <div className="pos-th">🔔 届いた注文 {pending.length>0 && <span className="cnt">{pending.length}</span>}<span className="right">古い順</span></div>
+      {/* 混んでいるとき：いま作るものをまとめて数える（同じ品はまとめて作れるように） */}
+      {pending.length >= 2 && (() => {
+        const tally = {};
+        pending.forEach(o => [...(o.items||[]), ...(o.benefitItems||[]), ...(o.birthdayItems||[])].forEach(it => {
+          if (!it || !it.name) return; tally[it.name] = (tally[it.name] || 0) + (Number(it.qty) || 1);
+        }));
+        const rows = Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+        if (!rows.length) return null;
+        return (
+          <div className="pos-tally">
+            <b>いま作るもの</b>
+            {rows.map(([n,c]) => <span key={n}>{n}<em>×{c}</em></span>)}
+          </div>
+        );
+      })()}
       {pending.length===0 ? (
         <div className="pos-empty">いま届いている注文はありません<br/><span style={{fontSize:"0.72rem"}}>お客さまがアプリで注文すると、ここに出て音が鳴ります</span></div>
       ) : pending.map(order=>{
@@ -5358,10 +5411,19 @@ function OrdersPanel({ orders, customers, posOp, staffName }) {
               {(order.birthdayItems||[]).map((it,i)=>(<div key={"d"+i}>{(SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎂"} {it.emoji} {it.name}<span className="free">{order.specialGiftId ? ((SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット") : "誕生日"}・無料</span></div>))}
               {order.makaiItem && <div>🍚 {order.makaiItem.name}<span className="free">賄い</span></div>}
             </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:"0.78rem",color:"#7a6f8c",marginBottom:8}}>
-              <span>{String(order.createdAt||"").split(" ")[1] || order.createdAt}</span>
-              <span>お支払い <b style={{fontSize:"1.05rem",color:"#3a2e4f"}}>¥{Number(order.total||0).toLocaleString()}</b>{order.discount>0 && <span style={{marginLeft:6}}>（割引 -¥{order.discount.toLocaleString()}）</span>}</span>
-            </div>
+            {(() => {
+              const c = order.isCash ? null : (customers||[]).find(x => x && String(x.id) === String(order.customerId));
+              const pay = (order.isSpecial || order.isVipGift || order.isKeiroGift) ? 0 : Number(order.total||0);
+              const short = c && pay > (Number(c.balance)||0);
+              return (
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:"0.78rem",color:"#7a6f8c",marginBottom:8,gap:8,flexWrap:"wrap"}}>
+                  <span>{String(order.createdAt||"").split(" ")[1] || order.createdAt}
+                    {c && <span className={"pos-balchip" + (short ? " short" : "")}>{short ? "⚠ 残高不足" : "のこり"} ¥{(Number(c.balance)||0).toLocaleString()}</span>}
+                  </span>
+                  <span>お支払い <b style={{fontSize:"1.05rem",color:"#3a2e4f"}}>¥{Number(order.total||0).toLocaleString()}</b>{order.discount>0 && <span style={{marginLeft:6}}>（割引 -¥{order.discount.toLocaleString()}）</span>}</span>
+                </div>
+              );
+            })()}
             <div className="pos-obtns">
               <button className="pos-sm danger" disabled={!!busyId} onClick={()=>deleteOrder(order)}>取り消す</button>
               {mine ? (
@@ -5863,7 +5925,7 @@ function EditCustomerModal({ customer: liveCustomerProp, customers, onSave, onDe
   // 変えた項目だけをサーバーに送る。「開いたときの値」も一緒に送り、
   // そのあいだに別の端末で変わっていたらサーバーが止める（上書き事故を防ぐ）。
   const save = () => {
-    if (pinOwner) { alert(`この暗証番号は「${pinOwner.name}」さんが使用中です。別の番号にしてください`); return; }
+    if (pinOwner) { toast(`この暗証番号は「${pinOwner.name}」さんが使用中です。別の番号にしてください`, "warn"); return; }
     const set = {}, expect = {};
     const put = (k, val, cur) => {
       if (JSON.stringify(val ?? null) !== JSON.stringify(cur ?? null)) { set[k] = val; expect[k] = customer[k] ?? null; }
@@ -7542,4 +7604,24 @@ body.night .nz-quick2 button { background:rgba(255,255,255,0.08); border-color:r
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
 }
+
+/* ── 画面の中のお知らせ（トースト） ── */
+.nz-toasts { position:fixed; left:50%; transform:translateX(-50%); top:max(14px, env(safe-area-inset-top)); z-index:10000;
+  width:min(92vw, 440px); display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.nz-toast { pointer-events:auto; display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:16px;
+  background:#2b2340; color:#fff; font-size:0.95rem; line-height:1.5; font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,0.25);
+  animation:nzToastIn 0.25s ease-out; cursor:pointer; }
+.nz-toast.ok { background:#1f6b43; } .nz-toast.err { background:#9b2c3f; }
+.nz-toast .i { font-size:1.2rem; line-height:1.2; flex-shrink:0; } .nz-toast .m { flex:1; min-width:0; }
+.nz-toast .m br:last-child { display:none; }
+@keyframes nzToastIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:none; } }
+
+/* ── POS：いま作るもの（混んでいるときのまとめ） ── */
+.pos-tally { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 10px; padding:10px 12px; border-radius:14px; background:#fff8e6; border:1px solid #f1dfae; font-size:0.86rem; }
+.pos-tally b { color:#8a6a1a; margin-right:4px; }
+.pos-tally span { background:#fff; border:1px solid #efe3c4; border-radius:999px; padding:4px 10px; font-weight:700; color:#3a2e4f; }
+.pos-tally em { font-style:normal; color:#c94a45; margin-left:4px; font-weight:900; }
+
+.pos-balchip { margin-left:8px; padding:2px 8px; border-radius:999px; background:#eef5ef; color:#2f7a4c; font-weight:800; font-size:0.72rem; }
+.pos-balchip.short { background:#fde7ea; color:#b0284f; }
 `;
