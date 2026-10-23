@@ -36,7 +36,13 @@ export default async function handler(req, res) {
       const after = await fbGet("cafe_v4_selftest");
       const ok = after && after.n === before + 2;
       await fbPut("cafe_v4_selftest", { ...after, ok, at: new Date().toISOString() });
-      return send(res, 200, { ok, before, after: after && after.n });
+      // 毎晩の自動処理（archive.js）が最後に動いた時刻も添える（止まっていたら気づけるように）
+      let lastNightly = null;
+      try {
+        const lg = await fbGet("cafe_v4_archive_log", `orderBy=%22%24key%22&limitToLast=1`);
+        const e = lg && Object.values(lg)[0]; if (e) lastNightly = { at: e.at, by: e.by, ok: e.ok, step: e.step || null };
+      } catch {}
+      return send(res, 200, { ok, before, after: after && after.n, lastNightly, version: process.env.VERCEL_GIT_COMMIT_SHA ? String(process.env.VERCEL_GIT_COMMIT_SHA).slice(0, 7) : null });
     } catch (e) {
       return send(res, 500, { ok: false, error: String(e && e.message || e) });
     }
