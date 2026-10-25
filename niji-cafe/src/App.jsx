@@ -26,6 +26,7 @@ import {
   TICKET_RANKS, makeTicket, unusedTickets, ticketToppingsOf, ticketRemainText,
   isBirthdayTicketActive, KEIRO, keiroIsDay, keiroTarget, keiroUsed,
   SPECIAL_BY_ID, specialLeft, mySpecials, allSpecialsOf,
+  SECRET_GIFT, secretTickets, secretExpiredTickets, secretSeasonOver,
   checkYearRollover, shortVer,
 } from "../api/_rules.js";
 
@@ -2310,6 +2311,175 @@ function SpecialTicket({ found, sp, onUse, disabled }) {
   );
 }
 
+// ══════════════════════════════════════════
+//  🎄 シークレットプレゼント（教会のシークレット・シスター／ブラザー）
+// ══════════════════════════════════════════
+// 自分が引いた相手にだけ ¥350 の券を贈れる。もらった人には「シークレットのだれかから」とだけ見える。
+// 相手を調べるのも、お金を引くのも、券を作るのもサーバー（api/data.js の secretPreview / buySecretGift）。
+const XMAS_UNTIL_TEXT = (() => { const [y, m, d] = SECRET_GIFT.until.split("/").map(Number); const wd = "日月火水木金土"[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]; return `${y}年${m}月${d}日（${wd}）23:59`; })();
+function XmasSnow({ n = 16 }) {
+  return (
+    <div className="xm-snow" aria-hidden="true">
+      {[...Array(n)].map((_, i) => (
+        <span key={i} style={{ left: `${(i * 53 + 7) % 100}%`, animationDelay: `${(i % 8) * 0.7}s`,
+          animationDuration: `${6 + (i % 5)}s`, fontSize: `${0.55 + (i % 3) * 0.25}rem`, opacity: 0.55 + (i % 4) * 0.1 }}>❄</span>
+      ))}
+    </div>
+  );
+}
+function XmasTree({ size = 64 }) {
+  return (
+    <svg viewBox="0 0 64 72" width={size} height={size * 72 / 64} aria-hidden="true" className="xm-tree">
+      <polygon points="32,4 35,11 43,11 37,16 39,24 32,19 25,24 27,16 21,11 29,11" fill="#ffd166" className="xm-star"/>
+      <polygon points="32,16 50,40 14,40" fill="#1f8a52"/>
+      <polygon points="32,28 56,56 8,56" fill="#17723f"/>
+      <rect x="28" y="56" width="8" height="10" rx="2" fill="#8a5a2b"/>
+      <path d="M18 38 Q32 46 46 38" stroke="#ffd166" strokeWidth="2" fill="none"/>
+      <path d="M14 52 Q32 61 50 52" stroke="#ffd166" strokeWidth="2" fill="none"/>
+      <circle cx="24" cy="44" r="2.6" fill="#e63946" className="xm-ball"/><circle cx="40" cy="48" r="2.6" fill="#ffd166" className="xm-ball"/>
+      <circle cx="31" cy="33" r="2.4" fill="#e63946" className="xm-ball"/><circle cx="20" cy="54" r="2.4" fill="#f1faee" className="xm-ball"/>
+      <circle cx="44" cy="55" r="2.4" fill="#e63946" className="xm-ball"/>
+    </svg>
+  );
+}
+// もらった券（チケット画面）。まだ使える券はまとめて1枚に「×N枚」と出す。期限が切れた券は灰色
+function SecretTicketCard({ found, onUse, disabled }) {
+  const live = secretTickets(found), dead = secretExpiredTickets(found);
+  if (!live.length && !dead.length) return null;
+  const card = (expired, count) => (
+    <div className={"xm-tix" + (expired ? " expired" : "")} key={expired ? "x" : "o"}>
+      <div className="xm-in">
+        {!expired && <XmasSnow/>}
+        <div className="xm-ribbon" aria-hidden="true"/><div className="xm-bow" aria-hidden="true">🎀</div>
+        <div className="xm-top">
+          <span className="xm-eyebrow">🎄 Merry Christmas</span>
+          {expired ? <span className="xm-dead">期限切れ</span> : <ExpiryPill kind={SECRET_GIFT.until} dark/>}
+        </div>
+        <div className="xm-head">
+          <XmasTree size={58}/>
+          <div>
+            <div className="xm-title">シークレットプレゼント</div>
+            <div className="xm-from">🎁 {SECRET_GIFT.from}から</div>
+          </div>
+        </div>
+        <div className="xm-coupon">
+          <div className="amt"><b>1杯</b><span>無料</span></div>
+          <div className="txt"><b>お好きなドリンク1杯＋トッピング1つ</b>タピオカ・チョコソースもOK。2つめからのトッピングは通常料金です。</div>
+          {count > 1 && <div className="xm-count">×{count}枚</div>}
+        </div>
+        {expired ? (
+          <div className="xm-note">12月25日を過ぎたため、この券は使えません</div>
+        ) : disabled ? (
+          <div className="xm-note">いま注文中です。届いてから、またお使いいただけます</div>
+        ) : (
+          <button type="button" className="xm-btn" onClick={onUse}>🎄 この券で一杯えらぶ →</button>
+        )}
+        <div className="xm-foot">{found.name} 様　※ {XMAS_UNTIL_TEXT} まで・レジでも使えます</div>
+      </div>
+    </div>
+  );
+  return <>{live.length > 0 && card(false, live.length)}{dead.length > 0 && card(true, dead.length)}</>;
+}
+// 新しい券が届いたら、一度だけ全画面でお知らせする（端末ごと）
+function SecretArrival({ found }) {
+  const [show, setShow] = useState(0);
+  const ids = secretTickets(found).map((t) => String(t.id));
+  const key = ids.join(",");
+  useEffect(() => {
+    if (!ids.length) return;
+    try {
+      const seen = new Set((localStorage.getItem("nz_secret_seen") || "").split(",").filter(Boolean));
+      const fresh = ids.filter((id) => !seen.has(id));
+      if (!fresh.length) return;
+      lsSet("nz_secret_seen", [...seen, ...fresh].slice(-200).join(","));
+      setShow(fresh.length);
+      try { navigator.vibrate && navigator.vibrate([30, 60, 30, 60, 120]); } catch {}
+      const t = setTimeout(() => setShow(0), 7000);
+      return () => clearTimeout(t);
+    } catch {}
+  }, [found && found.id, key]);
+  if (!show) return null;
+  return (
+    <div className="xm-ov" role="dialog" aria-label="プレゼントが届きました" onClick={() => setShow(0)}>
+      <XmasSnow n={28}/>
+      <div className="xm-ov-box">
+        <div className="xm-ov-gift">🎁</div>
+        <div className="xm-ov-from">{SECRET_GIFT.from}から</div>
+        <div className="xm-ov-title">プレゼントが届きました🎄</div>
+        <div className="xm-ov-sub">お好きなドリンク1杯＋トッピング1つの券{show > 1 ? `が ${show}枚` : ""}<br/>「🎫 チケット」からお使いください</div>
+        <div className="xm-ov-tap">画面を押すと閉じます</div>
+      </div>
+    </div>
+  );
+}
+const honor = (n) => (/(姉|兄|先生|さん|様)$/.test(String(n || "")) ? "" : "さん");
+// 贈る（チケット画面）。押すとサーバーが相手を調べ、本人にだけ「〇〇さんに贈ります」と確認を出す
+function SecretGiftSend({ found, onPreview, onBuy }) {
+  const [busy, setBusy] = useState(false);
+  const [pv, setPv] = useState(null);       // { target, until }
+  const reqRef = useRef(null);
+  const lock = useRef(false);               // 同じ瞬間の二度押しを止める（画面の更新を待たずに）
+  if (!found || !found.churchName || secretSeasonOver()) return null;
+  const price = SECRET_GIFT.price;
+  const enough = (Number(found.balance) || 0) >= price;
+  const start = async () => {
+    if (busy || lock.current) return;
+    lock.current = true; setBusy(true);
+    const r = await onPreview();
+    lock.current = false; setBusy(false);
+    if (r) { reqRef.current = newReqId(); setPv(r); }
+  };
+  const decide = async () => {
+    if (busy || !pv || lock.current) return;
+    lock.current = true; setBusy(true);
+    const ok = await onBuy({ reqId: reqRef.current, confirmTarget: pv.target });
+    lock.current = false; setBusy(false);
+    if (ok) setPv(null);
+  };
+  return (
+    <>
+      <div className="xm-send" id="nz-secret-send">
+        <XmasSnow n={8}/>
+        <div className="xm-send-h"><span>🎁 シークレットプレゼントを贈る</span><b>¥{price.toLocaleString()}</b></div>
+        <div className="xm-send-d">あなたが引いたお相手に、<b>ドリンク1杯＋トッピング1つ</b>の券を贈れます。お相手には「シークレットのだれかから」と届き、<b>あなたの名前は伝わりません</b>。何枚でも贈れます。</div>
+        <button type="button" className="xm-btn" disabled={busy || !enough} onClick={start}>
+          {busy ? "お相手を確かめています…" : enough ? `🎁 贈る（¥${price.toLocaleString()}）` : `残高が足りません（¥${price.toLocaleString()}）`}
+        </button>
+        <div className="xm-send-f">受付・有効期限：{XMAS_UNTIL_TEXT} まで</div>
+      </div>
+      {pv && (
+        <div className="xm-overlay" onClick={() => !busy && setPv(null)}>
+          <div className="xm-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="xm-sheet-grab" aria-hidden="true"/>
+            <div className="xm-sheet-h">🎄 シークレットプレゼントを贈ります</div>
+            <div className="xm-to">
+              <div className="xm-to-l">贈るお相手</div>
+              <div className="xm-to-n">{pv.target}{honor(pv.target)}</div>
+              {pv.member && <div className="xm-to-m">虹カフェでの名前：<b>{pv.member}</b> さん</div>}
+              <div className="xm-to-q">あなたが引いたお相手で、まちがいありませんか？</div>
+            </div>
+            <div className="xm-sheet-mini"><XmasTree size={40}/><div><b>お好きなドリンク1杯＋トッピング1つ</b><span>{SECRET_GIFT.from}から届きます</span></div></div>
+            <div className="xm-sheet-rows">
+              <div><span>お支払い（残高から）</span><b>¥{price.toLocaleString()}</b></div>
+              <div><span>お支払い後の残高</span><b>¥{Math.max(0, (Number(found.balance) || 0) - price).toLocaleString()}</b></div>
+              <div><span>有効期限</span><b>{XMAS_UNTIL_TEXT}</b></div>
+            </div>
+            <ul className="xm-sheet-notes">
+              <li>ちがう人の名前が出たときは「やめる」を押して、スタッフにお声かけください（お金は動きません）。</li>
+              <li>お相手に、あなたの名前は表示されません。</li>
+              <li>期限を過ぎると使えなくなり、払い戻しはありません。</li>
+            </ul>
+            <div className="xm-sheet-btns">
+              <button type="button" className="xm-ghost" disabled={busy} onClick={() => setPv(null)}>やめる</button>
+              <button type="button" className="xm-btn" disabled={busy} onClick={decide}>{busy ? "贈っています…" : `🎁 ${pv.target}${honor(pv.target)}に贈る`}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function BadgeShelf100({ found, orders, defaultOpen = false }) {
   const SEC = badgeSections({ found, orders });
   const all = SEC.flatMap((s) => s[1]);
@@ -2742,7 +2912,7 @@ function OrderStatusCard({ order, ready, onCancel, onDismiss, justOrdered, okMsg
     ...(o.items || []).map((it, i) => ({ k: "i" + i, icon: it.emoji, name: `${it.name} × ${it.qty}`, right: `¥${(it.price * it.qty).toLocaleString()}`, cls: "" })),
     ...(o.benefitItems || []).map((it, i) => ({ k: "b" + i, icon: it.emoji, name: it.name, right: "🎁 無料", cls: "nz-free" })),
     ...(o.birthdayItems || []).map((it, i) => ({ k: "d" + i, icon: it.emoji, name: it.name,
-        right: ((SPECIAL_BY_ID(o.specialGiftId) || {}).icon || "🎂") + " 無料", cls: "nz-free" })),
+        right: (o.secretTicketId ? "🎄" : ((SPECIAL_BY_ID(o.specialGiftId) || {}).icon || "🎂")) + " 無料", cls: "nz-free" })),
   ];
   const step = ready ? 3 : 2;
   return (
@@ -3281,7 +3451,9 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
       // 🎂 誕生日の一杯（＋トッピング1つ）。¥0。サーバーでも「誕生月・今年未使用」を確認する
       isBirthdayGift: !!bdayDrink && bdayMode === "bday",
       // 🎁 特別チケット（お誕生日 特別／優勝）。¥0。サーバーでも「対象者・残り枚数・期限」を確認する
-      specialGiftId: (!!bdayDrink && bdayMode && bdayMode !== "bday") ? bdayMode : null,
+      specialGiftId: (!!bdayDrink && bdayMode && bdayMode !== "bday" && !bdayMode.startsWith("secret:")) ? bdayMode : null,
+      // 🎄 シークレットプレゼントの券（ドリンク1杯＋トッピング1つまで無料。2つめからのトッピングは cart に入れて有料）
+      secretTicketId: (!!bdayDrink && bdayMode && bdayMode.startsWith("secret:")) ? bdayMode.slice(7) : null,
       birthdayItems: bdayDrink ? [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])] : [],
       // 特典チケットから何個引くかは、サーバーが決める（今月ぶんを先に使う）
       isSpecial: isSpecial || false,
@@ -3359,6 +3531,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
         exp: isAlways ? "" : expMonth.text, urgent: !isAlways && expMonth.urgent }] : []),
     ...(unusedTickets(found).length ? [{ k:"bonus", cls:"nz-tk-bonus", icon:"🎟", t:"持ち越しチケット", s:`${unusedTickets(found).length}枚あります`, exp:"期限なし" }] : []),
     ...(gotBadges >= 100 && !found.freeDrinkUsedAt ? [{ k:"free", cls:"nz-tk-free", icon:"🏆", t:"1杯無料券", s:"実績100個のごほうび", exp:"期限なし" }] : []),
+    ...(secretTickets(found).length ? [{ k:"secret", cls:"nz-tk-xmas", icon:"🎄", t:"シークレットプレゼント",
+        s:`${secretTickets(found).length}枚 ・ ドリンク＋トッピング無料`, exp: expiryInfo(SECRET_GIFT.until).text, urgent: expiryInfo(SECRET_GIFT.until).urgent }] : []),
   ] : [];
 
   // チケットを押したら、そのまま注文の画面へ行き「🎁 特典」の欄を開く。
@@ -3370,6 +3544,29 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     if (orderingNow()) { setTab("order"); return; }   // 注文中は置き換え事故を防ぐ
     setBdayMode(id); setBdayDrink(null); setBdayTopping(null); setTab("order");
     setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 150);
+  };
+
+  // 🎄 シークレットプレゼントの券を使う（いちばん古い券から）
+  const useSecret = () => {
+    const t = found ? secretTickets(found)[0] : null;
+    if (!t) return;
+    if (orderingNow()) { setTab("order"); return; }
+    setBdayMode("secret:" + t.id); setBdayDrink(null); setBdayTopping(null); setTab("order");
+    setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 150);
+  };
+  // 🎄 シークレットプレゼントを贈る：①相手の確認（お金は動かない）②贈る（残高から¥350・相手に券）
+  const secretPreview = async () => {
+    try { return await apiData("secretPreview", {}, custToken.current); }
+    catch (e) { toast(niceError(e), "err", 8000); return null; }
+  };
+  const secretBuy = async ({ reqId, confirmTarget }) => {
+    try {
+      const r = await apiData("buySecretGift", { value: { reqId, confirmTarget } }, custToken.current);
+      if (r && r.customer) { setFound(r.customer); setBoot(b => b ? { ...b, customer: r.customer } : b); }
+      toast(r && r.dup ? "このプレゼントは、もう贈ってあります" : `🎄 ${confirmTarget}${honor(confirmTarget)}にシークレットプレゼントを贈りました！`, "ok", 5000);
+      try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
+      return true;
+    } catch (e) { toast(niceError(e), "err", 8000); refresh(); return false; }
   };
 
   const goUseBenefit = () => {
@@ -3411,6 +3608,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
           <RankUpShow found={found} rank={rank}/>
           <KeiroShow found={found}/>
           <BirthdayShow found={found}/>
+          <SecretArrival found={found}/>
           <HallWatch found={found} orders={badgeOrders} onChange={()=>setBadgeTick(t=>t+1)}/>
 
           {/* 上のあいさつ */}
@@ -3458,6 +3656,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                 <button type="button" onClick={()=>setTab("order")}>☕ メニューを見る</button>
                 <button type="button" onClick={()=>setTab("tickets")}>🎫 チケット</button>
               </div>
+              {found.churchName && !secretSeasonOver() && (
+                <button type="button" className="xm-homebtn" onClick={()=>{ setTab("tickets"); setTimeout(()=>{ try { const el=document.getElementById("nz-secret-send"); if (el) el.scrollIntoView({behavior:"smooth",block:"center"}); } catch {} }, 300); }}>
+                  <span>🎁</span><b>シークレットプレゼントを贈る</b><small>¥{SECRET_GIFT.price.toLocaleString()}</small><em>→</em>
+                </button>
+              )}
               {/* 🎁 敬老の日（9/20・対象の方だけ）はホームの一番目立つ所に */}
               <KeiroTicket found={found} orders={orders} onClaim={claimKeiro} onCancel={cancelKeiro}/>
               {ticketChips.length > 0 && (
@@ -3468,6 +3671,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                       <button key={c.k} type="button" className={"nz-tk " + c.cls} onClick={()=>{
                         if (c.k==="bday") { setBdayMode("bday"); setTab("order"); }
                         else if (c.k.indexOf("sp:")===0) { useSpecial(c.k.slice(3)); }
+                        else if (c.k==="secret") { useSecret(); }
                         else if ((c.k==="month" || c.k==="bonus") && showBenefit) { goUseBenefit(); }
                         else setTab("tickets");
                       }}>
@@ -3499,6 +3703,8 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
               {mySpecials(found).map((sp) => (
                 <SpecialTicket key={sp.id} found={found} sp={sp} disabled={orderingNow()} onUse={()=>useSpecial(sp.id)}/>
               ))}
+              <SecretTicketCard found={found} disabled={orderingNow()} onUse={useSecret}/>
+              {boot && <SecretGiftSend found={found} onPreview={secretPreview} onBuy={secretBuy}/>}
               {gotBadges >= 100 && <FreeDrinkTicket found={found}/>}
               {found.isVIP && (
                 <div className="nz-card" style={{marginTop:12}}>
@@ -3557,6 +3763,11 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                   {isStaffAccount && <div className="nz-note nz-note-green">🟢 スタッフ割引 {discountRate}%OFF が自動で入ります</div>}
                   {bdayMode === "bday" && isBirthdayTicketActive(found) && (
                     <BirthdayPicker menu={menu.filter(m=>!isSoldOut(m))} drink={bdayDrink} topping={bdayTopping} setDrink={setBdayDrink} setTopping={setBdayTopping}
+                      onQuit={()=>{ setBdayMode(""); setBdayDrink(null); setBdayTopping(null); }}/>
+                  )}
+                  {bdayMode && bdayMode.startsWith("secret:") && secretTickets(found).some(t => "secret:" + t.id === bdayMode) && (
+                    <BirthdayPicker menu={menu.filter(m=>!isSoldOut(m))} drink={bdayDrink} topping={bdayTopping} setDrink={setBdayDrink} setTopping={setBdayTopping}
+                      title="🎄 シークレットプレゼントで一杯えらぶ"
                       onQuit={()=>{ setBdayMode(""); setBdayDrink(null); setBdayTopping(null); }}/>
                   )}
                   {bdayMode && bdayMode !== "bday" && SPECIAL_BY_ID(bdayMode) && specialLeft(found, SPECIAL_BY_ID(bdayMode)) > 0 && (
@@ -3674,7 +3885,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
                     <div key={"b"+i} className="nz-row nz-free"><span>🎁 {item.emoji} {item.name}</span><span>無料</span></div>
                   ))}
                   {bdayDrink && [bdayDrink, ...(bdayTopping ? [bdayTopping] : [])].map((item,i)=>(
-                    <div key={"bd"+i} className="nz-row nz-free"><span>{(SPECIAL_BY_ID(bdayMode) || {}).icon || "🎂"} {item.emoji} {item.name}</span><span>無料</span></div>
+                    <div key={"bd"+i} className="nz-row nz-free"><span>{bdayMode.startsWith("secret:") ? "🎄" : ((SPECIAL_BY_ID(bdayMode) || {}).icon || "🎂")} {item.emoji} {item.name}</span><span>無料</span></div>
                   ))}
                 </div>
                 <div className="nz-sheet-sum">
@@ -4342,6 +4553,8 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
             : <span className="pt-used">特典なし</span>}
           {unusedTickets(liveCustomer).length > 0 && <span className="pt-gold">🎟 持ち越し券 {unusedTickets(liveCustomer).length}枚</span>}
           {isBirthdayTicketActive(customer) && <span className="pt-pink">🎂 誕生月の1杯 未使用</span>}
+          {secretTickets(liveCustomer).length > 0 && <span className="pt-gold">🎄 シークレット券 {secretTickets(liveCustomer).length}枚（12/25まで）</span>}
+          {secretExpiredTickets(liveCustomer).length > 0 && <span className="pt-used">🎄 期限切れ {secretExpiredTickets(liveCustomer).length}枚</span>}
           {allSpecialsOf(liveCustomer).map(sp => { const left = specialLeft(liveCustomer, sp); return (
             <span key={sp.id} className={left > 0 ? "pt-gold" : "pt-used"}>
               {sp.icon} {sp.title} {left > 0 ? `あと${left}枚` : "使い切り"}
@@ -4400,6 +4613,12 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
               if (!window.confirm(`${customer.name} さんの「🎂 誕生月の1杯無料券」を使用済みにします。\n（${customer.birthMonth}月生まれ・${jstYear()}年分）よろしいですか？`)) return;
               useTicket("birthday", null, "使用済みにしました。1杯ぶんは会計から外してください。");
             }}>🎂 誕生月券を使う</button>
+          )}
+          {secretTickets(liveCustomer).length > 0 && (
+            <button className="pos-ghost" style={{borderColor:"#1f8a52",color:"#17723f"}} disabled={busy} onClick={()=>{
+              if (!window.confirm(`${customer.name} さんの「🎄 シークレットプレゼント」を1枚つかいます。\n（いま ${secretTickets(liveCustomer).length}枚 ／ 12月25日まで）\nドリンク1杯とトッピング1つは会計から外してください。よろしいですか？`)) return;
+              useTicket("secret", null, "1枚つかいました。ドリンク1杯とトッピング1つは会計から外してください。");
+            }}>🎄 シークレット券を使う</button>
           )}
           {allSpecialsOf(liveCustomer).filter(sp => specialLeft(liveCustomer, sp) > 0).map(sp => (
             <button key={sp.id} className="pos-ghost" style={{borderColor:"#d9a441",color:"#8a6a1a"}} onClick={()=>{
@@ -4543,7 +4762,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
         <CashOrderPanel menu={menu} staffName={staffName} posOp={posOp}/>
       )}
       {posTab==="staffmgmt" && isManager && (
-        <StaffMgmtPanel staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} customers={customers} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} menu={menu}/>
+        <StaffMgmtPanel staffAccounts={staffAccounts} saveStaffAccounts={saveStaffAccounts} managerAccounts={managerAccounts} saveManagerAccounts={saveManagerAccounts} customers={customers} vipGiftDrink={vipGiftDrink} saveVipGiftDrink={saveVipGiftDrink} menu={menu} posOp={posOp}/>
       )}
       {posTab==="history" && (
         <SalesHistoryPanel customers={customers} orders={orders}/>
@@ -4754,7 +4973,65 @@ function BackupPanel({ customers }) {
 }
 
 // ── STAFF MGMT PANEL ─────────────────────
-function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, customers, vipGiftDrink, saveVipGiftDrink, menu }) {
+// 🎄 シークレットプレゼント：教会での名前と、虹カフェの会員を結びつける（マネージャー）
+// 誰が誰を引いたかは、ここでは分からない（教会のホームページの中だけにある）。
+function SecretNamePanel({ customers, posOp }) {
+  const [names, setNames] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const list = (customers || []).filter(Boolean);
+  const holderOf = (n) => list.find((c) => String(c.churchName || "").trim() === n);
+  const load = async () => {
+    setBusy(true); setErr("");
+    try { const r = await apiData("ssNames", { value: {} }); setNames(r.names || []); }
+    catch (e) { setErr(niceError(e)); }
+    setBusy(false);
+  };
+  const assign = async (name, customerId) => {
+    setBusy(true);
+    const cur = holderOf(name);
+    if (cur && String(cur.id) !== String(customerId)) await posOp("editCustomer", { customerId: cur.id, set: { churchName: "" } });
+    if (customerId) await posOp("editCustomer", { customerId, set: { churchName: name } });
+    setBusy(false);
+  };
+  const mapped = names ? names.filter((n) => holderOf(n)).length : list.filter((c) => c.churchName).length;
+  const strays = names ? list.filter((c) => c.churchName && !names.includes(c.churchName)) : [];
+  const sorted = [...list].sort((a, b) => String(a.name).localeCompare(String(b.name), "ja"));
+  return (
+    <div className="xm-admin">
+      <div className="xm-admin-h">
+        <span>🎄 シークレットプレゼント：教会での名前</span>
+        <b>{names ? `${names.length}人中 ${mapped}人` : `${mapped}人 登録済み`}</b>
+      </div>
+      <div className="xm-admin-d">教会のホームページの参加者と、虹カフェの会員を結びつけます。結んだ人だけが「贈る」を使え、プレゼントを受け取れます。誰が誰を引いたかは、ここでは分かりません。</div>
+      {!names && <button type="button" className="xm-btn" style={{ marginTop: 10 }} disabled={busy} onClick={load}>{busy ? "読み込んでいます…" : "教会のホームページから名前を読み込む"}</button>}
+      {err && <div className="xm-admin-err">{err}</div>}
+      {names && (
+        <div className="xm-admin-list">
+          {names.map((n) => {
+            const h = holderOf(n);
+            return (
+              <label key={n} className={"xm-admin-row" + (h ? " ok" : "")}>
+                <span className="n">{h ? "✅" : "⬜"} {n}</span>
+                <select value={h ? String(h.id) : ""} disabled={busy} onChange={(e) => assign(n, e.target.value)}>
+                  <option value="">— まだ結んでいない —</option>
+                  {sorted.map((c) => (
+                    <option key={c.id} value={String(c.id)}>{c.name}{c.churchName && c.churchName !== n ? `（いま：${c.churchName}）` : ""}</option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
+        </div>
+      )}
+      {strays.length > 0 && (
+        <div className="xm-admin-err">教会の参加者にない名前が付いている会員：{strays.map((c) => `${c.name}（${c.churchName}）`).join("、")}</div>
+      )}
+    </div>
+  );
+}
+
+function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, saveManagerAccounts, customers, vipGiftDrink, saveVipGiftDrink, menu, posOp }) {
   const [editingStaff,  setEditingStaff]  = useState(null);
   const [editingMgr,    setEditingMgr]    = useState(null);
   const [form,          setForm]          = useState({});
@@ -4861,6 +5138,7 @@ function StaffMgmtPanel({ staffAccounts, saveStaffAccounts, managerAccounts, sav
       {/* ※ バックアップ欄はこのタブの一番下に移した。
              年に数回しか使わないものが最上段にあると、毎回それを飛ばしてから
              本題（スタッフ一覧）に入ることになるため。 */}
+      {!secretSeasonOver() && posOp && <SecretNamePanel customers={customers} posOp={posOp}/>}
 
       {/* マネージャーアカウント */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -5007,10 +5285,12 @@ function DayClosePanel() {
           {rep.newMembers.count > 0 && <Row label="🌱 入会（初回）" sub={`${rep.newMembers.count}人`} value={"+" + yen(rep.newMembers.amount)}/>}
           <Row label="💵 現金注文" sub={rep.cashSales.count ? `${rep.cashSales.count}件` : ""} value={yen(rep.cashSales.amount)}/>
           <Row label="💳 残高払い（売上）" sub={rep.memberSales.count ? `${rep.memberSales.count}件` : ""} value={yen(rep.memberSales.amount)}/>
+          {rep.secretGifts && rep.secretGifts.count > 0 && <Row label="　うち 🎄 シークレットプレゼント" sub={`${rep.secretGifts.count}枚`} value={yen(rep.secretGifts.amount)}/>}
           {rep.edits.count > 0 && <Row label="✏️ 残高の手修正" sub={`${rep.edits.count}回`} value={(rep.edits.amount >= 0 ? "+" : "−") + yen(Math.abs(rep.edits.amount))}/>}
           {rep.removed.count > 0 && <Row label="🗑 会員の削除（残っていた残高）" sub={`${rep.removed.count}人`} value={"−" + yen(Math.abs(rep.removed.amount))}/>}
           <div className="nz-close-sep"/>
           <Row label="🏦 いまの預かり金（全員の残高の合計）" value={yen(rep.deposits)} strong/>
+          {(rep.secretOpen > 0 || rep.secretExpired > 0) && <Row label="🎄 まだ使われていないシークレット券" sub={rep.secretExpired ? `ほかに期限切れ ${rep.secretExpired}枚` : ""} value={`${rep.secretOpen}枚`}/>}
           {rep.items.length > 0 && (
             <div className="nz-close-items">
               <div>よく出た品</div>
@@ -5109,7 +5389,7 @@ function SalesHistoryPanel({ customers, orders }) {
       items: [
         ...(o.items || []).map(i=>`${i.name}×${i.qty}`),
         ...(o.benefitItems || []).map(i=>`${i.name}(特典)`),
-        ...(o.birthdayItems || []).map(i=>`${i.name}(${o.specialGiftId ? ((SPECIAL_BY_ID(o.specialGiftId)||{}).title || "特別チケット") : "🎂誕生日"})`),
+        ...(o.birthdayItems || []).map(i=>`${i.name}(${o.secretTicketId ? "🎄シークレット" : o.specialGiftId ? ((SPECIAL_BY_ID(o.specialGiftId)||{}).title || "特別チケット") : "🎂誕生日"})`),
         ...(o.makaiItem ? [`${o.makaiItem.name}(賄い)`] : []),
       ].join(", "),
       performer: o.completedBy || "スタッフ",
@@ -5370,7 +5650,7 @@ function OrdersPanel({ orders, customers, posOp, staffName }) {
     try { await posOp("deleteOrder", { orderId: order.orderId }, { removeOrderId: order.orderId }); } finally { setBusyId(null); }
   };
 
-  const orderTag = (order) => order.specialGiftId ? [`${(SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎁"} ${(SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット"}`, "pt-gold"]
+  const orderTag = (order) => order.secretTicketId ? ["🎄 シークレット", "pt-gold"] : order.specialGiftId ? [`${(SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎁"} ${(SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット"}`, "pt-gold"]
     : order.isKeiroGift ? ["🎁 敬老の日", "pt-pink"] : order.isBirthdayGift ? ["🎂 誕生日", "pt-pink"] : order.isVipGift ? ["⭐ VIPギフト", "pt-gold"]
     : order.isCash ? ["💵 現金", "pt-ok"] : order.isSpecial ? ["💜 スペシャル", "pt-used"] : [order.rankName, "pt-used"];
   return (
@@ -5408,7 +5688,7 @@ function OrdersPanel({ orders, customers, posOp, staffName }) {
             <div className="pos-oi">
               {(order.items||[]).map((it,i)=>(<div key={i}>{it.emoji} {it.name} × {it.qty}<span className="amt">¥{(it.price*it.qty).toLocaleString()}</span></div>))}
               {(order.benefitItems||[]).map((it,i)=>(<div key={"b"+i}>🎁 {it.emoji} {it.name}{it.qty>1?` × ${it.qty}`:""}<span className="free">特典・無料</span></div>))}
-              {(order.birthdayItems||[]).map((it,i)=>(<div key={"d"+i}>{(SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎂"} {it.emoji} {it.name}<span className="free">{order.specialGiftId ? ((SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット") : "誕生日"}・無料</span></div>))}
+              {(order.birthdayItems||[]).map((it,i)=>(<div key={"d"+i}>{order.secretTicketId ? "🎄" : ((SPECIAL_BY_ID(order.specialGiftId)||{}).icon || "🎂")} {it.emoji} {it.name}<span className="free">{order.secretTicketId ? "シークレット" : order.specialGiftId ? ((SPECIAL_BY_ID(order.specialGiftId)||{}).title || "特別チケット") : "誕生日"}・無料</span></div>))}
               {order.makaiItem && <div>🍚 {order.makaiItem.name}<span className="free">賄い</span></div>}
             </div>
             {(() => {
@@ -5756,6 +6036,7 @@ const HIST_CONFIG = {
   refund:         { icon:"↩️", label:"決済の取消",     color:"#3e9a5c" },
   new_member:     { icon:"🌱", label:"入会",           color:"#3e9a5c" },
   edit_pin:       { icon:"🔑", label:"暗証番号の変更", color:"#3b7fb8" },
+  secret_gift:    { icon:"🎄", label:"シークレットプレゼント", color:"#c0392b" },
 };
 
 function HistoryModal({ customer, rank, onClose }) {
@@ -5781,6 +6062,7 @@ function HistoryModal({ customer, rank, onClose }) {
     if (h.type === "refund")         return `+¥${(h.amount||0).toLocaleString()} 返金（「できました」の押し間違いを戻した）${h.items ? " | " + h.items : ""}`;
     if (h.type === "new_member")     return `入会・初回 ¥${(h.amount||0).toLocaleString()}${by}`;
     if (h.type === "edit_pin")       return "暗証番号を変更";
+    if (h.type === "secret_gift")    return `-¥${(h.amount||0).toLocaleString()}（シークレットプレゼントを贈った）`;
     if (h.type === "benefit")        return h.desc || "特典使用";
     if (h.type === "edit_balance")   return `¥${h.before?.toLocaleString()} → ¥${h.after?.toLocaleString()}`;
     if (h.type === "edit_purchases") return `${h.label ? h.label+": " : ""}${h.before}回 → ${h.after}回`;
@@ -7624,4 +7906,100 @@ body.night .nz-quick2 button { background:rgba(255,255,255,0.08); border-color:r
 
 .pos-balchip { margin-left:8px; padding:2px 8px; border-radius:999px; background:#eef5ef; color:#2f7a4c; font-weight:800; font-size:0.72rem; }
 .pos-balchip.short { background:#fde7ea; color:#b0284f; }
+
+/* ══════════ 🎄 シークレットプレゼント（クリスマスの券） ══════════ */
+.xm-tix { margin-top:14px; border-radius:22px; padding:3px; position:relative;
+  background:linear-gradient(120deg,#d4a017,#fff3c4,#e63946,#d4a017,#1f8a52,#fff3c4); background-size:300% 300%; animation:rainbowShift 7s ease infinite;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.5), 0 14px 40px rgba(23,114,63,0.35); }
+.xm-tix .xm-in { border-radius:19px; padding:16px 16px 14px; position:relative; overflow:hidden; color:#f6fff7;
+  background:radial-gradient(ellipse at 80% -10%, rgba(255,209,102,0.28), transparent 55%), radial-gradient(ellipse at 0% 110%, rgba(230,57,70,0.25), transparent 50%), linear-gradient(160deg,#0f4a33,#0b3324 60%,#082619); }
+.xm-ribbon { position:absolute; top:0; bottom:0; right:58px; width:14px; background:linear-gradient(90deg,#b5121b,#e63946 45%,#ff6b74 55%,#b5121b); opacity:0.92; box-shadow:0 0 8px rgba(0,0,0,0.25); }
+.xm-bow { position:absolute; top:-6px; right:38px; font-size:2.1rem; filter:drop-shadow(0 3px 4px rgba(0,0,0,0.3)); transform:rotate(-8deg); }
+.xm-snow { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+.xm-snow span { position:absolute; top:-12%; color:#fff; animation:xmFall linear infinite; text-shadow:0 0 6px rgba(255,255,255,0.8); }
+@keyframes xmFall { 0% { transform:translate(0,0) rotate(0); } 50% { transform:translate(10px,60%) rotate(160deg); } 100% { transform:translate(-6px,120vh) rotate(320deg); } }
+.xm-top { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; position:relative; padding-right:70px; }
+.xm-eyebrow { font-family:Georgia,"Times New Roman",serif; font-style:italic; font-weight:700; letter-spacing:0.06em; font-size:0.95rem;
+  background:linear-gradient(90deg,#ffe9a8,#fff8dc,#ffd166); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.xm-dead { background:#555; color:#fff; border-radius:999px; padding:4px 12px; font-weight:900; font-size:0.85rem; letter-spacing:0.1em; }
+.xm-head { display:flex; align-items:center; gap:12px; margin-top:8px; position:relative; }
+.xm-tree { flex-shrink:0; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.35)); }
+.xm-star { transform-origin:32px 13px; animation:xmTwinkle 2.4s ease-in-out infinite; }
+.xm-ball { animation:xmTwinkle 1.8s ease-in-out infinite; } .xm-ball:nth-of-type(2n) { animation-delay:0.6s; }
+@keyframes xmTwinkle { 0%,100% { opacity:1; } 50% { opacity:0.55; } }
+.xm-title { font-size:1.3rem; font-weight:900; letter-spacing:0.04em; line-height:1.3;
+  background:linear-gradient(90deg,#ffd166,#fff3c4,#ffd166); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:rainbowShift 4s linear infinite; }
+.xm-from { margin-top:2px; font-size:0.9rem; font-weight:800; color:#d8f3dc; }
+.xm-coupon { margin-top:12px; background:#fffdf5; color:#2d2a1a; border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px; position:relative; box-shadow:0 4px 14px rgba(0,0,0,0.3); }
+.xm-coupon::before, .xm-coupon::after { content:""; position:absolute; top:50%; width:16px; height:16px; border-radius:50%; background:#0b3324; transform:translateY(-50%); }
+.xm-coupon::before { left:-8px; } .xm-coupon::after { right:-8px; }
+.xm-coupon .amt { text-align:center; border-right:2px dashed #e8d6a4; padding-right:12px; color:#b5121b; line-height:1.1; }
+.xm-coupon .amt b { display:block; font-size:1.5rem; font-weight:900; } .xm-coupon .amt span { font-size:0.75rem; font-weight:800; }
+.xm-coupon .txt { flex:1; font-size:0.8rem; line-height:1.55; } .xm-coupon .txt b { display:block; font-size:0.95rem; color:#17331f; }
+.xm-count { position:absolute; top:-10px; right:10px; background:#e63946; color:#fff; font-weight:900; border-radius:999px; padding:3px 10px; font-size:0.85rem; box-shadow:0 3px 8px rgba(0,0,0,0.25); }
+.xm-btn { display:block; width:100%; margin-top:12px; border:none; border-radius:16px; padding:15px; font-family:inherit; font-weight:900; font-size:1.05rem; cursor:pointer; position:relative;
+  background:linear-gradient(135deg,#c1121f,#e63946); color:#fff; box-shadow:0 8px 20px rgba(193,18,31,0.35), inset 0 0 0 2px rgba(255,209,102,0.55); }
+.xm-btn:disabled { opacity:0.55; cursor:default; }
+.xm-note { position:relative; margin-top:12px; text-align:center; font-size:0.85rem; color:#d8f3dc; border:1.5px dashed rgba(255,255,255,0.35); border-radius:12px; padding:9px; }
+.xm-foot { position:relative; margin-top:10px; text-align:center; font-size:0.74rem; color:#b7e4c7; }
+.xm-tix.expired { background:#9a9a9a; animation:none; box-shadow:none; }
+.xm-tix.expired .xm-in { filter:grayscale(1); opacity:0.75; }
+/* 贈る */
+.xm-send { margin-top:14px; border-radius:20px; padding:16px; position:relative; overflow:hidden; color:#fff;
+  background:radial-gradient(ellipse at 100% 0%, rgba(255,209,102,0.35), transparent 50%), linear-gradient(150deg,#a4161a,#c1121f 55%,#7a0c12);
+  box-shadow:0 12px 30px rgba(164,22,26,0.3); border:2px solid #ffd166; }
+.xm-send-h { position:relative; display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-weight:900; font-size:1.1rem; }
+.xm-send-h b { font-size:1.3rem; color:#ffe9a8; }
+.xm-send-d { position:relative; margin-top:8px; font-size:0.9rem; line-height:1.65; color:#fff4f4; }
+.xm-send-d b { color:#ffe9a8; }
+.xm-send .xm-btn { background:linear-gradient(135deg,#1f8a52,#17723f); box-shadow:0 8px 20px rgba(0,0,0,0.25), inset 0 0 0 2px rgba(255,209,102,0.6); }
+.xm-send-f { position:relative; margin-top:8px; text-align:center; font-size:0.78rem; color:#ffd9d9; }
+.xm-homebtn { width:100%; display:flex; align-items:center; gap:10px; margin:0 0 14px; padding:12px 16px; border-radius:16px; border:2px solid #ffd166; cursor:pointer; font-family:inherit; color:#fff; text-align:left;
+  background:linear-gradient(135deg,#a4161a,#c1121f); box-shadow:0 8px 18px rgba(164,22,26,0.25); }
+.xm-homebtn span { font-size:1.4rem; } .xm-homebtn b { flex:1; font-size:1rem; } .xm-homebtn small { color:#ffe9a8; font-weight:900; font-size:0.95rem; } .xm-homebtn em { font-style:normal; font-weight:900; }
+.nz-tk-xmas { background:linear-gradient(135deg,#d8f3dc,#ffe3e3); }
+/* 確認のシート */
+.xm-overlay { position:fixed; inset:0; z-index:9000; background:rgba(10,20,15,0.55); display:flex; align-items:flex-end; justify-content:center; }
+.xm-sheet { width:100%; max-width:480px; background:#fffdf8; border-radius:26px 26px 0 0; padding:10px 18px calc(20px + env(safe-area-inset-bottom)); box-shadow:0 -10px 40px rgba(0,0,0,0.3); animation:xmUp 0.28s ease-out; color:#2b2a1f; }
+@keyframes xmUp { from { transform:translateY(40px); opacity:0; } to { transform:none; opacity:1; } }
+.xm-sheet-grab { width:44px; height:5px; border-radius:3px; background:#ddd; margin:2px auto 12px; }
+.xm-sheet-h { font-size:1.15rem; line-height:1.6; text-align:center; font-weight:800; }
+.xm-sheet-h b { color:#b5121b; font-size:1.3rem; }
+.xm-to{margin:12px 0 4px;padding:14px 12px;border-radius:16px;text-align:center;background:linear-gradient(160deg,#fff6e0,#ffeef0);border:2px solid #e63946;box-shadow:0 6px 16px rgba(230,57,70,.15)}
+.xm-to-l{font-size:.8rem;font-weight:900;color:#7a4d10;letter-spacing:.1em}
+.xm-to-n{margin-top:2px;font-size:1.7rem;font-weight:900;color:#b5121b;line-height:1.3;word-break:keep-all}
+.xm-to-m{margin-top:4px;font-size:.92rem;color:#4a3a2a}
+.xm-to-m b{color:#17723f;font-size:1.05rem}
+.xm-to-q{margin-top:8px;font-size:.88rem;font-weight:800;color:#2b2a1f}
+.xm-sheet-mini { display:flex; align-items:center; gap:12px; margin:14px 0 10px; padding:12px; border-radius:14px; background:linear-gradient(150deg,#0f4a33,#0b3324); color:#fff; }
+.xm-sheet-mini b { display:block; color:#ffe9a8; } .xm-sheet-mini span { font-size:0.82rem; color:#d8f3dc; }
+.xm-sheet-rows > div { display:flex; justify-content:space-between; gap:10px; padding:9px 2px; border-bottom:1px dashed #eadfcd; font-size:0.98rem; }
+.xm-sheet-rows b { font-variant-numeric:tabular-nums; }
+.xm-sheet-notes { margin:10px 0 0; padding:10px 12px 10px 28px; background:#fff4e5; border-radius:12px; color:#7a4d10; font-size:0.88rem; line-height:1.65; font-weight:700; }
+.xm-sheet-btns { display:flex; gap:10px; margin-top:14px; }
+.xm-sheet-btns .xm-btn { margin-top:0; flex:2; }
+.xm-ghost { flex:1; border:1px solid #ddd; background:#fff; border-radius:16px; font-family:inherit; font-weight:800; font-size:1rem; color:#555; cursor:pointer; }
+/* 届いたお知らせ */
+.xm-ov { position:fixed; inset:0; z-index:9500; display:flex; align-items:center; justify-content:center; overflow:hidden;
+  background:radial-gradient(ellipse at 50% 30%, rgba(255,209,102,0.25), transparent 60%), linear-gradient(170deg,rgba(11,51,36,0.97),rgba(8,38,25,0.98)); animation:xmFade 0.35s ease-out; }
+@keyframes xmFade { from { opacity:0; } to { opacity:1; } }
+.xm-ov-box { position:relative; text-align:center; color:#fff; padding:24px; }
+.xm-ov-gift { font-size:5rem; animation:xmBounce 1.2s ease-in-out infinite; filter:drop-shadow(0 8px 16px rgba(0,0,0,0.4)); }
+@keyframes xmBounce { 0%,100% { transform:translateY(0) rotate(-4deg); } 50% { transform:translateY(-14px) rotate(4deg); } }
+.xm-ov-from { margin-top:6px; font-size:1rem; font-weight:800; color:#d8f3dc; }
+.xm-ov-title { margin-top:4px; font-size:1.6rem; font-weight:900; background:linear-gradient(90deg,#ffd166,#fff3c4,#ffd166); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.xm-ov-sub { margin-top:12px; font-size:0.98rem; line-height:1.7; color:#f1faee; }
+.xm-ov-tap { margin-top:18px; font-size:0.8rem; color:#95d5b2; }
+/* マネージャー：名前の対応づけ */
+.xm-admin { margin-bottom:18px; border-radius:16px; padding:14px; background:linear-gradient(160deg,#f1faf3,#fff7f7); border:1.5px solid #b7e4c7; }
+.xm-admin-h { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-weight:900; color:#17723f; }
+.xm-admin-h b { color:#b5121b; }
+.xm-admin-d { margin-top:6px; font-size:0.82rem; color:#4a5a50; line-height:1.6; }
+.xm-admin-err { margin-top:8px; font-size:0.85rem; color:#b0284f; font-weight:700; }
+.xm-admin-list { margin-top:10px; display:grid; gap:6px; }
+.xm-admin-row { display:flex; align-items:center; gap:8px; justify-content:space-between; background:#fff; border:1px solid #e3eee6; border-radius:12px; padding:8px 10px; }
+.xm-admin-row.ok { border-color:#95d5b2; }
+.xm-admin-row .n { font-weight:800; font-size:0.92rem; }
+.xm-admin-row select { max-width:55%; padding:8px; border-radius:10px; border:1px solid #cfd8d2; font-family:inherit; font-size:0.9rem; background:#fff; }
+@media (prefers-reduced-motion: reduce) { .xm-snow { display:none; } }
 `;
