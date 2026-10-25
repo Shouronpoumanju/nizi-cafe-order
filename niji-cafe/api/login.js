@@ -6,7 +6,7 @@
 //  ブラウザに配る必要がなくなります。
 // ══════════════════════════════════════════
 import { envReady, fbGet, fbPut, fbTxn, issueToken, sameSecret, hashSecret, looksHashed, send, readBody,
-         pinVer, clientIp, guardBlocked, guardFail, asList } from "./_lib.js";
+         pinVer, clientIp, guardBlocked, guardFail, asList, ssLink } from "./_lib.js";
 
 // 「この端末で記憶する」の有効期間。週に1回来られる方が毎回打ち直さなくて済むよう、90日にしてある。
 // （暗証番号を変えれば、その前のログイン証は使えなくなる → pinVer）
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
   if (req.method === "GET" && /[?&]health=1/.test(String(req.url || ""))) {
     try {
       const last = await fbGet("cafe_v4_selftest");
-      if (last && Date.now() - (last.t || 0) < 60 * 1000) return send(res, 200, { ok: !!last.ok, cached: true, n: last.n, at: last.at });
+      if (last && Date.now() - (last.t || 0) < 60 * 1000) return send(res, 200, { ok: !!last.ok, cached: true, n: last.n, at: last.at, ss: last.ss || null });
       const before = (last && last.n) || 0;
       const bump = () => fbTxn("cafe_v4_selftest", (cur) => {
         const n = ((cur && cur.n) || 0) + 1;
@@ -35,14 +35,14 @@ export default async function handler(req, res) {
       await Promise.all([bump(), bump()]);
       const after = await fbGet("cafe_v4_selftest");
       const ok = after && after.n === before + 2;
-      await fbPut("cafe_v4_selftest", { ...after, ok, at: new Date().toISOString() });
-      // 毎晩の自動処理（archive.js）が最後に動いた時刻も添える（止まっていたら気づけるように）
+      // 教会のシークレット窓口とつながるか（名前の一覧は返さない。人数だけ）
+      const p = await ssLink({ act: "ping" });
+      const ss = p.ok ? { ok: true, people: Array.isArray(p.names) ? p.names.length : null } : { ok: false, code: p.code, status: p.status };
+      await fbPut("cafe_v4_selftest", { ...after, ok, ss, at: new Date().toISOString() });
+      // 毎晩の自動処理（archive.js）が最後に動いた時刻（止まっていたら気づけるように）
       let lastNightly = null;
-      try {
-        const lg = await fbGet("cafe_v4_archive_log", `orderBy=%22%24key%22&limitToLast=1`);
-        const e = lg && Object.values(lg)[0]; if (e) lastNightly = { at: e.at, by: e.by, ok: e.ok, step: e.step || null };
-      } catch {}
-      return send(res, 200, { ok, before, after: after && after.n, lastNightly, version: process.env.VERCEL_GIT_COMMIT_SHA ? String(process.env.VERCEL_GIT_COMMIT_SHA).slice(0, 7) : null });
+      try { const nt = await fbGet("cafe_v4_nightly"); if (nt) lastNightly = { at: nt.at, by: nt.by }; } catch {}
+      return send(res, 200, { ok, before, after: after && after.n, lastNightly, ss, version: process.env.VERCEL_GIT_COMMIT_SHA ? String(process.env.VERCEL_GIT_COMMIT_SHA).slice(0, 7) : null });
     } catch (e) {
       return send(res, 500, { ok: false, error: String(e && e.message || e) });
     }

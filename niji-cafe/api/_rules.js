@@ -272,3 +272,27 @@ export const pushHistory = (c, entries) => ({
 // アプリの版。Vercel が公開するたびに変わる（同じ公開の画面とサーバーは同じ値になる）。
 // 開きっぱなしの古い画面に「新しい版があります」と知らせるために使う。
 export const shortVer = (s) => String(s || "").slice(0, 7);
+
+// ── 🎄 シークレットプレゼント（教会のシークレット・シスター／ブラザーとつなぐ） ─────────
+// 自分が引いた相手にだけ、¥350 のチケットを贈れる。何枚でも贈れる。
+// 1枚＝お好きなドリンク1杯＋トッピング1つまで無料（タピオカ・チョコソースもOK）。2つめからのトッピングは通常料金。
+// 会員データ giftTickets に積む： { id, kind:"secret", issuedDay:"2026/10/25", until, usedAt, usedOrderId }
+//   ※ 贈り主は「どこにも保存しない」。チケットにも、もらった人の履歴にも、台帳にも残さない。
+//     届いた日も「日付だけ」にして、時刻から贈り主を推し量れないようにしてある。
+export const SECRET_GIFT = {
+  price: 350,
+  until: "2026/12/25",            // この日の 23:59（日本時間）まで使える。贈れるのも同じ日まで
+  icon: "🎄", title: "シークレットプレゼント", from: "シークレットのだれか",
+};
+// "2026/12/25" のような日付を過ぎたか（その日の終わりまでは有効・日本時間）
+export const dayPassed = (until) => {
+  const [y, m, d] = String(until).split("/").map(Number);
+  const now = jd();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) > Date.UTC(y, m - 1, d);
+};
+export const secretSeasonOver = () => dayPassed(SECRET_GIFT.until);
+const secretAll = (c) => (Array.isArray(c && c.giftTickets) ? c.giftTickets : []).filter((t) => t && t.id && t.kind === "secret");
+// まだ使える券（未使用・期限内）
+export const secretTickets = (c) => secretAll(c).filter((t) => !t.usedAt && !dayPassed(t.until || SECRET_GIFT.until));
+// 期限が切れてしまった未使用の券（灰色で「期限切れ」と見せる）
+export const secretExpiredTickets = (c) => secretAll(c).filter((t) => !t.usedAt && dayPassed(t.until || SECRET_GIFT.until));

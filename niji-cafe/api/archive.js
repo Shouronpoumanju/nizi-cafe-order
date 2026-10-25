@@ -58,6 +58,8 @@ export default async function handler(req, res) {
   const who = byCron ? "cron" : `manager:${me.name || me.id}`;
 
   const startedAt = new Date().toISOString();
+  // 毎晩動いた印。整理するものが無い晩も残すので、健康診断で「止まっていないか」が分かる
+  try { await fbPut("cafe_v4_nightly", { at: jstStamp(), atISO: startedAt, by: who }); } catch {}
   const log = async (entry) => {
     try { await fbPost("cafe_v4_archive_log", { at: startedAt, by: who, ...entry }); } catch {}
   };

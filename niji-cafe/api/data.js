@@ -13,8 +13,9 @@
 //      注文に「何を使ったか（consumed）」を残すので、取り消したときに正確に戻せる。
 //    ・お金が動いたら、サーバーが消えない台帳（sales_log / money_log）に必ず書く。
 // ══════════════════════════════════════════
+import crypto from "node:crypto";
 import { envReady, fbGet, fbPut, fbPost, fbTxn, TxnAbort, asList, readToken, sameSecret, hashSecret, looksHashed,
-         send, readBody, bearer, pinVer, clientIp, guardBlocked, guardFail } from "./_lib.js";
+         send, readBody, bearer, pinVer, clientIp, guardBlocked, guardFail, ssLink } from "./_lib.js";
 import * as R from "./_rules.js";
 
 const K = {
@@ -143,7 +144,7 @@ function itemText(o) {
   return [
     ...(o.items || []).map((i) => `${i.name}×${i.qty}`),
     ...(o.benefitItems || []).map((i) => `${i.name}(特典)`),
-    ...(o.birthdayItems || []).map((i) => `${i.name}(${o.specialGiftId ? (sp ? sp.title : "特別チケット") : "🎂誕生日"})`),
+    ...(o.birthdayItems || []).map((i) => `${i.name}(${o.secretTicketId ? "🎄シークレット" : o.specialGiftId ? (sp ? sp.title : "特別チケット") : "🎂誕生日"})`),
     ...(o.makaiItem ? [`${o.makaiItem.name}(賄い)`] : []),
   ].join(", ");
 }
@@ -156,9 +157,15 @@ const kindOf = (o) => (o.isVipGift ? "vip" : o.isKeiroGift ? "keiro" : "normal")
 //  特典の「使う」と「戻す」
 // ══════════════════════════════════════════
 // consumed（注文に残す「この注文で使ったもの」）:
-//   { month, topMonthly, tickets:[{id,n}], benefitMonth, birthdayYear, specialId, keiroYear, vipMonth }
+//   { month, topMonthly, tickets:[{id,n}], benefitMonth, birthdayYear, specialId, keiroYear, vipMonth, secretId }
+const markSecret = (c, id, used, orderId) => ({
+  ...c, giftTickets: (Array.isArray(c.giftTickets) ? c.giftTickets : []).map((t) => (t && sid(t.id) === sid(id)
+    ? (used ? { ...t, usedAt: R.jstToday(), usedOrderId: orderId || null } : { ...t, usedAt: null, usedOrderId: null })
+    : t)),
+});
 function applyConsumed(c, k, orderId) {
   let x = { ...c };
+  if (k.secretId) x = markSecret(x, k.secretId, true, orderId);
   if (k.topMonthly > 0) {
     const max = R.getToppingMax(R.getEffectiveRank(x));
     const avail = R.getToppingAvailable(x, R.getEffectiveRank(x));
@@ -187,6 +194,7 @@ function restoreConsumed(c, k) {
   if (k.specialId) x.specialUsed = { ...(x.specialUsed || {}), [k.specialId]: Math.max(0, R.specialUsedN(x, k.specialId) - 1) };
   if (k.keiroYear && sid(x.keiroGiftUsed) === sid(k.keiroYear)) x.keiroGiftUsed = null;
   if (k.vipMonth && x.vipGiftUsedMonth === k.vipMonth) x.vipGiftUsedMonth = null;
+  if (k.secretId) x = markSecret(x, k.secretId, false);
   return x;
 }
 // 作り直し前（2026-10 以前）の画面が出した注文には consumed が無い。
@@ -326,7 +334,17 @@ function buildOrder({ input, c, menu, dd, vipDrink, staffLink }) {
     if (drinks.length !== 1 || tops.length > 1) fail(400, "ドリンク1杯とトッピング1つまでです");
     return [...drinks, ...tops];
   };
-  if (input.specialGiftId) {
+  if (input.secretTicketId) {
+    // 🎄 シークレットプレゼント：ドリンク1杯＋トッピング1つまで無料。2つめからのトッピングは items（有料）に入れて送られてくる
+    const t = R.secretTickets(c).find((x) => sid(x.id) === sid(input.secretTicketId));
+    if (!t) {
+      const gone = (Array.isArray(c.giftTickets) ? c.giftTickets : []).find((x) => x && sid(x.id) === sid(input.secretTicketId));
+      fail(gone && gone.usedAt ? 409 : 400, gone && !gone.usedAt ? "このチケットは有効期限が過ぎています" : gone ? "このチケットはもう使いました" : "このチケットは使えません");
+    }
+    order.birthdayItems = giftShape();
+    order.secretTicketId = t.id;
+    k.secretId = t.id;
+  } else if (input.specialGiftId) {
     const sp = R.SPECIAL_BY_ID(input.specialGiftId);
     if (!sp) fail(400, "このチケットは使えません");
     if (R.specialExpired(sp)) fail(400, "このチケットは有効期限が過ぎています");
@@ -346,6 +364,38 @@ function buildOrder({ input, c, menu, dd, vipDrink, staffLink }) {
   if (!order.items.length && !order.benefitItems.length && !order.birthdayItems.length) fail(400, "注文が空です");
   order.consumed = k;
   return { order, consumed: k };
+}
+
+// ══════════════════════════════════════════
+//  🎄 シークレットプレゼント：教会のホームページに「この人が引いた相手」を聞く
+// ══════════════════════════════════════════
+function ssError(p) {
+  switch (p.code) {
+    case "notjoined": return { status: 404, error: "シークレット・シスター／ブラザーに参加している方だけが贈れます" };
+    case "nodraw":    return { status: 404, error: "教会のホームページで、引いた相手がまだ入力されていないようです。入力してから、もう一度お試しください" };
+    case "busy":      return { status: 429, error: "混み合っています。少し待ってから、もう一度お試しください" };
+    case "nokey": case "key": return { status: 503, error: "教会のホームページとのつながりを準備しています。少し待つか、スタッフにお声かけください" };
+    default:          return { status: 502, error: "教会のホームページにつながりませんでした。少し待ってから、もう一度お試しください" };
+  }
+}
+// 贈る人（会員ID）から、教会での名前 → 引いた相手 → 相手の会員、までをたどる。
+// 戻り値 { target: 相手の教会での名前, recipientId }。たどれなければ fail（お金は動かさない）
+async function findSecretTarget(customerId, checkPin) {
+  if (R.secretSeasonOver()) fail(400, "シークレットプレゼントの受付は終わりました");
+  const list = arr(await fbGet(K.cust));
+  const me = list.find((c) => sid(c.id) === sid(customerId));
+  if (!me) fail(404, "会員が見つかりません");
+  checkPin(me);
+  const giverName = sid(me.churchName).trim();
+  if (!giverName) fail(409, "教会での名前が、まだ虹カフェに登録されていません。スタッフにお声かけください");
+  const p = await ssLink({ giver: giverName });
+  if (!p.ok) { const e = ssError(p); fail(e.status, e.error); }
+  const target = sid(p.target).trim();
+  if (!target) fail(502, "教会のホームページから、お相手を受け取れませんでした。もう一度お試しください");
+  const rec = list.find((c) => sid(c.churchName).trim() === target);
+  if (!rec) fail(404, "お相手がまだ虹カフェに登録されていません。スタッフにお声かけください");
+  if (sid(rec.id) === sid(me.id)) fail(400, "自分には贈れません");
+  return { target, recipientId: rec.id, member: sid(rec.name).trim() };
 }
 
 // ══════════════════════════════════════════
@@ -372,6 +422,7 @@ async function dayReport(day) {
   // 品ごとの杯数（台帳の「品名×数」から数える。「↩ 戻す」で取り消した分は引く）
   const items = {};
   for (const e of S) {
+    if (e.source === "secret_gift") continue;   // 券を買っただけ（飲み物はまだ出ていない）なので杯数に数えない
     const sign = (Number(e.amount) || 0) < 0 || e.source === "revert" ? -1 : 1;
     for (const part of sid(e.items).replace(/^↩取消: /, "").split(", ")) {
       const m = /^(.+?)(?:×(\d+)|\((.+)\))$/.exec(part.trim());
@@ -391,6 +442,10 @@ async function dayReport(day) {
     edits:       { count: edits.length, amount: sum(edits) },
     removed:     { count: removes.length, amount: sum(removes) },
     deposits: arr(customers).reduce((s, c) => s + (Number(c.balance) || 0), 0),
+    // 🎄 シークレットプレゼント：その日に売れた枚数（残高払いの売上に含まれる）と、全体でまだ使われていない券
+    secretGifts: { count: S.filter((e) => e.source === "secret_gift").length, amount: sum(S.filter((e) => e.source === "secret_gift")) },
+    secretOpen: arr(customers).reduce((n, c) => n + R.secretTickets(c).length, 0),
+    secretExpired: arr(customers).reduce((n, c) => n + R.secretExpiredTickets(c).length, 0),
     items: Object.entries(items).sort((a, b) => b[1] - a[1]).slice(0, 12),
     entries: { sales: S.length, money: M.length },
   };
@@ -839,6 +894,13 @@ export default async function handler(req, res) {
               x.specialUsed = { ...(c.specialUsed || {}), [sp.id]: R.specialUsedN(c, sp.id) + 1 };
               desc = `${sp.icon} ${sp.title}（のこり ${R.specialLeft(x, sp)}枚）`; break;
             }
+            case "secret": {
+              const list = R.secretTickets(c);
+              const t = v.ticketId ? list.find((x2) => sid(x2.id) === sid(v.ticketId)) : list[0];
+              if (!t) fail(409, list.length ? "このチケットは使えません" : "使えるシークレットプレゼントがありません（使用済み・期限切れ）");
+              x = markSecret(x, t.id, true, `pos_${Date.now()}`);
+              desc = `${R.SECRET_GIFT.icon} シークレットプレゼント（ドリンク1杯＋トッピング1つ・レジ）`; break;
+            }
             default: fail(400, "チケットの種類が正しくありません");
           }
           return { customer: R.pushHistory(x, { type: "benefit", desc, performer: staffName, date: when }), result: { desc } };
@@ -856,7 +918,7 @@ export default async function handler(req, res) {
         let approver;
         if (pinOnly && await isChiefStaff(me)) approver = staffName;
         else approver = await needManager(me, v.mgrPw, ip);
-        const ALLOWED = ["balance", "pin", "currentYearPurchases", "rankBasis", "isVIP", "isSpecial", "birthMonth", "bonusTickets", "name"];
+        const ALLOWED = ["balance", "pin", "currentYearPurchases", "rankBasis", "isVIP", "isSpecial", "birthMonth", "bonusTickets", "name", "churchName"];
         for (const k2 of keys) if (!ALLOWED.includes(k2)) return send(res, 400, { error: `「${k2}」はここでは変えられません` });
         const when = R.jstStamp();
         const r = await custTxn(v.customerId, (c, list) => {
@@ -875,6 +937,17 @@ export default async function handler(req, res) {
             if (pin !== sid(c.pin)) { x.pin = pin; logs.push({ type: "edit_pin", performer: approver, date: when }); }
           }
           if ("name" in set) { const nm = sid(set.name).trim(); if (!nm) fail(400, "名前が空です"); x.name = nm.slice(0, 30); }
+          if ("churchName" in set) {
+            // 教会での名前（シークレットプレゼント用）。同じ名前を2人に付けない
+            const cn = sid(set.churchName).trim().slice(0, 40);
+            if (cn) {
+              const owner = list.find((o) => sid(o.id) !== sid(c.id) && sid(o.churchName).trim() === cn);
+              if (owner) fail(409, `「${cn}」は、もう「${owner.name}」さんに付いています`);
+              x.churchName = cn;
+            } else {
+              delete x.churchName;
+            }
+          }
           if ("balance" in set) {
             const nb = Math.max(0, Math.floor(Number(set.balance) || 0));
             if (nb !== (Number(c.balance) || 0)) {
@@ -978,6 +1051,67 @@ export default async function handler(req, res) {
           return { value: next, result: changed };
         });
         return send(res, 200, { ok: true, changed: n || 0 });
+      }
+
+      // ════════ 🎄 シークレットプレゼント ════════
+      // 教会のホームページの参加者の名前（マネージャーが、会員と教会の名前を結びつけるため）
+      case "ssNames": {
+        if (me.r !== "manager") return send(res, 403, { error: "この操作はマネージャーのみです" });
+        const p = await ssLink({ act: "ping" });
+        if (!p.ok) { const e = ssError(p); return send(res, e.status, { error: e.error }); }
+        return send(res, 200, { names: Array.isArray(p.names) ? p.names.map(String) : [] });
+      }
+
+      // 贈る相手の確認（贈る本人にだけ、相手の教会での名前を返す。お金はまだ動かさない）
+      case "secretPreview": {
+        if (!isCustomer) return send(res, 403, { error: "お客様専用の操作です" });
+        const found = await findSecretTarget(me.id, checkPin);
+        return send(res, 200, { target: found.target, member: found.member, price: R.SECRET_GIFT.price, until: R.SECRET_GIFT.until });
+      }
+
+      // 贈る：贈る人の残高から ¥350 を引くことと、相手にチケットを1枚足すことを「1回の書き込み」で行う。
+      // （会員名簿は1つの入れ物なので、両方を同時に書き換えて、まとめて保存できる。途中で止まれば、どちらも起きない）
+      // 贈り主はどこにも残さない。相手の名前も、贈った人の履歴・台帳には残さない。
+      case "buySecretGift": {
+        if (!isCustomer) return send(res, 403, { error: "お客様専用の操作です" });
+        if (R.secretSeasonOver()) return send(res, 400, { error: "シークレットプレゼントの受付は終わりました" });
+        const reqId = reqIdOf(v);
+        if (!reqId) return send(res, 400, { error: "画面を開き直して、もう一度お試しください" });
+        const found = await findSecretTarget(me.id, checkPin);
+        // 確認の画面を出したあとで相手が変わっていたら（教会側で入力し直したなど）止める
+        if (v.confirmTarget && sid(v.confirmTarget) !== found.target) {
+          return send(res, 409, { error: "お相手の情報が変わりました。もう一度「贈る」からやり直してください" });
+        }
+        const price = R.SECRET_GIFT.price;
+        const ticketId = "sg_" + crypto.randomBytes(9).toString("hex");
+        const out = await fbTxn(K.cust, (cur) => {
+          const list = arr(cur);
+          const gi = list.findIndex((c) => sid(c.id) === sid(me.id));
+          const ri = list.findIndex((c) => sid(c.id) === sid(found.recipientId));
+          if (gi < 0) fail(404, "会員が見つかりません");
+          const giver = list[gi];
+          if (alreadyDone(giver, reqId)) return { abort: { dup: true, customer: giver } };   // 二度押し：何もしない
+          if (ri < 0 || sid(list[ri].churchName).trim() !== found.target) fail(404, "お相手がまだ虹カフェに登録されていません");
+          if (ri === gi) fail(400, "自分には贈れません");
+          const bal = Number(giver.balance) || 0;
+          if (bal < price) fail(409, `残高が足りません（のこり ${yen(bal)}・シークレットプレゼント ${yen(price)}）。スタッフにチャージをお申し付けください`);
+          // 贈る人：残高を引き、履歴は「シークレットプレゼント −¥350」とだけ（相手の名前は残さない。日付だけ）
+          list[gi] = R.pushHistory({ ...giver, balance: bal - price }, {
+            type: "secret_gift", amount: price, items: "🎄 シークレットプレゼント", date: R.jstToday(), reqId,
+          });
+          // もらう人：チケットを1枚。贈り主は書かない。届いた日も日付だけ
+          const r0 = list[ri];
+          list[ri] = { ...r0, giftTickets: [...(Array.isArray(r0.giftTickets) ? r0.giftTickets : []),
+            { id: ticketId, kind: "secret", issuedDay: R.jstToday(), until: R.SECRET_GIFT.until, usedAt: null }].slice(-60) };
+          return { value: list, result: { dup: false, customer: list[gi] } };
+        });
+        if (!out.dup) {
+          // 売上の台帳：贈った人の残高払い ¥350（相手は書かない）
+          await ledger(K.sales, { date: R.jstStamp(), customerId: out.customer.id, customerName: out.customer.name,
+            amount: price, subtotal: price, discount: 0, items: "シークレットプレゼント×1", performer: "アプリ",
+            isCash: false, source: "secret_gift", balanceAfter: out.customer.balance });
+        }
+        return send(res, 200, { ok: true, dup: !!out.dup, customer: out.customer });
       }
 
       // ════════ スタッフ：メニュー ════════

@@ -96,6 +96,41 @@ export async function fbTxn(path, mutate, tries = 8) {
   throw new TxnAbort(503, { error: "混み合っています。もう一度押してください" });
 }
 
+// ── 教会のホームページ（yamechurch.com）のシークレット窓口への問い合わせ ──────
+// 合言葉（SS_LINK_KEY）は Vercel の環境変数だけに置く。画面には絶対に渡さない。ログにも出さない。
+// 名乗り（user-agent）は nijicafe-server/1.0。curl などの名乗りは教会側の見張りが遮断するため。
+// 戻り値：{ ok:true, ...中身 } か { ok:false, status, code }（code: nokey / key / notjoined / nodraw / busy / network など）
+const SS_URL = "https://yamechurch.com/api/ss-link";
+export async function ssLink(body) {
+  const key = process.env.SS_LINK_KEY || "";
+  if (!key) return { ok: false, status: 503, code: "nokey" };
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 7000);
+  try {
+    const r = await fetch(SS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-ss-key": key, "user-agent": "nijicafe-server/1.0" },
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    });
+    const text = await r.text();
+    let j = {};
+    try { j = JSON.parse(text); } catch { j = {}; }
+    if (!r.ok) {
+      const raw = String(j.error || j.code || j.reason || text || "").toLowerCase();
+      const code = r.status === 429 ? "busy"
+        : /nodraw/.test(raw) ? "nodraw" : /notjoined/.test(raw) ? "notjoined"
+        : r.status === 403 ? "key" : r.status === 503 ? "nokey" : "error";
+      return { ok: false, status: r.status, code };
+    }
+    return { ok: true, ...j };
+  } catch {
+    return { ok: false, status: 0, code: "network" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Firebase の「新しい方から◯件」の取得結果（{"0":…,"1":…}）を配列に直す
 export function asList(v) {
   if (Array.isArray(v)) return v.filter(Boolean);
