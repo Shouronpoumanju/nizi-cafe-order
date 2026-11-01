@@ -297,15 +297,13 @@ function PinChangeModal({ customer, customers, onSave, onClose }) {
   const submit = () => {
     const v = (pin||"").trim();
     if (!/^\d{4}$/.test(v)) { setErr("暗証番号は4桁の数字で入力してください"); return; }
-    const owner = findPinOwner(v, customers, customer.id);
-    if (owner) { setErr(`この暗証番号は「${owner.name}」さんが使用中です。別の番号にしてください`); return; }
     onSave(v);
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(61,54,48,0.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
       <div style={{background:"var(--card,#ffffff)",border:"1px solid #d3a94f55",borderRadius:16,padding:"20px",width:"100%",maxWidth:340}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontWeight:700,color:"var(--gold,#b07c1e)",fontSize:"1rem",marginBottom:4}}>🔑 暗証番号の変更</div>
-        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:14}}>{customer.name} さんの新しい暗証番号（4桁）を入力してください。</div>
+        <div style={{fontWeight:700,color:"var(--gold,#b07c1e)",fontSize:"1rem",marginBottom:4}}>🔑 暗証番号を作り直す</div>
+        <div style={{color:"var(--ink2,#8a7f76)",fontSize:"0.85rem",marginBottom:14}}>{customer.name} さんの新しい暗証番号（4桁）を、ご本人に決めてもらって入力してください。<br/>今の番号はだれにも表示されません。作り直すと、24時間はシークレットプレゼントを贈る・受け取ることができません。</div>
         <input value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()} inputMode="numeric" maxLength={4} placeholder="0000" autoFocus style={{width:"100%",boxSizing:"border-box",background:"var(--card,#ffffff)",border:"1px solid #ddd3c6",borderRadius:12,color:"var(--ink,#3d3630)",fontSize:"1.4rem",letterSpacing:"0.3em",textAlign:"center",padding:"12px"}}/>
         {err && <div style={{color:"#c94a45",fontSize:"0.85rem",marginTop:8}}>{err}</div>}
         <div style={{display:"flex",gap:10,marginTop:16}}>
@@ -2316,7 +2314,11 @@ function SpecialTicket({ found, sp, onUse, disabled }) {
 // ══════════════════════════════════════════
 // 自分が引いた相手にだけ ¥350 の券を贈れる。もらった人には「シークレットのだれかから」とだけ見える。
 // 相手を調べるのも、お金を引くのも、券を作るのもサーバー（api/data.js の secretPreview / buySecretGift）。
-const XMAS_UNTIL_TEXT = (() => { const [y, m, d] = SECRET_GIFT.until.split("/").map(Number); const wd = "日月火水木金土"[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]; return `${y}年${m}月${d}日（${wd}）23:59`; })();
+const xmasDayText = (day) => { const [y, m, d] = String(day).split("/").map(Number); const wd = "日月火水木金土"[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]; return `${y}年${m}月${d}日（${wd}）23:59`; };
+const XMAS_USE_DAY = SECRET_GIFT.useUntil || "2026/12/27";   // （公開の途中で古いサーバーと組み合わさっても壊れないように）
+const XMAS_BUY_TEXT = xmasDayText(SECRET_GIFT.until);      // 贈れるのはこの日まで
+const XMAS_UNTIL_TEXT = xmasDayText(XMAS_USE_DAY);         // 券を使えるのはこの日まで
+const XMAS_USE_SHORT = (() => { const [, m, d] = XMAS_USE_DAY.split("/").map(Number); return `${m}月${d}日`; })();
 function XmasSnow({ n = 16 }) {
   return (
     <div className="xm-snow" aria-hidden="true">
@@ -2353,7 +2355,7 @@ function SecretTicketCard({ found, onUse, disabled }) {
         <div className="xm-ribbon" aria-hidden="true"/><div className="xm-bow" aria-hidden="true">🎀</div>
         <div className="xm-top">
           <span className="xm-eyebrow">🎄 Merry Christmas</span>
-          {expired ? <span className="xm-dead">期限切れ</span> : <ExpiryPill kind={SECRET_GIFT.until} dark/>}
+          {expired ? <span className="xm-dead">期限切れ</span> : <ExpiryPill kind={XMAS_USE_DAY} dark/>}
         </div>
         <div className="xm-head">
           <XmasTree size={58}/>
@@ -2368,7 +2370,7 @@ function SecretTicketCard({ found, onUse, disabled }) {
           {count > 1 && <div className="xm-count">×{count}枚</div>}
         </div>
         {expired ? (
-          <div className="xm-note">12月25日を過ぎたため、この券は使えません</div>
+          <div className="xm-note">{XMAS_USE_SHORT}を過ぎたため、この券は使えません</div>
         ) : disabled ? (
           <div className="xm-note">いま注文中です。届いてから、またお使いいただけます</div>
         ) : (
@@ -2417,6 +2419,7 @@ const honor = (n) => (/(姉|兄|先生|さん|様)$/.test(String(n || "")) ? "" 
 function SecretGiftSend({ found, onPreview, onBuy }) {
   const [busy, setBusy] = useState(false);
   const [pv, setPv] = useState(null);       // { target, until }
+  const [peek, setPeek] = useState(false);  // 名前は押している間だけ見せる（まわりの人にのぞかれないように）
   const reqRef = useRef(null);
   const lock = useRef(false);               // 同じ瞬間の二度押しを止める（画面の更新を待たずに）
   if (!found || !found.churchName || secretSeasonOver()) return null;
@@ -2427,7 +2430,7 @@ function SecretGiftSend({ found, onPreview, onBuy }) {
     lock.current = true; setBusy(true);
     const r = await onPreview();
     lock.current = false; setBusy(false);
-    if (r) { reqRef.current = newReqId(); setPv(r); }
+    if (r) { reqRef.current = newReqId(); setPeek(false); setPv(r); }
   };
   const decide = async () => {
     if (busy || !pv || lock.current) return;
@@ -2441,37 +2444,46 @@ function SecretGiftSend({ found, onPreview, onBuy }) {
       <div className="xm-send" id="nz-secret-send">
         <XmasSnow n={8}/>
         <div className="xm-send-h"><span>🎁 シークレットプレゼントを贈る</span><b>¥{price.toLocaleString()}</b></div>
-        <div className="xm-send-d">あなたが引いたお相手に、<b>ドリンク1杯＋トッピング1つ</b>の券を贈れます。お相手には「シークレットのだれかから」と届き、<b>あなたの名前は伝わりません</b>。何枚でも贈れます。</div>
+        <div className="xm-send-d">あなたが引いたお相手に、<b>ドリンク1杯＋トッピング1つ</b>の券を贈れます。お相手には「シークレットのだれかから」と<b>翌日</b>届き、<b>あなたの名前は伝わりません</b>。何枚でも贈れます。</div>
         <button type="button" className="xm-btn" disabled={busy || !enough} onClick={start}>
           {busy ? "お相手を確かめています…" : enough ? `🎁 贈る（¥${price.toLocaleString()}）` : `残高が足りません（¥${price.toLocaleString()}）`}
         </button>
-        <div className="xm-send-f">受付・有効期限：{XMAS_UNTIL_TEXT} まで</div>
+        <div className="xm-send-f">贈れるのは {XMAS_BUY_TEXT} まで ／ 券を使えるのは {XMAS_UNTIL_TEXT} まで</div>
       </div>
       {pv && (
         <div className="xm-overlay" onClick={() => !busy && setPv(null)}>
           <div className="xm-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="xm-sheet-grab" aria-hidden="true"/>
             <div className="xm-sheet-h">🎄 シークレットプレゼントを贈ります</div>
-            <div className="xm-to">
+            <div className={"xm-to" + (peek ? " peek" : "")} role="button" aria-label="押している間だけ、お相手の名前を表示します"
+              onPointerDown={(e) => { e.preventDefault(); setPeek(true); }} onPointerUp={() => setPeek(false)}
+              onPointerLeave={() => setPeek(false)} onPointerCancel={() => setPeek(false)} onContextMenu={(e) => e.preventDefault()}>
               <div className="xm-to-l">贈るお相手</div>
-              <div className="xm-to-n">{pv.target}{honor(pv.target)}</div>
-              {pv.member && <div className="xm-to-m">虹カフェでの名前：<b>{pv.member}</b> さん</div>}
+              {peek ? (
+                <>
+                  <div className="xm-to-n">{pv.target}{honor(pv.target)}</div>
+                  {pv.member && <div className="xm-to-m">虹カフェでの名前：<b>{pv.member}</b> さん</div>}
+                </>
+              ) : (
+                <div className="xm-to-hide">👆 ここを押している間だけ<br/>お相手の名前が出ます</div>
+              )}
               <div className="xm-to-q">あなたが引いたお相手で、まちがいありませんか？</div>
             </div>
             <div className="xm-sheet-mini"><XmasTree size={40}/><div><b>お好きなドリンク1杯＋トッピング1つ</b><span>{SECRET_GIFT.from}から届きます</span></div></div>
             <div className="xm-sheet-rows">
               <div><span>お支払い（残高から）</span><b>¥{price.toLocaleString()}</b></div>
               <div><span>お支払い後の残高</span><b>¥{Math.max(0, (Number(found.balance) || 0) - price).toLocaleString()}</b></div>
-              <div><span>有効期限</span><b>{XMAS_UNTIL_TEXT}</b></div>
+              <div><span>お相手に届く日</span><b>あした</b></div>
+              <div><span>券を使える期限</span><b>{XMAS_UNTIL_TEXT}</b></div>
             </div>
             <ul className="xm-sheet-notes">
-              <li>ちがう人の名前が出たときは「やめる」を押して、スタッフにお声かけください（お金は動きません）。</li>
+              <li>まわりの人に見えないよう、名前は押している間だけ出ます。ちがう人の名前が出たときは「やめる」を押して、スタッフにお声かけください（お金は動きません）。</li>
               <li>お相手に、あなたの名前は表示されません。</li>
               <li>期限を過ぎると使えなくなり、払い戻しはありません。</li>
             </ul>
             <div className="xm-sheet-btns">
               <button type="button" className="xm-ghost" disabled={busy} onClick={() => setPv(null)}>やめる</button>
-              <button type="button" className="xm-btn" disabled={busy} onClick={decide}>{busy ? "贈っています…" : `🎁 ${pv.target}${honor(pv.target)}に贈る`}</button>
+              <button type="button" className="xm-btn" disabled={busy} onClick={decide}>{busy ? "贈っています…" : `🎁 この方に贈る（¥${price.toLocaleString()}）`}</button>
             </div>
           </div>
         </div>
@@ -3563,7 +3575,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     try {
       const r = await apiData("buySecretGift", { value: { reqId, confirmTarget } }, custToken.current);
       if (r && r.customer) { setFound(r.customer); setBoot(b => b ? { ...b, customer: r.customer } : b); }
-      toast(r && r.dup ? "このプレゼントは、もう贈ってあります" : `🎄 ${confirmTarget}${honor(confirmTarget)}にシークレットプレゼントを贈りました！`, "ok", 5000);
+      toast(r && r.dup ? "このプレゼントは、もう贈ってあります" : "🎄 シークレットプレゼントを贈りました！ あした、お相手に届きます", "ok", 5000);
       try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
       return true;
     } catch (e) { toast(niceError(e), "err", 8000); refresh(); return false; }
@@ -4319,12 +4331,6 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   const [pwErr,     setPwErr]     = useState("");
   const [pwTarget,  setPwTarget]  = useState(null);
   const [pwBusy,    setPwBusy]    = useState(false);
-  // 暗証番号を一時的に表示している会員（1人だけ・5秒で自動的に伏せる）
-  const [pinShown,  setPinShown]  = useState(null);
-  const revealPin = (id) => {
-    setPinShown(id);
-    setTimeout(() => setPinShown(cur => (cur === id ? null : cur)), 5000);
-  };
 
   // 読み込みの警告は、本当に取得できていないときだけ出す。
   // ログイン直後は取得が終わるまでの一瞬だけ空になるので、
@@ -4489,12 +4495,11 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
   const searchPane = (
     <>
       <div className="pos-th">👥 お客さま <span className="right">{customers.length}人</span></div>
-      <input className="pos-search" placeholder={isManager ? "名前 or 暗証番号で絞り込み" : "名前で絞り込み"} value={query} onChange={e=>setQuery(e.target.value)}/>
+      <input className="pos-search" placeholder="名前で絞り込み" value={query} onChange={e=>setQuery(e.target.value)}/>
       <div style={{overflowY:"auto",flex:1}}>
         {customers.filter(c=>{
             if (!query) return true;
-            if (isManager) return c.name.includes(query)||c.pin.includes(query);
-            return c.name.includes(query);
+            return String(c.name||"").includes(query);
           }).map(c=>{
             const r=getEffectiveRank(c);
             const u=isBenefitUsed(c);
@@ -4506,12 +4511,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
                 <div style={{minWidth:0}}>
                   <div className="nm">{c.name} {c.isVIP&&<span style={{color:"#a9791a"}}>⭐</span>}{c.isSpecial&&<span style={{color:"#9c3fb5"}}>💜</span>}</div>
                   <div className="sub">
-                    {isManager && (
-                      <span onClick={(e)=>{ e.stopPropagation(); revealPin(c.id); }} style={{cursor:"pointer",borderBottom:"1px dotted #c3bab0"}}>
-                        暗証: {pinShown===c.id ? c.pin : "•".repeat(String(c.pin||"").length||4)}
-                      </span>
-                    )}
-                    {isManager && " · "}{r.gem}{r.name}
+                    {r.gem}{r.name}
                     {pend>0 && <span className="pos-pill pt-warn" style={{marginLeft:6}}>未処理 {pend}</span>}
                   </div>
                 </div>
@@ -4553,7 +4553,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
             : <span className="pt-used">特典なし</span>}
           {unusedTickets(liveCustomer).length > 0 && <span className="pt-gold">🎟 持ち越し券 {unusedTickets(liveCustomer).length}枚</span>}
           {isBirthdayTicketActive(customer) && <span className="pt-pink">🎂 誕生月の1杯 未使用</span>}
-          {secretTickets(liveCustomer).length > 0 && <span className="pt-gold">🎄 シークレット券 {secretTickets(liveCustomer).length}枚（12/25まで）</span>}
+          {secretTickets(liveCustomer).length > 0 && <span className="pt-gold">🎄 シークレット券 {secretTickets(liveCustomer).length}枚（{XMAS_USE_SHORT}まで）</span>}
           {secretExpiredTickets(liveCustomer).length > 0 && <span className="pt-used">🎄 期限切れ {secretExpiredTickets(liveCustomer).length}枚</span>}
           {allSpecialsOf(liveCustomer).map(sp => { const left = specialLeft(liveCustomer, sp); return (
             <span key={sp.id} className={left > 0 ? "pt-gold" : "pt-used"}>
@@ -4572,9 +4572,10 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
         <div className="pos-mact" style={{marginTop:6}}>
           <button className="pos-ghost" onClick={()=>setShowHistory(true)}>📋 履歴</button>
           <button className="pos-ghost" onClick={()=>setShowYearHistory(true)}>📅 年間</button>
-          {isManager && <button className="pos-ghost" onClick={()=>setShowCode(true)}>🔑 暗証</button>}
+          {isManager && <button className="pos-ghost" onClick={()=>setShowCode(true)}>🔢 会員番号</button>}
+          {isManager && <button className="pos-ghost" onClick={()=>setPinEdit(true)}>🔑 暗証番号を作り直す</button>}
           {isManager && <button className="pos-ghost" onClick={()=>setPwPrompt("editCustomer")}>✏️ 編集</button>}
-          {!isManager && staffIsChief && <button className="pos-ghost" onClick={()=>setPinEdit(true)}>🔑 暗証番号を変更</button>}
+          {!isManager && staffIsChief && <button className="pos-ghost" onClick={()=>setPinEdit(true)}>🔑 暗証番号を作り直す</button>}
           {isManager && openCharges(liveCustomer) > 0 && <button className="pos-ghost danger" disabled={busy} onClick={()=>{ if(window.confirm(`${customer.name} さんのチャージを1回分取り消します。\n残高 -¥${CHARGE_AMOUNT.toLocaleString()}・購入回数 -1 でよろしいですか？`)) undoCharge(); }}>↩️ チャージ取消</button>}
         </div>
         {/* 🎟 特典チケット（持ち越し）。ドリンク券はここでしか減らせない */}
@@ -4616,9 +4617,13 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
           )}
           {secretTickets(liveCustomer).length > 0 && (
             <button className="pos-ghost" style={{borderColor:"#1f8a52",color:"#17723f"}} disabled={busy} onClick={()=>{
-              if (!window.confirm(`${customer.name} さんの「🎄 シークレットプレゼント」を1枚つかいます。\n（いま ${secretTickets(liveCustomer).length}枚 ／ 12月25日まで）\nドリンク1杯とトッピング1つは会計から外してください。よろしいですか？`)) return;
+              if (!window.confirm(`${customer.name} さんの「🎄 シークレットプレゼント」を1枚つかいます。\n（いま ${secretTickets(liveCustomer).length}枚 ／ ${XMAS_USE_SHORT}まで）\nドリンク1杯とトッピング1つは会計から外してください。よろしいですか？`)) return;
               useTicket("secret", null, "1枚つかいました。ドリンク1杯とトッピング1つは会計から外してください。");
             }}>🎄 シークレット券を使う</button>
+          )}
+          {isManager && secretTickets(liveCustomer).length > 0 && (
+            <SecretMoveBox customer={liveCustomer} customers={customers} busy={busy}
+              onMove={(toId, count) => run("moveSecretTickets", { fromId: customer.id, toId, count })}/>
           )}
           {allSpecialsOf(liveCustomer).filter(sp => specialLeft(liveCustomer, sp) > 0).map(sp => (
             <button key={sp.id} className="pos-ghost" style={{borderColor:"#d9a441",color:"#8a6a1a"}} onClick={()=>{
@@ -4789,7 +4794,7 @@ function POS({ customers, menu: menuRaw, orders, staffRole, staffName, staffIsCh
       )}
       {pinEdit && canEditPin && customer && (
         <PinChangeModal customer={customer} customers={customers}
-          onSave={async newPin=>{ const r = await run("editCustomer", { customerId: customer.id, set: { pin: newPin }, expect: { pin: liveCustomer.pin } }); if (r) setPinEdit(false); }}
+          onSave={async newPin=>{ const r = await run("editCustomer", { customerId: customer.id, set: { pin: newPin } }); if (r) { setPinEdit(false); toast(`${customer.name} さんの新しい暗証番号は「${newPin}」です。ご本人に伝えてください（このあと表示されません）`, "ok", 12000); } }}
           onClose={()=>setPinEdit(false)}/>
       )}
       {pwPrompt==="addCustomer" && (
@@ -4821,7 +4826,6 @@ function BackupPanel({ customers }) {
       customers:  customers.map(c => ({
         id:                   c.id,
         name:                 c.name,
-        pin:                  c.pin,
         balance:              c.balance,
         currentYearPurchases: c.currentYearPurchases ?? 0,
         rankBasis:            c.rankBasis ?? 0,
@@ -4975,6 +4979,40 @@ function BackupPanel({ customers }) {
 // ── STAFF MGMT PANEL ─────────────────────
 // 🎄 シークレットプレゼント：教会での名前と、虹カフェの会員を結びつける（マネージャー）
 // 誰が誰を引いたかは、ここでは分からない（教会のホームページの中だけにある）。
+// 🎄 シークレットの券を別の会員へ移す（店長）。名前の結びつけを間違えて届いたときの直し用
+function SecretMoveBox({ customer, customers, busy, onMove }) {
+  const [open, setOpen] = useState(false);
+  const [to, setTo] = useState("");
+  const [n, setN] = useState(1);
+  const max = secretTickets(customer).length;
+  const others = (customers || []).filter((c) => c && String(c.id) !== String(customer.id))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), "ja"));
+  if (!open) return <button className="pos-ghost" onClick={() => setOpen(true)}>🎄 券を別の会員へ移す</button>;
+  const go = async () => {
+    const dest = others.find((c) => String(c.id) === to);
+    if (!dest) return;
+    if (!window.confirm(`${customer.name} さんのシークレット券 ${n}枚を、${dest.name} さんへ移します。\n（名前の結びつけを間違えて届いたときの直し用です。移したことは「履歴」に残ります）よろしいですか？`)) return;
+    const r = await onMove(dest.id, n);
+    if (r) { toast(`${dest.name} さんへ ${r.n}枚 移しました`, "ok"); setOpen(false); }
+  };
+  return (
+    <div className="pos-tix" style={{ width: "100%" }}>
+      <div style={{ fontSize: "0.75rem", fontWeight: 800, color: "#17723f", marginBottom: 6 }}>🎄 シークレット券を別の会員へ移す（贈った人は分かりません）</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <select value={to} onChange={(e) => setTo(e.target.value)} style={{ flex: 1, minWidth: 120, padding: 8, borderRadius: 10 }}>
+          <option value="">移す先をえらぶ</option>
+          {others.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+        </select>
+        <select value={n} onChange={(e) => setN(Number(e.target.value))} style={{ padding: 8, borderRadius: 10 }}>
+          {[...Array(max)].map((_, i) => <option key={i} value={i + 1}>{i + 1}枚</option>)}
+        </select>
+        <button className="pos-ghost" disabled={busy || !to} onClick={go}>移す</button>
+        <button className="pos-ghost" onClick={() => setOpen(false)}>やめる</button>
+      </div>
+    </div>
+  );
+}
+
 function SecretNamePanel({ customers, posOp }) {
   const [names, setNames] = useState(null);
   const [err, setErr] = useState("");
@@ -4987,11 +5025,16 @@ function SecretNamePanel({ customers, posOp }) {
     catch (e) { setErr(niceError(e)); }
     setBusy(false);
   };
+  // 一度結んだ人を変えるときは確認する。変えたことは台帳に残り、その人は24時間「贈る・受け取る」が止まる
+  // （名前の付け替えで、他の人の相手をのぞいたり、プレゼントを横取りしたりできないように）
   const assign = async (name, customerId) => {
-    setBusy(true);
     const cur = holderOf(name);
-    if (cur && String(cur.id) !== String(customerId)) await posOp("editCustomer", { customerId: cur.id, set: { churchName: "" } });
-    if (customerId) await posOp("editCustomer", { customerId, set: { churchName: name } });
+    const target = customerId ? list.find((c) => String(c.id) === String(customerId)) : null;
+    const changing = (cur && String(cur.id) !== String(customerId)) || (target && target.churchName && target.churchName !== name);
+    if (changing && !window.confirm(`結びつけを変えます。\n${cur ? `・「${name}」を ${cur.name} さんから外す\n` : ""}${target && target.churchName && target.churchName !== name ? `・${target.name} さんの「${target.churchName}」を外す\n` : ""}${target ? `・「${name}」を ${target.name} さんに付ける\n` : ""}\n変えたことは「履歴」に残り、変えた人は24時間「贈る・受け取る」ができません。よろしいですか？`)) return;
+    setBusy(true);
+    if (cur && String(cur.id) !== String(customerId)) await posOp("editCustomer", { customerId: cur.id, set: { churchName: "" }, confirmChange: true });
+    if (customerId) await posOp("editCustomer", { customerId, set: { churchName: name }, confirmChange: true });
     setBusy(false);
   };
   const mapped = names ? names.filter((n) => holderOf(n)).length : list.filter((c) => c.churchName).length;
@@ -5003,7 +5046,7 @@ function SecretNamePanel({ customers, posOp }) {
         <span>🎄 シークレットプレゼント：教会での名前</span>
         <b>{names ? `${names.length}人中 ${mapped}人` : `${mapped}人 登録済み`}</b>
       </div>
-      <div className="xm-admin-d">教会のホームページの参加者と、虹カフェの会員を結びつけます。結んだ人だけが「贈る」を使え、プレゼントを受け取れます。誰が誰を引いたかは、ここでは分かりません。</div>
+      <div className="xm-admin-d">教会のホームページの参加者と、虹カフェの会員を結びつけます。結んだ人だけが「贈る」を使え、プレゼントを受け取れます。誰が誰を引いたかは、ここでは分かりません。<br/>一度結んだあとに変えると「履歴」に残り、変えた人は24時間「贈る・受け取る」が止まります。</div>
       {!names && <button type="button" className="xm-btn" style={{ marginTop: 10 }} disabled={busy} onClick={load}>{busy ? "読み込んでいます…" : "教会のホームページから名前を読み込む"}</button>}
       {err && <div className="xm-admin-err">{err}</div>}
       {names && (
@@ -6037,6 +6080,7 @@ const HIST_CONFIG = {
   new_member:     { icon:"🌱", label:"入会",           color:"#3e9a5c" },
   edit_pin:       { icon:"🔑", label:"暗証番号の変更", color:"#3b7fb8" },
   secret_gift:    { icon:"🎄", label:"シークレットプレゼント", color:"#c0392b" },
+  church_map:     { icon:"⛪", label:"教会での名前の結びつけ", color:"#17723f" },
 };
 
 function HistoryModal({ customer, rank, onClose }) {
@@ -6063,6 +6107,7 @@ function HistoryModal({ customer, rank, onClose }) {
     if (h.type === "new_member")     return `入会・初回 ¥${(h.amount||0).toLocaleString()}${by}`;
     if (h.type === "edit_pin")       return "暗証番号を変更";
     if (h.type === "secret_gift")    return `-¥${(h.amount||0).toLocaleString()}（シークレットプレゼントを贈った）`;
+    if (h.type === "church_map")     return `教会での名前：${h.before || "なし"} → ${h.after || "なし"}（${h.performer || ""}）`;
     if (h.type === "benefit")        return h.desc || "特典使用";
     if (h.type === "edit_balance")   return `¥${h.before?.toLocaleString()} → ¥${h.after?.toLocaleString()}`;
     if (h.type === "edit_purchases") return `${h.label ? h.label+": " : ""}${h.before}回 → ${h.after}回`;
@@ -6148,7 +6193,7 @@ function CodeModal({ customer, rank, onClose }) {
           <div style={{color:"var(--ink,#3d3630)",fontWeight:700,fontSize:"1.15rem",marginTop:4}}>{customer.name}</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {[["会員番号",customer.id,"会員番号欄に入力"],["暗証番号",customer.pin,"暗証番号欄に入力"]].map(([l,v,h])=>(
+          {[["会員番号",customer.id,"会員番号欄に入力"]].map(([l,v,h])=>(
             <div key={l} style={{background:"var(--card,#ffffff)",border:"1px solid var(--line,#e7ded3)",borderRadius:12,padding:"14px 18px",textAlign:"center"}}>
               <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",letterSpacing:"0.08em",marginBottom:6}}>{l}</div>
               <div style={{color:"var(--ink,#3d3630)",fontSize:"2.2rem",fontWeight:800,letterSpacing:"0.25em"}}>{v}</div>
@@ -6187,7 +6232,7 @@ function EditCustomerModal({ customer: liveCustomerProp, customers, onSave, onDe
   // （基準が動くと、開いている間に引かれた残高を「古い値に戻す」変更として送ってしまう）。
   const customer = useRef(liveCustomerProp).current;
   const [bal,  setBal]  = useState(String(customer.balance));
-  const [pin,  setPin]  = useState(customer.pin || "");
+  const [pin,  setPin]  = useState("");
   const [cyp,  setCyp]  = useState(String(customer.currentYearPurchases ?? customer.purchases ?? 0));
   const [rb,   setRb]   = useState(String(customer.rankBasis ?? customer.purchases ?? 0));
   const [isVIP,    setIsVIP]    = useState(!!customer.isVIP);
@@ -6207,13 +6252,13 @@ function EditCustomerModal({ customer: liveCustomerProp, customers, onSave, onDe
   // 変えた項目だけをサーバーに送る。「開いたときの値」も一緒に送り、
   // そのあいだに別の端末で変わっていたらサーバーが止める（上書き事故を防ぐ）。
   const save = () => {
-    if (pinOwner) { toast(`この暗証番号は「${pinOwner.name}」さんが使用中です。別の番号にしてください`, "warn"); return; }
+    if (pinOwner) { toast("この暗証番号は使えません。別の番号にしてください", "warn"); return; }
     const set = {}, expect = {};
     const put = (k, val, cur) => {
       if (JSON.stringify(val ?? null) !== JSON.stringify(cur ?? null)) { set[k] = val; expect[k] = customer[k] ?? null; }
     };
     put("balance", Math.max(0, parseInt(bal)||0), customer.balance);
-    put("pin", pin.trim() || customer.pin, customer.pin);
+    if (pin.trim()) { set.pin = pin.trim(); }   // 暗証番号は画面に届かない。入れたときだけ作り直す
     put("currentYearPurchases", Math.max(0, parseInt(cyp)||0), customer.currentYearPurchases ?? 0);
     put("rankBasis", Math.max(0, parseInt(rb)||0), customer.rankBasis ?? 0);
     put("isVIP", !!isVIP, !!customer.isVIP);
@@ -6234,8 +6279,8 @@ function EditCustomerModal({ customer: liveCustomerProp, customers, onSave, onDe
           <button className="close-btn" onClick={onClose}>✕</button>
         </div>
         <div style={{marginBottom:14}}>
-          <label style={S.label}>暗証番号（お客様ログイン用）</label>
-          <input style={S.input} value={pin} onChange={e=>setPin(e.target.value)} placeholder="例: 1234"/>
+          <label style={S.label}>暗証番号を作り直す（お客様ログイン用）</label>
+          <input style={S.input} value={pin} onChange={e=>setPin(e.target.value)} inputMode="numeric" placeholder="作り直すときだけ入力（今の番号は表示されません）"/>
           {pinOwner
             ? <div style={{color:"#c94a45",fontSize:"0.75rem",marginTop:4,fontWeight:700}}>⚠️ この番号は「{pinOwner.name}」さんが使用中です</div>
             : <div style={{color:"var(--ink3,#9a8f85)",fontSize:"0.75rem",marginTop:4}}>お客様が確認画面でこの番号を使用します</div>}
@@ -7970,6 +8015,9 @@ body.night .nz-quick2 button { background:rgba(255,255,255,0.08); border-color:r
 .xm-to-n{margin-top:2px;font-size:1.7rem;font-weight:900;color:#b5121b;line-height:1.3;word-break:keep-all}
 .xm-to-m{margin-top:4px;font-size:.92rem;color:#4a3a2a}
 .xm-to-m b{color:#17723f;font-size:1.05rem}
+.xm-to{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer;touch-action:none}
+.xm-to.peek{background:linear-gradient(160deg,#fff1c9,#ffe3e7)}
+.xm-to-hide{margin-top:6px;font-size:1.05rem;font-weight:900;color:#b5121b;line-height:1.5;padding:8px 0}
 .xm-to-q{margin-top:8px;font-size:.88rem;font-weight:800;color:#2b2a1f}
 .xm-sheet-mini { display:flex; align-items:center; gap:12px; margin:14px 0 10px; padding:12px; border-radius:14px; background:linear-gradient(150deg,#0f4a33,#0b3324); color:#fff; }
 .xm-sheet-mini b { display:block; color:#ffe9a8; } .xm-sheet-mini span { font-size:0.82rem; color:#d8f3dc; }
