@@ -2444,7 +2444,7 @@ function SecretGiftSend({ found, onPreview, onBuy }) {
       <div className="xm-send" id="nz-secret-send">
         <XmasSnow n={8}/>
         <div className="xm-send-h"><span>🎁 シークレットプレゼントを贈る</span><b>¥{price.toLocaleString()}</b></div>
-        <div className="xm-send-d">あなたが引いたお相手に、<b>ドリンク1杯＋トッピング1つ</b>の券を贈れます。お相手には「シークレットのだれかから」と<b>翌日</b>届き、<b>あなたの名前は伝わりません</b>。何枚でも贈れます。</div>
+        <div className="xm-send-d">あなたが引いたお相手に、<b>ドリンク1杯＋トッピング1つ</b>の券を贈れます。お相手には「シークレットのだれかから」と届き、<b>あなたの名前は伝わりません</b>。何枚でも贈れます。</div>
         <button type="button" className="xm-btn" disabled={busy || !enough} onClick={start}>
           {busy ? "お相手を確かめています…" : enough ? `🎁 贈る（¥${price.toLocaleString()}）` : `残高が足りません（¥${price.toLocaleString()}）`}
         </button>
@@ -2473,7 +2473,6 @@ function SecretGiftSend({ found, onPreview, onBuy }) {
             <div className="xm-sheet-rows">
               <div><span>お支払い（残高から）</span><b>¥{price.toLocaleString()}</b></div>
               <div><span>お支払い後の残高</span><b>¥{Math.max(0, (Number(found.balance) || 0) - price).toLocaleString()}</b></div>
-              <div><span>お相手に届く日</span><b>あした</b></div>
               <div><span>券を使える期限</span><b>{XMAS_UNTIL_TEXT}</b></div>
             </div>
             <ul className="xm-sheet-notes">
@@ -3575,7 +3574,7 @@ function CustomerView({ customers: allCustomers, menu: menuProp, orders: allOrde
     try {
       const r = await apiData("buySecretGift", { value: { reqId, confirmTarget } }, custToken.current);
       if (r && r.customer) { setFound(r.customer); setBoot(b => b ? { ...b, customer: r.customer } : b); }
-      toast(r && r.dup ? "このプレゼントは、もう贈ってあります" : "🎄 シークレットプレゼントを贈りました！ あした、お相手に届きます", "ok", 5000);
+      toast(r && r.dup ? "このプレゼントは、もう贈ってあります" : "🎄 シークレットプレゼントを贈りました！ お相手に届きました", "ok", 5000);
       try { navigator.vibrate && navigator.vibrate([16, 70, 24]); } catch {}
       return true;
     } catch (e) { toast(niceError(e), "err", 8000); refresh(); return false; }
