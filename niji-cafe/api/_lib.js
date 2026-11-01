@@ -209,7 +209,7 @@ export function pinVer(c) {
 const GUARD_WINDOW = 15 * 60 * 1000;
 // 種類ごとの上限。お客様（login_cust）はゆるめ、スタッフ（login_staff）とマネージャーのパスワード（mgrpw）は30回。
 // お客様の打ち間違いが続いても、同じ回線のスタッフのログインは止まらないよう、数え方を分けてある。
-const GUARD_LIMITS = { login_cust: 80, login_staff: 30, mgrpw: 30 };
+const GUARD_LIMITS = { login_cust: 80, login_cust_all: 150, login_staff: 30, mgrpw: 30 };
 const limitOf = (kind) => GUARD_LIMITS[kind] || 30;
 const guardPath = (kind, ip) =>
   `cafe_v4_guard/${kind}/` + crypto.createHash("sha256").update(String(ip || "unknown")).digest("hex").slice(0, 16);

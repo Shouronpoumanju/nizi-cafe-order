@@ -15,8 +15,21 @@
 // ══════════════════════════════════════════
 import crypto from "node:crypto";
 import { envReady, fbGet, fbPut, fbPost, fbTxn, TxnAbort, asList, readToken, sameSecret, hashSecret, looksHashed,
-         send, readBody, bearer, pinVer, clientIp, guardBlocked, guardFail, ssLink } from "./_lib.js";
+         send as rawSend, readBody, bearer, pinVer, clientIp, guardBlocked, guardFail, ssLink } from "./_lib.js";
 import * as R from "./_rules.js";
+
+// 画面へ返すものは、必ずここを通す。会員データから暗証番号と「まだ届いていないシークレットの券」を外す。
+// （スタッフの画面にも暗証番号を出さない。暗証番号が分かると、その人としてログインできてしまうため）
+const looksCustomer = (o) => o && typeof o === "object" && !Array.isArray(o) && "id" in o && ("pin" in o || "giftTickets" in o || "balance" in o);
+function scrubOut(x, depth = 0) {
+  if (depth > 6 || x == null || typeof x !== "object") return x;
+  if (Array.isArray(x)) return x.map((y) => scrubOut(y, depth + 1));
+  if (looksCustomer(x)) return R.publicCustomer(x);
+  const o = {};
+  for (const [k2, val] of Object.entries(x)) o[k2] = scrubOut(val, depth + 1);
+  return o;
+}
+function send(res, status, body) { return rawSend(res, status, scrubOut(body)); }
 
 const K = {
   cust: "cafe_v4_customers", orders: "cafe_v4_orders", menu: "cafe_v4_menu",
@@ -388,6 +401,7 @@ async function findSecretTarget(customerId, checkPin) {
   checkPin(me);
   const giverName = sid(me.churchName).trim();
   if (!giverName) fail(409, "教会での名前が、まだ虹カフェに登録されていません。スタッフにお声かけください");
+  if (R.secretOnHold(me)) fail(423, "安全のため、暗証番号や名前を変えてから24時間は贈れません。明日もう一度お試しください");
   const p = await ssLink({ giver: giverName });
   if (!p.ok) { const e = ssError(p); fail(e.status, e.error); }
   const target = sid(p.target).trim();
@@ -395,6 +409,7 @@ async function findSecretTarget(customerId, checkPin) {
   const rec = list.find((c) => sid(c.churchName).trim() === target);
   if (!rec) fail(404, "お相手がまだ虹カフェに登録されていません。スタッフにお声かけください");
   if (sid(rec.id) === sid(me.id)) fail(400, "自分には贈れません");
+  if (R.secretOnHold(rec)) fail(409, "お相手の準備中です。明日もう一度お試しください（お金は引かれていません）");
   return { target, recipientId: rec.id, member: sid(rec.name).trim() };
 }
 
@@ -444,7 +459,7 @@ async function dayReport(day) {
     deposits: arr(customers).reduce((s, c) => s + (Number(c.balance) || 0), 0),
     // 🎄 シークレットプレゼント：その日に売れた枚数（残高払いの売上に含まれる）と、全体でまだ使われていない券
     secretGifts: { count: S.filter((e) => e.source === "secret_gift").length, amount: sum(S.filter((e) => e.source === "secret_gift")) },
-    secretOpen: arr(customers).reduce((n, c) => n + R.secretTickets(c).length, 0),
+    secretOpen: arr(customers).reduce((n, c) => n + R.secretTickets(c).length + R.secretPendingTickets(c).length, 0),
     secretExpired: arr(customers).reduce((n, c) => n + R.secretExpiredTickets(c).length, 0),
     items: Object.entries(items).sort((a, b) => b[1] - a[1]).slice(0, 12),
     entries: { sales: S.length, money: M.length },
@@ -932,20 +947,34 @@ export default async function handler(req, res) {
           if ("pin" in set) {
             const pin = sid(set.pin).trim();
             if (!/^\d{1,8}$/.test(pin)) fail(400, "暗証番号は数字で入力してください");
-            const owner = list.find((o) => sid(o.id) !== sid(c.id) && sid(o.pin).trim() === pin);
-            if (owner) fail(409, `この暗証番号は「${owner.name}」さんが使用中です。別の番号にしてください`);
-            if (pin !== sid(c.pin)) { x.pin = pin; logs.push({ type: "edit_pin", performer: approver, date: when }); }
+            if (pin.length < 4) fail(400, "暗証番号は4けた以上にしてください");
+            const owner = list.find((o) => sid(o.id) !== sid(c.id) && (sid(o.pin).trim() === pin || sameSecret(o.pin, pin)));
+            // だれの番号かは言わない（言うと、この画面で他の人の暗証番号を探れてしまう）
+            if (owner) fail(409, "この暗証番号は使えません。別の番号にしてください");
+            if (pin !== sid(c.pin)) {
+              x.pin = pin; logs.push({ type: "edit_pin", performer: approver, date: when });
+              x.ssHoldUntil = Date.now() + R.SECRET_GIFT.holdHours * 3600 * 1000;   // 🎄 しばらく贈る・受け取るを止める
+            }
           }
           if ("name" in set) { const nm = sid(set.name).trim(); if (!nm) fail(400, "名前が空です"); x.name = nm.slice(0, 30); }
           if ("churchName" in set) {
             // 教会での名前（シークレットプレゼント用）。同じ名前を2人に付けない
+            // 一度結んだ人を変えるときは、確認（confirmChange）が要る。変えたら記録を残し、24時間は贈る・受け取るを止める
+            // （名前の付け替えで、他の人が引いた相手をのぞいたり、プレゼントを横取りしたりできないように）
             const cn = sid(set.churchName).trim().slice(0, 40);
-            if (cn) {
-              const owner = list.find((o) => sid(o.id) !== sid(c.id) && sid(o.churchName).trim() === cn);
-              if (owner) fail(409, `「${cn}」は、もう「${owner.name}」さんに付いています`);
-              x.churchName = cn;
-            } else {
-              delete x.churchName;
+            const before = sid(c.churchName).trim();
+            if (cn !== before) {
+              if (before && !v.confirmChange) fail(409, `「${c.name}」さんは、もう「${before}」と結んであります。変えるときは確認してからにしてください`);
+              if (cn) {
+                const owner = list.find((o) => sid(o.id) !== sid(c.id) && sid(o.churchName).trim() === cn);
+                if (owner && !v.confirmChange) fail(409, `「${cn}」は、もう「${owner.name}」さんに付いています`);
+                if (owner) fail(409, `「${cn}」は、もう「${owner.name}」さんに付いています。先にそちらを外してください`);
+                x.churchName = cn;
+              } else {
+                delete x.churchName;
+              }
+              x.ssHoldUntil = Date.now() + R.SECRET_GIFT.holdHours * 3600 * 1000;
+              logs.push({ type: "church_map", before: before || null, after: cn || null, performer: approver, date: when });
             }
           }
           if ("balance" in set) {
@@ -968,8 +997,13 @@ export default async function handler(req, res) {
           if ("bonusTickets" in set) x.bonusTickets = (Array.isArray(set.bonusTickets) ? set.bonusTickets : []).filter((t) => t && t.id).slice(0, 50);
           if (v.resetBenefit && R.isBenefitUsed(c)) { x.benefitUsedMonth = null; logs.push({ type: "benefit_reset", performer: approver, date: when }); }
           x.dataYear = c.dataYear || R.jstYear();
-          return { customer: logs.length ? R.pushHistory(x, logs) : x, result: { moneyDelta } };
+          return { customer: logs.length ? R.pushHistory(x, logs) : x, result: { moneyDelta, churchLog: logs.find((l) => l.type === "church_map") || null } };
         });
+        if (r.churchLog) {
+          // 🎄 結びつけを変えたことは、消えない台帳にも残す（スタッフ全員が「履歴」で見られる）
+          await ledger(K.money, { type: "church_map", customerId: r.customer.id, customerName: r.customer.name, amount: 0,
+            note: `教会での名前：${r.churchLog.before || "なし"} → ${r.churchLog.after || "なし"}`, performer: staffName, approvedBy: approver });
+        }
         if (r.moneyDelta) {
           await ledger(K.money, { type: "edit_balance", customerId: r.customer.id, customerName: r.customer.name,
             amount: r.moneyDelta.after - r.moneyDelta.before, balanceBefore: r.moneyDelta.before, balanceAfter: r.moneyDelta.after,
@@ -991,8 +1025,8 @@ export default async function handler(req, res) {
         const added = await fbTxn(K.cust, (cur) => {
           const list = arr(cur);
           if (list.length === 0) fail(503, "会員名簿を読み込めませんでした。少し待ってからもう一度お試しください");
-          const owner = list.find((o) => sid(o.pin).trim() === pin);
-          if (owner) fail(409, `この暗証番号は「${owner.name}」さんが使用中です。別の番号にしてください`);
+          const owner = list.find((o) => sid(o.pin).trim() === pin || sameSecret(o.pin, pin));
+          if (owner) fail(409, "この暗証番号は使えません。別の番号にしてください");
           const nextId = String(Math.max(1000, ...list.map((c) => Number(c.id) || 0)) + 1);
           const c = {
             id: nextId, name, pin, balance,
@@ -1035,6 +1069,16 @@ export default async function handler(req, res) {
         if (!list.length) return send(res, 400, { error: "復元するデータが空です" });
         const cur = await fbGet(K.cust);
         await fbPost("cafe_v4_restore_backup", { at: R.jstStamp(), by: staffName, customers: cur });
+        // 画面から作った控えには暗証番号・教会での名前・シークレットの券が入っていない。今の名簿から引き継ぐ
+        const now = new Map(arr(cur).filter(Boolean).map((c) => [sid(c.id), c]));
+        for (const c of list) {
+          const old = now.get(sid(c.id));
+          if (!old) continue;
+          if (!c.pin && old.pin) c.pin = old.pin;
+          if (!("churchName" in c) && old.churchName) c.churchName = old.churchName;
+          if (!Array.isArray(c.giftTickets) && Array.isArray(old.giftTickets)) c.giftTickets = old.giftTickets;
+          if (!c.ssHoldUntil && old.ssHoldUntil) c.ssHoldUntil = old.ssHoldUntil;
+        }
         await fbPut(K.cust, list);
         await ledger(K.money, { type: "restore", amount: 0, note: `${list.length}件を復元`, performer: staffName });
         return send(res, 200, { ok: true, count: list.length });
@@ -1093,6 +1137,8 @@ export default async function handler(req, res) {
           if (alreadyDone(giver, reqId)) return { abort: { dup: true, customer: giver } };   // 二度押し：何もしない
           if (ri < 0 || sid(list[ri].churchName).trim() !== found.target) fail(404, "お相手がまだ虹カフェに登録されていません");
           if (ri === gi) fail(400, "自分には贈れません");
+          if (R.secretOnHold(giver)) fail(423, "安全のため、暗証番号や名前を変えてから24時間は贈れません。明日もう一度お試しください");
+          if (R.secretOnHold(list[ri])) fail(409, "お相手の準備中です。明日もう一度お試しください（お金は引かれていません）");
           const bal = Number(giver.balance) || 0;
           if (bal < price) fail(409, `残高が足りません（のこり ${yen(bal)}・シークレットプレゼント ${yen(price)}）。スタッフにチャージをお申し付けください`);
           // 贈る人：残高を引き、履歴は「シークレットプレゼント −¥350」とだけ（相手の名前は残さない。日付だけ）
@@ -1102,7 +1148,8 @@ export default async function handler(req, res) {
           // もらう人：チケットを1枚。贈り主は書かない。届いた日も日付だけ
           const r0 = list[ri];
           list[ri] = { ...r0, giftTickets: [...(Array.isArray(r0.giftTickets) ? r0.giftTickets : []),
-            { id: ticketId, kind: "secret", issuedDay: R.jstToday(), until: R.SECRET_GIFT.until, usedAt: null }].slice(-60) };
+            // 届くのは翌日（買った時刻と、券が増えた時刻を見比べて、贈り主を推し量られないように）
+            { id: ticketId, kind: "secret", issuedDay: R.jstTomorrow(), activeFrom: R.jstTomorrow(), until: R.SECRET_GIFT.useUntil, usedAt: null }].slice(-60) };
           return { value: list, result: { dup: false, customer: list[gi] } };
         });
         if (!out.dup) {
@@ -1112,6 +1159,31 @@ export default async function handler(req, res) {
             isCash: false, source: "secret_gift", balanceAfter: out.customer.balance });
         }
         return send(res, 200, { ok: true, dup: !!out.dup, customer: out.customer });
+      }
+
+      // 🎄 シークレットの券を別の会員へ移す（店長）。名前の結びつけを間違えて届いたときの直し用。
+      // 贈り主は分からないまま。まだ使っていない券（届く前の分も含む）だけを、新しい方から移す。
+      case "moveSecretTickets": {
+        if (!isStaff) return send(res, 403, { error: "この操作はスタッフのみです" });
+        const approver = await needManager(me, v.mgrPw, ip);
+        const fromId = sid(v.fromId), toId = sid(v.toId);
+        const want = Math.max(1, Math.min(50, Math.floor(Number(v.count) || 1)));
+        if (!fromId || !toId || fromId === toId) return send(res, 400, { error: "移す先の会員を選んでください" });
+        const out = await fbTxn(K.cust, (cur) => {
+          const list = arr(cur);
+          const fi = list.findIndex((c) => sid(c.id) === fromId), ti = list.findIndex((c) => sid(c.id) === toId);
+          if (fi < 0 || ti < 0) fail(404, "会員が見つかりません");
+          const movable = [...R.secretTickets(list[fi]), ...R.secretPendingTickets(list[fi])];
+          if (movable.length < want) fail(409, `移せる券は ${movable.length}枚です`);
+          const pick = new Set(movable.slice(-want).map((t) => t.id));
+          const moving = list[fi].giftTickets.filter((t) => t && pick.has(t.id));
+          list[fi] = { ...list[fi], giftTickets: list[fi].giftTickets.filter((t) => !(t && pick.has(t.id))) };
+          list[ti] = { ...list[ti], giftTickets: [...(Array.isArray(list[ti].giftTickets) ? list[ti].giftTickets : []), ...moving].slice(-60) };
+          return { value: list, result: { from: list[fi], to: list[ti], n: moving.length } };
+        });
+        await ledger(K.money, { type: "secret_move", customerId: out.to.id, customerName: out.to.name, amount: 0,
+          note: `🎄 シークレット券 ${out.n}枚を「${out.from.name}」さんから「${out.to.name}」さんへ移した`, performer: staffName, approvedBy: approver });
+        return send(res, 200, { ok: true, n: out.n, from: out.from, to: out.to });
       }
 
       // ════════ スタッフ：メニュー ════════

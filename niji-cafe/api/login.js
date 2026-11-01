@@ -7,6 +7,7 @@
 // ══════════════════════════════════════════
 import { envReady, fbGet, fbPut, fbTxn, issueToken, sameSecret, hashSecret, looksHashed, send, readBody,
          pinVer, clientIp, guardBlocked, guardFail, asList, ssLink } from "./_lib.js";
+import { publicCustomer } from "./_rules.js";
 
 // 「この端末で記憶する」の有効期間。週に1回来られる方が毎回打ち直さなくて済むよう、90日にしてある。
 // （暗証番号を変えれば、その前のログイン証は使えなくなる → pinVer）
@@ -74,6 +75,11 @@ export default async function handler(req, res) {
   // 間違いが続いた回線は15分止める（回数はデータベースに残すので、同時に送られても効く）。
   // お客様とスタッフは別々に数える（お客様の打ち間違いで、スタッフが入れなくならないように）。
   const gkind = role === "customer" ? "login_cust" : "login_staff";
+  // お客様の暗証番号は「全体の間違いの数」でも見張る（回線を変えながらの総当たり対策）。
+  // 15分に150回を超えたら、新しいログインだけを少し止める（「この端末で記憶する」で入っている人には影響しない）。
+  if (role === "customer" && await guardBlocked("login_cust_all", "all")) {
+    return send(res, 429, { error: "いまログインが混み合っています。15分ほど待ってからお試しください。お急ぎのときはスタッフへお声かけください" });
+  }
   if (await guardBlocked(gkind, ip)) {
     return send(res, 429, { error: "何度もまちがえたため、15分ほど待ってからお試しください。わからないときはスタッフへお声かけください" });
   }
@@ -91,7 +97,7 @@ export default async function handler(req, res) {
       // 同じ暗証番号の人が複数いる場合は、誰のものか決められないので断る
       if (matches.length !== 1) {
         // 同じ番号の人が2人いる（名簿の問題）ときは、打ち間違いとして数えない
-        if (matches.length === 0) await guardFail("login_cust", ip);
+        if (matches.length === 0) { await guardFail("login_cust", ip); await guardFail("login_cust_all", "all"); }
         return send(res, 401, { error: matches.length > 1 ? "この暗証番号は使えません。スタッフにお声かけください" : "暗証番号が違います" });
       }
       const me = matches[0];
@@ -99,7 +105,7 @@ export default async function handler(req, res) {
         // remember: 「この端末で記憶する」を選んだときは90日間有効（毎回の暗証番号入力を省くため）
         // pv: 暗証番号の印。番号を変えると、この証は使えなくなる
         token: issueToken({ r: "customer", id: me.id, pv: pinVer(me) }, remember ? REMEMBER_HOURS : 12),
-        customer: me,
+        customer: publicCustomer(me),
       });
     }
 

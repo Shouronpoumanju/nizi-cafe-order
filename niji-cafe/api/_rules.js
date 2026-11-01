@@ -281,7 +281,9 @@ export const shortVer = (s) => String(s || "").slice(0, 7);
 //     届いた日も「日付だけ」にして、時刻から贈り主を推し量れないようにしてある。
 export const SECRET_GIFT = {
   price: 350,
-  until: "2026/12/25",            // この日の 23:59（日本時間）まで使える。贈れるのも同じ日まで
+  until: "2026/12/25",            // 贈れるのはこの日の 23:59（日本時間）まで
+  useUntil: "2026/12/27",         // 券を使えるのはこの日の 23:59 まで（12/25 は金曜なので、そのあとの日曜まで使えるように）
+  holdHours: 24,                  // 暗証番号や教会での名前を変えたあと、贈る・受け取るを止めておく時間
   icon: "🎄", title: "シークレットプレゼント", from: "シークレットのだれか",
 };
 // "2026/12/25" のような日付を過ぎたか（その日の終わりまでは有効・日本時間）
@@ -290,9 +292,33 @@ export const dayPassed = (until) => {
   const now = jd();
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) > Date.UTC(y, m - 1, d);
 };
+// "2026/10/27" のような日付がまだ来ていないか（日本時間）
+export const dayNotYet = (from) => {
+  if (!from) return false;
+  const [y, m, d] = String(from).split("/").map(Number);
+  const now = jd();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) < Date.UTC(y, m - 1, d);
+};
+// 日本時間の「明日」の日付（買った券は翌日に届く。時刻から贈り主を推し量られないように）
+export const jstTomorrow = () => jstToday(Date.now() + 24 * 3600 * 1000);
 export const secretSeasonOver = () => dayPassed(SECRET_GIFT.until);
 const secretAll = (c) => (Array.isArray(c && c.giftTickets) ? c.giftTickets : []).filter((t) => t && t.id && t.kind === "secret");
-// まだ使える券（未使用・期限内）
-export const secretTickets = (c) => secretAll(c).filter((t) => !t.usedAt && !dayPassed(t.until || SECRET_GIFT.until));
+// 券の期限は、保存された日付ではなく、いつも SECRET_GIFT.useUntil を使う（あとから延ばしたときに全員そろうように）
+const secretDead = () => dayPassed(SECRET_GIFT.useUntil);
+// まだ届いていない券（翌日に届く）
+export const secretPendingTickets = (c) => secretAll(c).filter((t) => !t.usedAt && dayNotYet(t.activeFrom) && !secretDead());
+// まだ使える券（届いていて・未使用・期限内）
+export const secretTickets = (c) => secretAll(c).filter((t) => !t.usedAt && !dayNotYet(t.activeFrom) && !secretDead());
 // 期限が切れてしまった未使用の券（灰色で「期限切れ」と見せる）
-export const secretExpiredTickets = (c) => secretAll(c).filter((t) => !t.usedAt && dayPassed(t.until || SECRET_GIFT.until));
+export const secretExpiredTickets = (c) => secretAll(c).filter((t) => !t.usedAt && secretDead());
+// 暗証番号や名前を変えたばかりで、贈る・受け取るを止めている最中か
+export const secretOnHold = (c) => Number(c && c.ssHoldUntil) > Date.now();
+// 画面へ送る会員データから、見せてはいけないものを外す
+//  ・暗証番号（スタッフにも見せない。忘れた人は作り直す）
+//  ・まだ届いていないシークレットの券（翌日まで本人にもスタッフにも見せない）
+export const publicCustomer = (c) => {
+  if (!c || typeof c !== "object") return c;
+  const { pin, ...rest } = c;
+  if (Array.isArray(c.giftTickets)) rest.giftTickets = c.giftTickets.filter((t) => !(t && t.kind === "secret" && !t.usedAt && dayNotYet(t.activeFrom)));
+  return rest;
+};
