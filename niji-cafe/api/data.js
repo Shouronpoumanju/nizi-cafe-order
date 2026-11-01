@@ -1148,8 +1148,8 @@ export default async function handler(req, res) {
           // もらう人：チケットを1枚。贈り主は書かない。届いた日も日付だけ
           const r0 = list[ri];
           list[ri] = { ...r0, giftTickets: [...(Array.isArray(r0.giftTickets) ? r0.giftTickets : []),
-            // 届くのは翌日（買った時刻と、券が増えた時刻を見比べて、贈り主を推し量られないように）
-            { id: ticketId, kind: "secret", issuedDay: R.jstTomorrow(), activeFrom: R.jstTomorrow(), until: R.SECRET_GIFT.useUntil, usedAt: null }].slice(-60) };
+            // その場で届く（のあさんの決定 2026-11-01。届いた日は日付だけ残す）
+            { id: ticketId, kind: "secret", issuedDay: R.jstToday(), until: R.SECRET_GIFT.useUntil, usedAt: null }].slice(-60) };
           return { value: list, result: { dup: false, customer: list[gi] } };
         });
         if (!out.dup) {
